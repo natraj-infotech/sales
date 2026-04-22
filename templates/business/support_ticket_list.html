@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Support tickets{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="ticket360-banner">
+  <div class="ticket360-banner-title">Unlimited Support Tickets Enabled!</div>
+  <div class="ticket360-banner-subtitle">Since transactions are disabled, you can create unlimited support tickets.</div>
+</div>
+
+<div class="ticket360-header">
+  <div class="ticket360-header-main">
+    <svg aria-hidden="true"><use href="#i-ticket"/></svg>
+    <div>
+      <h1>Support Tickets</h1>
+      <p>Manage and track all your support tickets in one place.</p>
+    </div>
+  </div>
+  <div class="ticket360-actions">
+    <a class="ticket360-btn" href="{% url 'support_ticket_add' %}">Create Ticket</a>
+    <a class="ticket360-btn" href="{% url 'support_ticket_add' %}">Create Offline Ticket</a>
+    <a class="ticket360-btn" href="{% url 'support_ticket_list' %}">Support Team</a>
+    <a class="ticket360-btn" href="{% url 'support_ticket_list' %}">Email Diary</a>
+    <span class="ticket360-chip">{{ counts.total }} Support Tickets</span>
+    <span class="ticket360-chip ticket360-chip--light">UNLIMITED</span>
+  </div>
+</div>
+
+<div class="ticket360-tabs">
+  <a class="ticket360-tab {% if source_filter == 'internal' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=internal">Internal <span>{{ internal_count }}</span></a>
+  <a class="ticket360-tab {% if source_filter == 'external' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=external">External <span>{{ external_count }}</span></a>
+  <a class="ticket360-tab {% if source_filter == 'all' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=all">All <span>{{ internal_count|add:external_count }}</span></a>
+</div>
+
+<div class="ticket360-stats">
+  <div class="ticket360-stat">
+    <div class="num">{{ counts.total }}</div>
+    <div class="lbl">All</div>
+  </div>
+  <div class="ticket360-stat">
+    <div class="num">{{ counts.closed }}</div>
+    <div class="lbl">Closed</div>
+  </div>
+  <div class="ticket360-stat">
+    <div class="num">{{ counts.pending }}</div>
+    <div class="lbl">Pending</div>
+  </div>
+  <div class="ticket360-stat">
+    <div class="num">{{ counts.under_observation }}</div>
+    <div class="lbl">Under observation</div>
+  </div>
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom ticket360-card">
+  <div class="toolbar toolbar--in-card">
+    <form method="get">
+      <input type="hidden" name="source" value="{{ source_filter }}">
+      <label class="muted" for="ticket-status" style="font-size:0.8125rem;margin-right:0.35rem;">Status</label>
+      <select class="select-inline" id="ticket-status" name="status" style="max-width:12rem;">
+        <option value="">All</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-ghost">Apply</button>
+    </form>
+  </div>
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide">
+      <thead>
+        <tr>
+          <th>Ticket ID</th>
+          <th>Created At</th>
+          <th>Subject</th>
+          <th>Email</th>
+          <th>Dept</th>
+          <th>Status</th>
+          <th>Assign to</th>
+          <th>Comp. Date</th>
+          <th>Comp. Time</th>
+          <th>Remarks</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in object_list %}
+        <tr>
+          <td><span class="ticket-ref">{{ t.reference }}</span></td>
+          <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
+          <td>{{ t.subject }}</td>
+          <td>{{ t.source_sender|default:t.created_by.email }}</td>
+          <td>{{ t.get_department_display }}</td>
+          <td>
+            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+              {% csrf_token %}
+              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+              <select name="status" class="ticket360-row-select ticket360-row-select--status">
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="ticket360-mini-btn">Set</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+              {% csrf_token %}
+              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+              <select name="assignee" class="ticket360-row-select">
+                <option value="">Unassigned</option>
+                {% for u in assignees %}
+                <option value="{{ u.pk }}" {% if t.assignee_id == u.pk %}selected{% endif %}>{{ u.email }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="ticket360-mini-btn">Set</button>
+            </form>
+          </td>
+          <td>{% if t.status == "resolved" or t.status == "closed" %}{{ t.updated_at|date:"d/m/Y" }}{% else %}-{% endif %}</td>
+          <td>{% if t.status == "resolved" or t.status == "closed" %}{{ t.updated_at|date:"H:i" }}{% else %}-{% endif %}</td>
+          <td>
+            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+              {% csrf_token %}
+              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+              <input type="text" name="remarks" class="ticket360-row-input" value="{{ t.remarks }}" placeholder="Remarks">
+              <button type="submit" class="ticket360-mini-btn">Set</button>
+            </form>
+          </td>
+          <td class="col-actions">
+              <a class="btn-table-edit" href="{% url 'support_ticket_detail' t.pk %}">View</a>
+              {% if t.status != "closed" %}
+              <form method="post" action="{% url 'support_ticket_detail' t.pk %}" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="close">
+                <button type="submit" class="ticket360-view-link">Close</button>
+              </form>
+              {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;">
+            No tickets yet. <a href="{% url 'support_ticket_add' %}">Create a support ticket</a>.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

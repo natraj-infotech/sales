@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Case lock{% endblock %}
+
+{% block extra_css %}
+<style>
+  .caselock-mailbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .caselock-mailbox-tile {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .caselock-mailbox-tile:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 20px rgba(43, 111, 214, 0.12);
+  }
+  .caselock-mailbox-tile__link {
+    display: block;
+    padding: 1.1rem 1.15rem 2.65rem;
+    text-decoration: none !important;
+    color: inherit;
+  }
+  .caselock-mailbox-tile__link:hover {
+    color: inherit;
+  }
+  .caselock-mailbox-tile__product {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--header-blue-deep);
+    margin: 0 0 0.35rem;
+    letter-spacing: -0.02em;
+  }
+  .caselock-mailbox-tile__email {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    word-break: break-all;
+    margin-bottom: 0.75rem;
+  }
+  .caselock-mailbox-tile__meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+  }
+  .caselock-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .caselock-badge--on { background: #d1fae5; color: #065f46; }
+  .caselock-badge--off { background: #f3f4f6; color: #6b7280; }
+  .caselock-mailbox-tile__edit {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.5rem 1rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-align: center;
+    background: #f8fafc;
+    border-top: 1px solid var(--border);
+    color: var(--header-blue) !important;
+    text-decoration: none !important;
+  }
+  .caselock-mailbox-tile__edit:hover {
+    background: #eff6ff;
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-lock"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Case lock</h1>
+      <p class="tracker-page-subtitle">Click a mailbox to view its submissions; new mail there emails a secure form link to the sender</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'caselock_submissions' %}">All submissions</a>
+    <a class="btn-tracker-header" href="{% url 'caselock_inbox_add' %}">
+      <svg aria-hidden="true"><use href="#i-plus"/></svg>
+      Add mailbox
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<p class="muted" style="margin-top:0;">Set <strong>Company profile → outgoing email</strong> so the app can send form links. In production set env <code>PUBLIC_BASE_URL</code> to your site URL. Run Celery worker + beat to poll mailboxes.</p>
+
+{% if object_list %}
+<div class="caselock-mailbox-grid">
+  {% for row in object_list %}
+  <div class="caselock-mailbox-tile">
+    <a class="caselock-mailbox-tile__link" href="{% url 'caselock_submissions' %}?inbox={{ row.pk }}">
+      <div class="caselock-mailbox-tile__product">{{ row.product.name }}</div>
+      <div class="caselock-mailbox-tile__email">{{ row.mailbox_email }}</div>
+      <div class="caselock-mailbox-tile__meta">
+        <span><strong>{{ row.submission_count }}</strong> submission{% if row.submission_count != 1 %}s{% endif %}</span>
+        {% if row.is_active %}
+        <span class="caselock-badge caselock-badge--on">Active</span>
+        {% else %}
+        <span class="caselock-badge caselock-badge--off">Off</span>
+        {% endif %}
+      </div>
+    </a>
+    <a class="caselock-mailbox-tile__edit" href="{% url 'caselock_inbox_edit' row.pk %}">Edit mailbox</a>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="tracker-card">
+  <p class="muted" style="margin:0;">No mailboxes yet. Add one for each product inbox you want to monitor.</p>
+</div>
+{% endif %}
+{% endblock %}

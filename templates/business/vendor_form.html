@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .vendor-wide-shell {
+    margin: -1.25rem -1.5rem -2rem;
+    padding: 0.5rem 0.7rem 1rem;
+    background: #eaf1f8;
+    min-height: calc(100vh - 3.5rem);
+  }
+  .vendor-wide-card {
+    border: 1px solid #d5deea;
+    border-radius: 8px;
+    background: #f5f8fc;
+    overflow: hidden;
+  }
+  .vendor-wide-head {
+    background: #1f78c8;
+    color: #fff;
+    padding: 0.6rem 0.75rem;
+  }
+  .vendor-wide-head-title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .vendor-wide-head-title svg {
+    width: 14px;
+    height: 14px;
+  }
+  .vendor-wide-head-subtitle {
+    margin: 0.2rem 0 0;
+    font-size: 0.62rem;
+    color: rgba(255, 255, 255, 0.9);
+  }
+  .vendor-wide-body {
+    padding: 0.6rem;
+  }
+  .vendor-section {
+    border: 1px solid #d8e1ec;
+    border-radius: 6px;
+    padding: 0.55rem 0.65rem 0.6rem;
+    background: #fff;
+  }
+  .vendor-section + .vendor-section {
+    margin-top: 0.5rem;
+  }
+  .vendor-section-title {
+    margin: 0 0 0.45rem;
+    color: #1f3b63;
+    font-size: 0.68rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .vendor-section-title svg {
+    width: 12px;
+    height: 12px;
+  }
+  .vendor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem 0.5rem;
+  }
+  .vendor-grid.vendor-grid--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .vendor-field label {
+    display: block;
+    margin-bottom: 0.18rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #274365;
+  }
+  .vendor-field input,
+  .vendor-field textarea {
+    width: 100%;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    padding: 0.32rem 0.42rem;
+    font-size: 0.64rem;
+    color: #13294b;
+    background: #fff;
+  }
+  .vendor-field textarea {
+    min-height: 2.2rem;
+    resize: vertical;
+  }
+  .vendor-help {
+    margin-top: 0.16rem;
+    font-size: 0.56rem;
+    color: #6b7d95;
+  }
+  .vendor-field .errorlist {
+    margin: 0.2rem 0 0;
+    padding-left: 0.85rem;
+    font-size: 0.6rem;
+  }
+  .vendor-actions {
+    margin-top: 0.55rem;
+    display: flex;
+    justify-content: center;
+  }
+  .vendor-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border: none;
+    border-radius: 5px;
+    background: #5468be;
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .vendor-submit svg {
+    width: 12px;
+    height: 12px;
+  }
+  @media (max-width: 900px) {
+    .vendor-grid,
+    .vendor-grid.vendor-grid--three {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="vendor-wide-shell">
+  <div class="vendor-wide-card">
+    <header class="vendor-wide-head">
+      <h1 class="vendor-wide-head-title">
+        <svg aria-hidden="true"><use href="#i-id-card"/></svg>
+        {{ title }}
+      </h1>
+      <p class="vendor-wide-head-subtitle">Create or manage vendor contact details with comprehensive contact records</p>
+    </header>
+    <div class="vendor-wide-body">
+      <form method="post" id="vendor-form" novalidate>
+        {% csrf_token %}
+        {{ form.website.as_hidden }}
+        {{ form.notes.as_hidden }}
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <section class="vendor-section">
+          <h2 class="vendor-section-title"><svg aria-hidden="true"><use href="#i-doc"/></svg>Basic Information</h2>
+          <div class="vendor-grid">
+            <div class="vendor-field">
+              <label for="{{ form.name.id_for_label }}">Vendor Name</label>
+              {{ form.name }}
+              <div class="vendor-help">Enter vendor company name</div>
+              {{ form.name.errors }}
+            </div>
+            <div class="vendor-field">
+              <label for="{{ form.gst_number.id_for_label }}">GST Number</label>
+              {{ form.gst_number }}
+              <div class="vendor-help">Optional - Tax registration number</div>
+              {{ form.gst_number.errors }}
+            </div>
+          </div>
+        </section>
+
+        <section class="vendor-section">
+          <h2 class="vendor-section-title"><svg aria-hidden="true"><use href="#i-mail"/></svg>Email Addresses</h2>
+          <div class="vendor-grid vendor-grid--three">
+            <div class="vendor-field">
+              <label for="{{ form.email.id_for_label }}">Primary Email</label>
+              {{ form.email }}
+              <div class="vendor-help">Primary contact email</div>
+              {{ form.email.errors }}
+            </div>
+            <div class="vendor-field">
+              <label for="{{ form.email_2.id_for_label }}">Secondary Email</label>
+              {{ form.email_2 }}
+              <div class="vendor-help">Optional - Alternate contact email</div>
+              {{ form.email_2.errors }}
+            </div>
+            <div class="vendor-field">
+              <label for="{{ form.email_3.id_for_label }}">Additional Email</label>
+              {{ form.email_3 }}
+              <div class="vendor-help">Optional - Extra contact email</div>
+              {{ form.email_3.errors }}
+            </div>
+          </div>
+        </section>
+
+        <section class="vendor-section">
+          <h2 class="vendor-section-title"><svg aria-hidden="true"><use href="#i-phone"/></svg>Phone Numbers</h2>
+          <div class="vendor-grid vendor-grid--three">
+            <div class="vendor-field">
+              <label for="{{ form.phone.id_for_label }}">Primary Phone</label>
+              {{ form.phone }}
+              <div class="vendor-help">Main contact number</div>
+              {{ form.phone.errors }}
+            </div>
+            <div class="vendor-field">
+              <label for="{{ form.phone_2.id_for_label }}">Secondary Phone</label>
+              {{ form.phone_2 }}
+              <div class="vendor-help">Optional - Alternate contact number</div>
+              {{ form.phone_2.errors }}
+            </div>
+            <div class="vendor-field">
+              <label for="{{ form.phone_3.id_for_label }}">Additional Phone</label>
+              {{ form.phone_3 }}
+              <div class="vendor-help">Optional - Extra contact number</div>
+              {{ form.phone_3.errors }}
+            </div>
+          </div>
+        </section>
+
+        <div class="vendor-actions">
+          <button type="submit" class="vendor-submit">
+            <svg aria-hidden="true"><use href="#i-plus"/></svg>
+            {% if object %}Save Vendor{% else %}Create Vendor{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

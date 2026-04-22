@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Case lock submissions{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-doc"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Case lock submissions</h1>
+      <p class="tracker-page-subtitle">
+        {% if selected_inbox %}
+        Mailbox: <strong>{{ selected_inbox.mailbox_email }}</strong> ({{ selected_inbox.product.name }})
+        {% else %}
+        All mailboxes — details returned via emailed form links
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'caselock_inbox_list' %}">Mailbox dashboard</a>
+    {% if selected_inbox %}
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'caselock_submissions' %}">All submissions</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .cl-status {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .cl-status--pending { background: #fef3c7; color: #92400e; }
+  .cl-status--approved { background: #d1fae5; color: #065f46; }
+  .cl-status--declined { background: #fee2e2; color: #991b1b; }
+  .cl-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .cl-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 0.25rem 0.52rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .cl-btn--approve { background: #16a34a; color: #fff; }
+  .cl-btn--decline { background: #dc2626; color: #fff; }
+</style>
+{% if selected_inbox %}
+<div class="ticket360-banner" style="margin-bottom:1rem;">
+  <div class="ticket360-banner-title">Filtered to this mailbox</div>
+  <div class="ticket360-banner-subtitle">{{ selected_inbox.product.name }} · {{ selected_inbox.mailbox_email }}</div>
+</div>
+{% endif %}
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Product (mailbox)</th>
+          <th>From email</th>
+          <th>Vendor</th>
+          <th>Vendor GST</th>
+          <th>Client</th>
+          <th>Client Phone</th>
+          <th>Client Emails</th>
+          <th>Client GST</th>
+          <th>Product (form)</th>
+          <th>Qty</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in object_list %}
+        <tr>
+          <td>{{ s.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>{{ s.invite.inbox.product.name }}</td>
+          <td>{{ s.invite.sender_email }}</td>
+          <td>{{ s.vendor_name }}</td>
+          <td>{{ s.vendor_gst|default:"—" }}</td>
+          <td>{{ s.client_name }}</td>
+          <td>{{ s.client_phone|default:"—" }}</td>
+          <td>
+            {{ s.client_email|default:"—" }}
+            {% if s.client_email_2 %}<br>{{ s.client_email_2 }}{% endif %}
+          </td>
+          <td>{{ s.client_gst|default:"—" }}</td>
+          <td>{{ s.product_name }}</td>
+          <td>{{ s.product_quantity }}</td>
+          <td>
+            <span class="cl-status cl-status--{{ s.status }}">{{ s.get_status_display }}</span>
+          </td>
+          <td>
+            <form method="post" action="{% url 'caselock_submission_status_update' s.pk %}" class="cl-actions">
+              {% csrf_token %}
+              {% if selected_inbox %}
+              <input type="hidden" name="inbox" value="{{ selected_inbox.pk }}">
+              {% endif %}
+              <button type="submit" class="cl-btn cl-btn--approve" name="action" value="approve">Approve</button>
+              <button type="submit" class="cl-btn cl-btn--decline" name="action" value="decline">Decline</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="13" class="muted" style="padding:1.25rem;text-align:center;">
+            {% if selected_inbox %}No submissions for this mailbox yet.{% else %}No submissions yet.{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Product list{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-box"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Product list</h1>
+      <p class="tracker-page-subtitle">Manage and track all your products and assets</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header" href="{% url 'product_add' %}">
+      <svg aria-hidden="true"><use href="#i-plus"/></svg>
+      Add product
+    </a>
+    <a class="btn-tracker-header" href="{% url 'product_import' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Import products
+    </a>
+    <button type="submit" form="product-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected products? Products linked to subscriptions cannot be removed.');">
+      <svg aria-hidden="true"><use href="#i-trash"/></svg>
+      Delete selected
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card tracker-card--flush-bottom tracker-card-product">
+  <div class="toolbar toolbar--in-card">
+    <form method="get">
+      <input type="search" class="input-inline" name="q" value="{{ q }}" placeholder="Search by name, category, HSN, company, notes…">
+      <button type="submit" class="btn btn-ghost">Search</button>
+    </form>
+  </div>
+
+  <form method="post" action="{% url 'product_bulk_delete' %}" id="product-bulk-form">
+    {% csrf_token %}
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro tracker-table-pro--wide">
+        <thead>
+          <tr>
+            <th class="col-check">
+              <input type="checkbox" id="product-select-all" title="Select all" aria-label="Select all products">
+            </th>
+            <th class="col-sn">Serial no</th>
+            <th>Product name</th>
+            <th>Category</th>
+            <th>Type</th>
+            <th>Company</th>
+            <th>Tax</th>
+            <th>Depreciation</th>
+            <th>HSN code</th>
+            <th>Company number</th>
+            <th>Company email</th>
+            <th>Components</th>
+            <th>Note</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in object_list %}
+          <tr>
+            <td class="col-check">
+              <input type="checkbox" class="product-row-check" name="product_ids" value="{{ p.pk }}" aria-label="Select {{ p.name }}">
+            </td>
+            <td class="col-sn">{{ forloop.counter }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ p.category|default:"-" }}</td>
+            <td>{{ p.asset_type|default:"-" }}</td>
+            <td>{{ p.company_name|default:"-" }}</td>
+            <td>{{ p.tax|default:"-" }}</td>
+            <td>{{ p.depreciation|default:"-" }}</td>
+            <td>{{ p.hsn_code|default:"-" }}</td>
+            <td>{{ p.company_phone|default:"-" }}</td>
+            <td>{{ p.company_email|default:"-" }}</td>
+            <td>{{ p.components|default:"-"|truncatechars:32 }}</td>
+            <td>{{ p.notes|default:"-"|truncatechars:32 }}</td>
+            <td class="col-actions">
+              <a class="btn-table-edit" href="{% url 'product_edit' p.pk %}">
+                <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+                Edit
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="14" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+              No products yet. <a href="{% url 'product_add' %}">Add a product</a> or <a href="{% url 'product_import' %}">import</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var master = document.getElementById("product-select-all");
+  var boxes = document.querySelectorAll(".product-row-check");
+  if (!master || !boxes.length) return;
+  master.addEventListener("change", function () {
+    boxes.forEach(function (b) { b.checked = master.checked; });
+  });
+  boxes.forEach(function (b) {
+    b.addEventListener("change", function () {
+      var all = true;
+      boxes.forEach(function (x) { if (!x.checked) all = false; });
+      master.checked = all;
+    });
+  });
+})();
+</script>
+{% endblock %}

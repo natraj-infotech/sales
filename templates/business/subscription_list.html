@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Client Subscriptions{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header tracker-page-header--subscriptions">
+  <div class="tracker-page-header-row">
+    <div class="tracker-page-header-text">
+      <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-user-list"/></svg>
+      <div>
+        <h1 class="tracker-page-title">Client Subscriptions</h1>
+        <p class="tracker-page-subtitle">Manage and track all your client subscriptions in one place</p>
+      </div>
+    </div>
+  </div>
+  <div class="tracker-page-actions tracker-page-actions--banner">
+    <a class="btn-tracker-header" href="{% url 'client_add' %}">
+      <svg aria-hidden="true"><use href="#i-user-plus"/></svg>
+      Add Client
+    </a>
+    <a class="btn-tracker-header" href="{% url 'subscription_add' %}?asset_type=Hardware">
+      <svg aria-hidden="true"><use href="#i-laptop"/></svg>
+      Add Hardware
+    </a>
+    <a class="btn-tracker-header" href="{% url 'subscription_add' %}?asset_type=Software">
+      <svg aria-hidden="true"><use href="#i-layout-grid"/></svg>
+      Add Software
+    </a>
+    <a class="btn-tracker-header" href="{% url 'subscription_import' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Import Excel
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-filter-panel">
+  <h2 class="tracker-filter-panel-title">
+    <svg aria-hidden="true"><use href="#i-funnel"/></svg>
+    Filter Client Subscriptions
+  </h2>
+  <form method="get" class="tracker-sub-filter-form" action="{% url 'subscription_list' %}">
+    <div class="tracker-sub-filter-fields">
+      <div class="tracker-sub-filter-field">
+        <label for="f-client">Client</label>
+        <select id="f-client" name="client">
+          <option value="">All</option>
+          {% for c in clients %}
+          <option value="{{ c.pk }}" {% if filters.client == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tracker-sub-filter-field">
+        <label for="f-product">Product</label>
+        <select id="f-product" name="product">
+          <option value="">All</option>
+          {% for p in products %}
+          <option value="{{ p.pk }}" {% if filters.product == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tracker-sub-filter-field">
+        <label for="f-vendor">Vendor</label>
+        <select id="f-vendor" name="vendor">
+          <option value="">All</option>
+          {% for v in vendors %}
+          <option value="{{ v.pk }}" {% if filters.vendor == v.pk|stringformat:"s" %}selected{% endif %}>{{ v.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tracker-sub-filter-field">
+        <label for="f-category">Category</label>
+        <select id="f-category" name="category">
+          <option value="">All</option>
+          {% for cat in categories %}
+          <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tracker-sub-filter-field tracker-sub-filter-field--date">
+        <label for="f-start">Start date</label>
+        <input type="date" id="f-start" name="start_date" value="{{ filters.start_date }}" title="dd-mm-yyyy">
+      </div>
+      <div class="tracker-sub-filter-field tracker-sub-filter-field--date">
+        <label for="f-end">End date</label>
+        <input type="date" id="f-end" name="end_date" value="{{ filters.end_date }}" title="dd-mm-yyyy">
+      </div>
+      <div class="tracker-sub-filter-field">
+        <label for="f-expiring">Expiring soon</label>
+        <select id="f-expiring" name="expiring_soon">
+          {% for val, label in expiring_choices %}
+          <option value="{{ val }}" {% if filters.expiring_soon == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="tracker-sub-filter-actions">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-search"/></svg>
+        Apply filters
+      </button>
+      <a class="btn-filter-reset" href="{% url 'subscription_list' %}">
+        <svg aria-hidden="true"><use href="#i-refresh"/></svg>
+        Reset
+      </a>
+    </div>
+  </form>
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom tracker-card-subscriptions">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-subscriptions">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Category</th>
+          <th>Product</th>
+          <th>Vendor</th>
+          <th>Qty</th>
+          <th>Start date</th>
+          <th>End date</th>
+          <th>Price</th>
+          <th>Serial number</th>
+          <th>Subscription ID</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in object_list %}
+        <tr>
+          <td>{{ s.client.name }}</td>
+          <td>{{ s.product.category|default:"—" }}</td>
+          <td>{{ s.product.name }}</td>
+          <td>{{ s.vendor.name|default:"—" }}</td>
+          <td>{{ s.quantity }}</td>
+          <td>{{ s.start_date|date:"d/m/Y" }}</td>
+          <td>{% if s.end_date %}{{ s.end_date|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+          <td>{{ s.billing_amount }}</td>
+          <td>{{ s.serial_number|default:"—" }}</td>
+          <td>{{ s.subscription_list_id }}</td>
+          <td class="col-actions">
+            <a class="btn-table-edit" href="{% url 'subscription_edit' s.pk %}">
+              <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+              Edit
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;">
+            No subscriptions match your filters. <a href="{% url 'subscription_add' %}">Add a subscription</a>.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

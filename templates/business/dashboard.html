@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-chart"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Dashboard</h1>
+      <p class="tracker-page-subtitle">{{ company.company_name }} — overview and quick actions</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid--spaced">
+  <div class="stat">
+    <div class="num">{{ counts.subscriptions }}</div>
+    <div class="lbl">Subscriptions</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ active_subs }}</div>
+    <div class="lbl">Active</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ counts.clients }}</div>
+    <div class="lbl">Clients</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ counts.vendors }}</div>
+    <div class="lbl">Vendors</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ counts.products }}</div>
+    <div class="lbl">Products</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ revenue_hint }}</div>
+    <div class="lbl">Active billing (sum)</div>
+  </div>
+</div>
+
+<div class="tracker-card">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Quick actions</h3>
+  <div class="toolbar" style="margin-bottom:0;">
+    <a class="btn btn-primary" href="{% url 'subscription_add' %}">Add subscription</a>
+    <a class="btn btn-ghost" href="{% url 'vendor_add' %}">Add vendor</a>
+    <a class="btn btn-ghost" href="{% url 'client_add' %}">Add client</a>
+    <a class="btn btn-ghost" href="{% url 'product_add' %}">Add product</a>
+  </div>
+</div>
+
+<div class="tracker-card">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Recent subscriptions</h3>
+  {% if recent_subs %}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Client</th>
+        <th>Product</th>
+        <th>Status</th>
+        <th>Start</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in recent_subs %}
+      <tr>
+        <td>{{ s.client.name }}</td>
+        <td>{{ s.product.name }}</td>
+        <td>{{ s.get_status_display }}</td>
+        <td>{{ s.start_date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No subscriptions yet. <a href="{% url 'subscription_add' %}">Create one</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

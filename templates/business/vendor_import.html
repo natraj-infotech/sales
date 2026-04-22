@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Import vendors{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Import vendors</h1>
+      <p class="tracker-page-subtitle">Bulk load vendors from a file</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'vendor_list' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p class="muted" style="margin-top:0;">CSV import is not configured yet. Use <strong>Add vendor</strong> to enter records, or check back after your team connects a file upload.</p>
+  <p style="margin-bottom:0;"><a class="btn btn-primary" href="{% url 'vendor_add' %}">Add vendor</a></p>
+</div>
+{% endblock %}

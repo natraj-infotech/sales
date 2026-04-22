@@ -1,0 +1,7 @@
+{# Plain label above control — mock subscription / client forms #}
+<div class="tracker-mock-field{% if extra_class %} {{ extra_class }}{% endif %}">
+  <label class="tracker-mock-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {{ field }}
+  {% if field.help_text %}<span class="tracker-mock-helptext">{{ field.help_text }}</span>{% endif %}
+  {{ field.errors }}
+</div>

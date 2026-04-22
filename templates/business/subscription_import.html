@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Import subscriptions{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Import client subscriptions</h1>
+      <p class="tracker-page-subtitle">Bulk load subscriptions from an Excel workbook (.xlsx)</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'subscription_list' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p style="margin-top:0;">Download the template for the correct column headers, then upload your filled file. <strong>Client</strong> and <strong>product</strong> must match names already in your account (case-insensitive). <strong>Start date</strong> is required; use <code>YYYY-MM-DD</code> or <code>DD/MM/YYYY</code>.</p>
+  <ul class="muted" style="margin-bottom:1.25rem;">
+    <li>Optional: vendor, quantity (defaults to 1), end date, billing amount / price, invoice number, serial number, subscription id, status (<code>active</code>, <code>paused</code>, <code>ended</code>), notes.</li>
+    <li>Leave vendor blank if not applicable. Unknown vendor names are rejected so rows are not saved with the wrong link.</li>
+  </ul>
+  <p style="margin-bottom:1rem;">
+    <a class="btn-tracker-header" href="{% url 'subscription_import_template' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Download Excel template
+    </a>
+  </p>
+  <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:32rem;">
+    {% csrf_token %}
+    <div class="tracker-sub-filter-field">
+      <label for="id_file">Excel file (.xlsx)</label>
+      <input type="file" name="file" id="id_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+    </div>
+    <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-upload"/></svg>
+        Import
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

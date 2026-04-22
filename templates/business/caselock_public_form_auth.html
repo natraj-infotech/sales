@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Case lock details{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  {% include "includes/caselock_public_form_inner.html" with use_tracker=True %}
+</div>
+{% endblock %}

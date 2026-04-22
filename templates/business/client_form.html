@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="tracker-mock-form-shell">
+  <div class="tracker-mock-form-card">
+    <header class="tracker-mock-form-card-header">
+      <h1 class="tracker-mock-form-card-title">{{ title }}</h1>
+      <p class="tracker-mock-form-card-subtitle">{{ subtitle }}</p>
+    </header>
+    <div class="tracker-mock-form-body">
+      <form method="post" id="client-form" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        {{ form.notes }}
+        <section class="tracker-mock-section" aria-labelledby="client-section-details">
+          <h2 id="client-section-details" class="tracker-mock-section-title">Client Details</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.name %}
+            {% include "includes/form_field_mock.html" with field=form.gst_number %}
+            {% include "includes/form_field_mock.html" with field=form.email %}
+            {% include "includes/form_field_mock.html" with field=form.phone %}
+          </div>
+        </section>
+
+        <div class="tracker-mock-form-actions">
+          <button type="submit" class="btn-mock-save">{% if object %}Save{% else %}Save Client{% endif %}</button>
+          <a class="btn-mock-cancel" href="{% url 'client_list' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-users"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Clients</h1>
+      <p class="tracker-page-subtitle">Manage your client companies and contacts</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header" href="{% url 'client_add' %}">+ Add client</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="toolbar toolbar--in-card">
+    <form method="get">
+      <input type="search" class="input-inline" name="q" value="{{ q }}" placeholder="Search clients…">
+      <button type="submit" class="btn btn-ghost">Search</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>GST number</th><th>Email</th><th>Contact</th><th></th></tr></thead>
+      <tbody>
+        {% for c in object_list %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td>{{ c.gst_number|default:"—" }}</td>
+          <td>{{ c.email|default:"—" }}</td>
+          <td>{{ c.phone|default:"—" }}</td>
+          <td><a href="{% url 'client_edit' c.pk %}">Edit</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="muted" style="padding:1rem;">No clients. <a href="{% url 'client_add' %}">Add one</a>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

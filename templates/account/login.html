@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+
+{% block title %}Log in{% endblock %}
+
+{% block extra_css %}
+<style>
+  .login-card {
+    background: #eef3f8;
+    border: 1px solid #d6deea;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
+    overflow: hidden;
+    min-height: 640px;
+  }
+  .login-head {
+    background: linear-gradient(180deg, #4777b9 0%, #6ea2de 100%);
+    text-align: center;
+    padding: 1.35rem 1.2rem 1.25rem;
+    color: #fff;
+  }
+  .login-brand {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 0.3rem;
+    letter-spacing: -0.02em;
+  }
+  .login-brand svg {
+    width: 30px;
+    height: 30px;
+    color: #1f4079;
+    opacity: 0.95;
+  }
+  .login-brand .t1 { color: #1f4079; }
+  .login-brand .t2 { color: #1db2ff; }
+  .login-head p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.92rem;
+    font-weight: 500;
+  }
+  .login-body {
+    padding: 1.45rem 1.4rem 1.65rem;
+  }
+  .login-field {
+    margin-bottom: 0.95rem;
+  }
+  .login-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.42rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
+  }
+  .login-field label svg {
+    width: 14px;
+    height: 14px;
+    color: #5b6f8d;
+  }
+  .login-field input {
+    width: 100%;
+    border: 1px solid #d4dbe7;
+    border-radius: 10px;
+    background: #f5f7fb;
+    color: #0f172a;
+    padding: 0.7rem 0.82rem;
+    font-size: 0.9rem;
+  }
+  .login-field input:focus {
+    outline: none;
+    border-color: #2f6fcb;
+    box-shadow: 0 0 0 3px rgba(47, 111, 203, 0.16);
+    background: #fff;
+  }
+  .login-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.2rem 0 0.95rem;
+  }
+  .login-remember {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #374151;
+    font-size: 0.9rem;
+  }
+  .login-remember input {
+    width: 14px;
+    height: 14px;
+    accent-color: #2f6fcb;
+  }
+  .login-forgot {
+    color: #1f67c8;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .login-forgot:hover { text-decoration: underline; }
+  .login-submit {
+    width: 100%;
+    border-radius: 8px;
+    background: #0f63bd;
+    border: none;
+    color: #fff;
+    padding: 0.68rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(15, 99, 189, 0.3);
+  }
+  .login-submit:hover { background: #0b529f; }
+  .login-sep {
+    margin: 1.15rem 0 0.95rem;
+    text-align: center;
+    color: #7a8699;
+    font-size: 0.86rem;
+    position: relative;
+  }
+  .login-sep::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 1px solid #d7deea;
+    z-index: 1;
+  }
+  .login-sep span {
+    position: relative;
+    z-index: 2;
+    background: #eef3f8;
+    padding: 0 0.65rem;
+  }
+  .login-socials {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+  }
+  .login-social-btn {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid #2f6fcb;
+    border-radius: 10px;
+    background: #f8fbff;
+    color: #0f63bd;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.62rem 0.5rem;
+    text-decoration: none;
+  }
+  .login-social-btn:hover {
+    background: #eaf3ff;
+    text-decoration: none;
+  }
+  .login-social-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .login-social-icon.ms { background: #2f6fcb; }
+  .login-social-icon.gg { background: #ea4335; }
+  .login-signup {
+    text-align: center;
+    margin: 1rem 0 0.55rem;
+    color: #6b7280;
+    font-size: 0.9rem;
+  }
+  .login-signup a {
+    color: #0f63bd;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .login-signup a:hover { text-decoration: underline; }
+  .login-signup-social {
+    margin: 0 0 0.75rem;
+    text-align: center;
+  }
+  .login-signup-social a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border: 1px solid #2f6fcb;
+    border-radius: 10px;
+    background: #f8fbff;
+    color: #0f63bd;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 0.8rem;
+    text-decoration: none;
+  }
+  .login-signup-social a:hover {
+    background: #eaf3ff;
+    text-decoration: none;
+  }
+  .login-terms {
+    text-align: center;
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .login-terms a {
+    color: #0f63bd;
+    text-decoration: none;
+  }
+  .login-terms a:hover { text-decoration: underline; }
+  .login-errors {
+    margin-bottom: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #b91c1c;
+    font-size: 0.84rem;
+  }
+</style>
+{% endblock %}
+
+{% block content_guest %}
+<div class="login-card">
+  <div class="login-head">
+    <div class="login-brand">
+      <svg aria-hidden="true"><use href="#i-key"/></svg>
+      <span><span class="t1">TRACKER</span><span class="t2">365</span></span>
+    </div>
+    <p>Sign in to your account</p>
+  </div>
+
+  <div class="login-body">
+    <form method="post" action="{% url 'account_login' %}">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="login-errors">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="login-field">
+        <label for="id_login"><svg aria-hidden="true"><use href="#i-mail"/></svg>Email Address</label>
+        {{ form.login }}
+        {{ form.login.errors }}
+      </div>
+
+      <div class="login-field">
+        <label for="id_password"><svg aria-hidden="true"><use href="#i-lock"/></svg>Password</label>
+        {{ form.password }}
+        {{ form.password.errors }}
+      </div>
+
+      <div class="login-options">
+        {% if form.remember %}
+        <label class="login-remember">{{ form.remember }} Remember me</label>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <a class="login-forgot" href="{% url 'account_reset_password' %}">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="login-submit">Sign In</button>
+    </form>
+
+    {% if google_oauth_ready or microsoft_oauth_ready %}
+    <div class="login-sep"><span>or continue with</span></div>
+    <div class="login-socials">
+      <a class="login-social-btn" href="{% provider_login_url 'microsoft' %}">
+        <span class="login-social-icon ms">M</span>Microsoft
+      </a>
+      <a class="login-social-btn" href="{% provider_login_url 'google' %}">
+        <span class="login-social-icon gg">G</span>Google
+      </a>
+    </div>
+    {% endif %}
+
+    <p class="login-signup">Don't have an account? <a href="{% url 'account_signup' %}">Create one here</a></p>
+    {% if google_oauth_ready %}
+    <p class="login-signup-social">
+      <a href="{% provider_login_url 'google' process='signup' %}">
+        <span class="login-social-icon gg">G</span>Sign up with Google
+      </a>
+    </p>
+    {% endif %}
+    <p class="login-terms"><a href="#">Terms and Conditions</a></p>
+  </div>
+</div>
+{% endblock %}

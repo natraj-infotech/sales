@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-row--checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .form-row--checkbox label {
+    margin-bottom: 0;
+  }
+  .form-row--checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--header-blue);
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-lock"/></svg>
+    <div>
+      <h1 class="tracker-page-title">{{ title }}</h1>
+      <p class="tracker-page-subtitle">Credentials are used only to read this mailbox over IMAP (or Microsoft Graph for M365)</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'caselock_inbox_list' %}">Back</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      {% if field.field.widget.input_type == "checkbox" %}
+      <div class="form-row form-row--checkbox">
+        {{ field }}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      </div>
+      {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
+      {{ field.errors }}
+      {% else %}
+      <div class="form-row">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
+        {{ field.errors }}
+      </div>
+      {% endif %}
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">Save</button>
+  </form>
+</div>
+{% endblock %}

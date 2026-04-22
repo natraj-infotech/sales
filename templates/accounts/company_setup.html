@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Company profile{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-building"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Company profile</h1>
+      <p class="tracker-page-subtitle">Manage your company information and settings</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <button type="submit" form="company-profile-form" class="btn-tracker-header">
+      <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+      {% if editing %}Save changes{% else %}Save and continue{% endif %}
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <div class="tracker-card-brand">
+    <div class="wordmark-lg" aria-hidden="true">
+      <span class="wm-tracker">TRACKER</span><span class="wm-365">365</span>
+    </div>
+    <h2 class="tracker-hero-name">
+      {% if editing and form.instance.company_name %}{{ form.instance.company_name }}{% else %}Your company{% endif %}
+    </h2>
+  </div>
+
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1.25rem;">
+    App passwords are stored in the database—use app passwords for mailboxes, not your main account password.
+  </p>
+
+  <form method="post" id="company-profile-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <h3 class="tracker-card-section-title">Company details</h3>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.gst_number icon="doc" %}
+      {% include "includes/form_field_tracker.html" with field=form.cin_number icon="doc" %}
+      {% include "includes/form_field_tracker.html" with field=form.address icon="pin" full_width=True %}
+      {% include "includes/form_field_tracker.html" with field=form.company_name icon="building" %}
+      {% include "includes/form_field_tracker.html" with field=form.phone icon="phone" %}
+      {% include "includes/form_field_tracker.html" with field=form.email icon="mail" %}
+    </div>
+
+    <h3 class="tracker-card-section-title">Support email</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Used as the IMAP login to auto-create support tickets. On the server, schedule
+      <code style="font-size:0.78em;">python manage.py fetch_support_inbox</code>
+      (e.g. every 5 minutes). Set <code style="font-size:0.78em;">SUPPORT_IMAP_HOST</code> in <code style="font-size:0.78em;">.env</code> for your provider (Gmail: <code style="font-size:0.78em;">imap.gmail.com</code>).
+    </p>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.support_email icon="mail" %}
+      {% include "includes/form_field_tracker.html" with field=form.support_email_app_password icon="lock" %}
+    </div>
+
+    <h3 class="tracker-card-section-title">Outgoing email (SMTP)</h3>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.outgoing_email icon="mail" %}
+      {% include "includes/form_field_tracker.html" with field=form.outgoing_email_app_password icon="lock" %}
+    </div>
+  </form>
+</div>
+{% endblock %}

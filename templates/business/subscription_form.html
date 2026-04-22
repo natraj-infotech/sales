@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="tracker-mock-form-shell">
+  <div class="tracker-mock-form-card">
+    <header class="tracker-mock-form-card-header">
+      <h1 class="tracker-mock-form-card-title">{{ title }}</h1>
+      <p class="tracker-mock-form-card-subtitle">{{ subtitle }}</p>
+    </header>
+    <div class="tracker-mock-form-body">
+      <form method="post" id="subscription-form" novalidate>
+        {% csrf_token %}
+        {% if asset_type_locked %}
+        <input type="hidden" name="asset_type" value="{{ asset_type_locked }}">
+        {% endif %}
+        {{ form.status }}
+        {{ form.notes }}
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <section class="tracker-mock-section" aria-labelledby="sub-section-basic">
+          <h2 id="sub-section-basic" class="tracker-mock-section-title">Basic Subscription Details</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.client %}
+            {% if asset_type_locked %}
+            <div class="tracker-mock-field">
+              <span class="tracker-mock-label">Category</span>
+              <div class="tracker-mock-readonly">{{ asset_type_locked }}</div>
+            </div>
+            {% else %}
+            {% include "includes/form_field_mock.html" with field=form.category_filter %}
+            {% endif %}
+            {% include "includes/form_field_mock.html" with field=form.company_name_filter %}
+            {% include "includes/form_field_mock.html" with field=form.product %}
+            {% include "includes/form_field_mock.html" with field=form.quantity extra_class="tracker-mock-field--qty" %}
+          </div>
+        </section>
+
+        <section class="tracker-mock-section" aria-labelledby="sub-section-dates">
+          <h2 id="sub-section-dates" class="tracker-mock-section-title">Date and Vendor Details</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.start_date %}
+            {% include "includes/form_field_mock.html" with field=form.end_date %}
+            {% include "includes/form_field_mock.html" with field=form.vendor %}
+            {% include "includes/form_field_mock.html" with field=form.billing_amount %}
+          </div>
+        </section>
+
+        <section class="tracker-mock-section" aria-labelledby="sub-section-ids">
+          <h2 id="sub-section-ids" class="tracker-mock-section-title">Identifiers</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.invoice_number %}
+            {% include "includes/form_field_mock.html" with field=form.serial_number %}
+            {% include "includes/form_field_mock.html" with field=form.subscription_code extra_class="tracker-mock-field--qty" %}
+          </div>
+        </section>
+
+        <div class="tracker-mock-form-actions">
+          <button type="submit" class="btn-mock-save">Save</button>
+          <a class="btn-mock-cancel" href="{% url 'subscription_list' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+
+{% block title %}Sign up{% endblock %}
+
+{% block extra_css %}
+<style>
+  .signup-card {
+    background: #eef3f8;
+    border: 1px solid #d6deea;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
+    overflow: hidden;
+    min-height: 730px;
+  }
+  .signup-head {
+    background: linear-gradient(180deg, #4777b9 0%, #6ea2de 100%);
+    color: #fff;
+    text-align: center;
+    padding: 1.45rem 1.2rem 1.35rem;
+  }
+  .signup-head-icon {
+    width: 30px;
+    height: 30px;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 0.35rem;
+  }
+  .signup-head h1 {
+    margin: 0;
+    color: #fff;
+    font-size: 2.15rem;
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .signup-head p {
+    margin: 0.42rem 0 0;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.94rem;
+    font-weight: 500;
+  }
+  .signup-body {
+    padding: 1.3rem 1.1rem 1.35rem;
+  }
+  .signup-field {
+    margin-bottom: 0.88rem;
+  }
+  .signup-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    margin-bottom: 0.38rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #334155;
+  }
+  .signup-field label svg {
+    width: 14px;
+    height: 14px;
+    color: #2f6fcb;
+  }
+  .signup-field input {
+    width: 100%;
+    border: 1px solid #d4dbe7;
+    border-radius: 10px;
+    background: #f5f7fb;
+    color: #0f172a;
+    padding: 0.84rem 0.88rem;
+    font-size: 0.95rem;
+  }
+  .signup-field input:focus {
+    outline: none;
+    border-color: #2f6fcb;
+    box-shadow: 0 0 0 3px rgba(47, 111, 203, 0.16);
+    background: #fff;
+  }
+  .signup-errors {
+    margin-bottom: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #b91c1c;
+    font-size: 0.84rem;
+  }
+  .signup-field .errorlist {
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+  }
+  .signup-agree {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0.35rem 0 0.9rem;
+    font-size: 0.9rem;
+    color: #374151;
+  }
+  .signup-agree input {
+    width: 15px;
+    height: 15px;
+    margin-top: 0.14rem;
+    accent-color: #2f6fcb;
+  }
+  .signup-agree a {
+    color: #0f63bd;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .signup-agree a:hover { text-decoration: underline; }
+  .signup-submit {
+    width: 100%;
+    border-radius: 8px;
+    background: #0f63bd;
+    border: none;
+    color: #fff;
+    padding: 0.74rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(15, 99, 189, 0.3);
+  }
+  .signup-submit:hover { background: #0b529f; }
+  .signup-sep {
+    margin: 1.1rem 0 0.92rem;
+    text-align: center;
+    color: #7a8699;
+    font-size: 0.86rem;
+    position: relative;
+  }
+  .signup-sep::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 1px solid #d7deea;
+    z-index: 1;
+  }
+  .signup-sep span {
+    position: relative;
+    z-index: 2;
+    background: #eef3f8;
+    padding: 0 0.6rem;
+  }
+  .signup-socials {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+  }
+  .signup-social-btn {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid #2f6fcb;
+    border-radius: 10px;
+    background: #f8fbff;
+    color: #0f63bd;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.62rem 0.5rem;
+    text-decoration: none;
+  }
+  .signup-social-btn:hover {
+    background: #eaf3ff;
+    text-decoration: none;
+  }
+  .signup-social-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .signup-social-icon.ms { background: #2f6fcb; }
+  .signup-social-icon.gg { background: #ea4335; }
+  .signup-foot {
+    margin: 0.9rem 0 0.1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: #6b7280;
+  }
+  .signup-foot a {
+    color: #0f63bd;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .signup-foot a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content_guest %}
+<div class="signup-card">
+  <div class="signup-head">
+    <svg class="signup-head-icon" aria-hidden="true"><use href="#i-user-plus"/></svg>
+    <h1>Create Account</h1>
+    <p>Join us and get started</p>
+  </div>
+
+  <div class="signup-body">
+    <form method="post" action="{% url 'account_signup' %}">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="signup-errors">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      {% for field in form %}
+      <div class="signup-field">
+        <label for="{{ field.id_for_label }}">
+          {% if "username" in field.name %}
+          <svg aria-hidden="true"><use href="#i-user"/></svg>
+          {% elif "email" in field.name %}
+          <svg aria-hidden="true"><use href="#i-mail"/></svg>
+          {% else %}
+          <svg aria-hidden="true"><use href="#i-lock"/></svg>
+          {% endif %}
+          {{ field.label }}
+        </label>
+        {{ field }}
+        {{ field.errors }}
+      </div>
+      {% endfor %}
+
+      <label class="signup-agree">
+        <input type="checkbox" required>
+        <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+      </label>
+
+      <button type="submit" class="signup-submit">Create Account</button>
+    </form>
+
+    {% if google_oauth_ready or microsoft_oauth_ready %}
+    <div class="signup-sep"><span>or continue with</span></div>
+    <div class="signup-socials">
+      <a class="signup-social-btn" href="{% provider_login_url 'microsoft' process='signup' %}">
+        <span class="signup-social-icon ms">M</span>Microsoft
+      </a>
+      <a class="signup-social-btn" href="{% provider_login_url 'google' process='signup' %}">
+        <span class="signup-social-icon gg">G</span>Google
+      </a>
+    </div>
+    {% endif %}
+
+    <p class="signup-foot">Already have an account? <a href="{% url 'account_login' %}">Sign in here</a></p>
+  </div>
+</div>
+{% endblock %}

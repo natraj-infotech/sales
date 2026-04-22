@@ -1,0 +1,10 @@
+{# Usage: {% include "includes/form_field_tracker.html" with field=form.xyz icon="mail" full_width=False %} #}
+<div class="form-field-tracker{% if full_width %} form-field-tracker--full{% endif %}">
+  <label class="tracker-field-label" for="{{ field.id_for_label }}">
+    <svg class="tracker-field-icon" width="18" height="18" aria-hidden="true"><use href="#i-{{ icon }}"/></svg>
+    <span>{{ field.label }}</span>
+  </label>
+  {{ field }}
+  {% if field.help_text %}<span class="tracker-helptext">{{ field.help_text }}</span>{% endif %}
+  {{ field.errors }}
+</div>

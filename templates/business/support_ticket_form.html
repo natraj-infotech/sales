@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}New support ticket{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-ticket"/></svg>
+    <div>
+      <h1 class="tracker-page-title">New support ticket</h1>
+      <p class="tracker-page-subtitle">Describe your issue and we will follow up via your account email</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <form method="post" id="support-ticket-form">
+    {% csrf_token %}
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.department icon="layers" %}
+      {% include "includes/form_field_tracker.html" with field=form.priority icon="chart" %}
+      {% include "includes/form_field_tracker.html" with field=form.subject icon="doc" full_width=True %}
+      {% include "includes/form_field_tracker.html" with field=form.description icon="pin" full_width=True %}
+    </div>
+    <button type="submit" class="btn btn-primary">Submit ticket</button>
+    <a class="btn btn-ghost" href="{% url 'support_ticket_list' %}" style="margin-left:0.5rem;">Cancel</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+<h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>Case lock details</h2>
+<p class="muted">You were sent this link after emailing about <strong>{{ invite.inbox.product.name }}</strong>. Please complete the fields below.</p>
+<form method="post">
+  {% csrf_token %}
+  {% for field in form %}
+  <div class="form-row">
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+    {{ field.errors }}
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>

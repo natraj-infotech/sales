@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .product-mock-shell {
+    margin: -1.25rem -1.5rem -2rem;
+    padding: 2rem 1.5rem 3rem;
+    min-height: calc(100vh - 3.5rem);
+    background: linear-gradient(168deg, #0b2444 0%, #143a62 42%, #081a30 100%);
+  }
+  .product-mock-card {
+    max-width: 52rem;
+    margin: 0 auto;
+    background: #f8fafc;
+    border-radius: 12px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+    border: 1px solid #cfd9e8;
+  }
+  .product-mock-head {
+    background: var(--header-blue);
+    color: #fff;
+    text-align: center;
+    padding: 1rem 1.25rem 1.05rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .product-mock-head h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .product-mock-head p {
+    margin: 0.25rem 0 0;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.9);
+  }
+  .product-mock-back-wrap {
+    max-width: 52rem;
+    margin: 0 auto 0.45rem;
+    padding-left: 0.15rem;
+  }
+  .product-mock-back {
+    display: inline-flex;
+    align-items: center;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+  .product-mock-back:hover {
+    color: #dbeafe;
+    text-decoration: underline;
+  }
+  .product-mock-body {
+    padding: 0.85rem;
+  }
+  .product-mock-section {
+    background: #fff;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+    padding: 0.8rem 0.9rem 0.9rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  }
+  .product-mock-section + .product-mock-section {
+    margin-top: 0.75rem;
+  }
+  .product-mock-section-title {
+    margin: 0 0 0.6rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--header-blue-deep);
+    letter-spacing: -0.01em;
+  }
+  .product-mock-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem 0.85rem;
+  }
+  .product-mock-grid .tracker-mock-field,
+  .product-mock-grid .tracker-mock-field--qty {
+    max-width: none;
+    grid-column: auto;
+  }
+  .product-mock-grid .tracker-mock-label {
+    font-size: 0.72rem;
+    margin-bottom: 0.25rem;
+  }
+  .product-mock-grid .tracker-mock-field input,
+  .product-mock-grid .tracker-mock-field select,
+  .product-mock-grid .tracker-mock-field textarea {
+    padding: 0.46rem 0.58rem;
+    font-size: 0.76rem;
+    border-radius: 6px;
+  }
+  #id_notes {
+    width: 100%;
+    min-height: 3.5rem;
+    height: 3.5rem;
+  }
+  .product-mock-grid .tracker-mock-helptext {
+    font-size: 0.66rem;
+  }
+  .product-mock-full {
+    grid-column: 1 / -1;
+  }
+  .product-mock-hidden {
+    display: none;
+  }
+  .product-mock-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 0.75rem;
+  }
+  .product-mock-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.68rem 1.55rem;
+    border: none;
+    border-radius: 9px;
+    background: #5668bf;
+    color: #fff;
+    font-size: 0.96rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(86, 104, 191, 0.35);
+  }
+  .product-mock-submit:hover {
+    background: #485aae;
+  }
+  .product-mock-submit svg {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+  }
+  .product-mock-cancel {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.74rem;
+  }
+  .component-details-wrap {
+    margin-top: 0.7rem;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 0.8rem 0.9rem;
+  }
+  .component-details-title {
+    margin: 0 0 0.65rem;
+    font-size: 0.9rem;
+    color: #1e3a5f;
+    font-weight: 700;
+  }
+  .component-box {
+    background: #fff;
+    border: 1px solid #d7deea;
+    border-radius: 8px;
+    padding: 0.7rem 0.8rem;
+  }
+  .component-box + .component-box {
+    margin-top: 0.5rem;
+  }
+  .component-box-label {
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #1f3b63;
+    margin-bottom: 0.35rem;
+  }
+  .component-box input {
+    width: 100%;
+    padding: 0.46rem 0.58rem;
+    font-size: 0.76rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-input);
+  }
+  .component-box input:focus {
+    outline: none;
+    border-color: var(--header-blue);
+    box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.15);
+  }
+  .additional-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .additional-title svg {
+    width: 14px;
+    height: 14px;
+  }
+  .additional-field-label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #1f3b63;
+    margin-bottom: 0.25rem;
+  }
+  .additional-field-label svg {
+    width: 14px;
+    height: 14px;
+  }
+  @media (max-width: 700px) {
+    .product-mock-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="product-mock-shell">
+  <div class="product-mock-back-wrap">
+    <a class="product-mock-back" href="{% url 'product_list' %}">
+      Back
+    </a>
+  </div>
+  <div class="product-mock-card">
+    <header class="product-mock-head">
+      <h1>{% if object %}Edit Product{% else %}Add New Product{% endif %}</h1>
+      <p>Create and manage product details with comprehensive information</p>
+    </header>
+    <div class="product-mock-body">
+      <form method="post" id="product-form" novalidate>
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title">Basic Information</h2>
+          <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.category %}
+            {% include "includes/form_field_mock.html" with field=form.asset_type %}
+            <div id="asset-type-custom-wrap" class="product-mock-full product-mock-hidden">
+              {% include "includes/form_field_mock.html" with field=form.asset_type_custom %}
+            </div>
+          </div>
+        </section>
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title">Product Details</h2>
+          <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.company_name %}
+            {% include "includes/form_field_mock.html" with field=form.name %}
+            {% include "includes/form_field_mock.html" with field=form.sku %}
+            {% include "includes/form_field_mock.html" with field=form.hsn_code %}
+          </div>
+        </section>
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title">Financial Information</h2>
+          <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.tax %}
+            {% include "includes/form_field_mock.html" with field=form.depreciation %}
+          </div>
+        </section>
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title">Company Contact Information</h2>
+          <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.company_phone %}
+            {% include "includes/form_field_mock.html" with field=form.company_email %}
+          </div>
+        </section>
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title">Product Components</h2>
+          <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.components_count extra_class="product-mock-full" %}
+            {{ form.components }}
+            <div id="component-details-wrap" class="product-mock-full component-details-wrap product-mock-hidden">
+              <h3 class="component-details-title">Component Details</h3>
+              <div id="component-inputs"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="product-mock-section">
+          <h2 class="product-mock-section-title additional-title">
+            <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+            Additional Information
+          </h2>
+          <div class="product-mock-grid">
+            <div class="tracker-mock-field product-mock-full">
+              <label class="additional-field-label" for="{{ form.notes.id_for_label }}">
+                <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+                {{ form.notes.label }}
+              </label>
+              {{ form.notes }}
+              {% if form.notes.help_text %}<span class="tracker-mock-helptext">{{ form.notes.help_text }}</span>{% endif %}
+              {{ form.notes.errors }}
+            </div>
+          </div>
+        </section>
+
+        <div class="product-mock-actions">
+          <button type="submit" class="product-mock-submit">
+            <svg aria-hidden="true"><use href="#i-plus"/></svg>
+            {% if object %}Save Product{% else %}Create Product{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{ form.component_items|json_script:"component-items-json" }}
+<script>
+  (function () {
+    var typeSelect = document.getElementById("id_asset_type");
+    var customWrap = document.getElementById("asset-type-custom-wrap");
+    var customInput = document.getElementById("id_asset_type_custom");
+    if (!typeSelect || !customWrap || !customInput) return;
+    function syncCustomTypeVisibility() {
+      var isOther = typeSelect.value === "Other";
+      customWrap.classList.toggle("product-mock-hidden", !isOther);
+      customInput.required = isOther;
+      if (!isOther) customInput.value = "";
+    }
+    typeSelect.addEventListener("change", syncCustomTypeVisibility);
+    syncCustomTypeVisibility();
+  })();
+  (function () {
+    var countInput = document.getElementById("id_components_count");
+    var wrap = document.getElementById("component-details-wrap");
+    var inputsHost = document.getElementById("component-inputs");
+    if (!countInput || !wrap || !inputsHost) return;
+    var existingNode = document.getElementById("component-items-json");
+    var existing = [];
+    if (existingNode && existingNode.textContent) {
+      try { existing = JSON.parse(existingNode.textContent); } catch (e) { existing = []; }
+    }
+    function toInt(val) {
+      var n = parseInt(val, 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    function renderComponentInputs() {
+      var count = toInt(countInput.value);
+      inputsHost.innerHTML = "";
+      wrap.classList.toggle("product-mock-hidden", count === 0);
+      for (var i = 1; i <= count; i++) {
+        var box = document.createElement("div");
+        box.className = "component-box";
+        var label = document.createElement("label");
+        label.className = "component-box-label";
+        label.setAttribute("for", "id_component_item_" + i);
+        label.textContent = "Component " + i;
+        var input = document.createElement("input");
+        input.type = "text";
+        input.id = "id_component_item_" + i;
+        input.name = "component_item_" + i;
+        input.placeholder = "Enter component name";
+        input.required = true;
+        if (existing[i - 1]) input.value = existing[i - 1];
+        box.appendChild(label);
+        box.appendChild(input);
+        inputsHost.appendChild(box);
+      }
+    }
+    countInput.addEventListener("input", renderComponentInputs);
+    renderComponentInputs();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ ticket.reference }} — {{ ticket.subject|truncatechars:40 }}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-ticket"/></svg>
+    <div>
+      <h1 class="tracker-page-title">{{ ticket.reference }}</h1>
+      <p class="tracker-page-subtitle">{{ ticket.subject }}</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}">All tickets</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card ticket-detail-card">
+  <dl class="ticket-detail-meta">
+    <div><dt>Status</dt><dd><span class="ticket-status ticket-status--{{ ticket.status }}">{{ ticket.get_status_display }}</span></dd></div>
+    <div><dt>Department</dt><dd>{{ ticket.get_department_display }}</dd></div>
+    <div><dt>Priority</dt><dd>{{ ticket.get_priority_display }}</dd></div>
+    <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
+    {% if ticket.source_sender %}
+    <div><dt>From (email)</dt><dd>{{ ticket.source_sender }}</dd></div>
+    {% endif %}
+    <div><dt>Raised by</dt><dd>{{ ticket.created_by.email }}</dd></div>
+    <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>
+    <div><dt>Updated</dt><dd>{{ ticket.updated_at|date:"d M Y, H:i" }}</dd></div>
+    <div><dt>Completed</dt><dd>{% if ticket.completed_at %}{{ ticket.completed_at|date:"d M Y, H:i" }}{% else %}-{% endif %}</dd></div>
+  </dl>
+  <h3 class="tracker-mock-section-title" style="margin-top:1.25rem;">Description</h3>
+  <div class="ticket-detail-body">{{ ticket.description|linebreaks }}</div>
+  <h3 class="tracker-mock-section-title" style="margin-top:1.25rem;">Remarks</h3>
+  <div class="ticket-detail-body">{% if ticket.remarks %}{{ ticket.remarks }}{% else %}-{% endif %}</div>
+
+  <h3 class="tracker-mock-section-title" style="margin-top:1.25rem;">Conversation</h3>
+  <div class="ticket-comments">
+    {% for c in comments %}
+    <div class="ticket-comment">
+      <div class="ticket-comment-meta">
+        <strong>{{ c.user.email }}</strong>
+        <span>{{ c.created_at|date:"d M Y, H:i" }}</span>
+        {% if c.internal_note %}<em>Internal note</em>{% endif %}
+      </div>
+      <div class="ticket-comment-body">{{ c.body|linebreaks }}</div>
+    </div>
+    {% empty %}
+    <p class="muted">No comments yet.</p>
+    {% endfor %}
+  </div>
+
+  <form method="post" class="ticket-comment-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="comment">
+    <div class="form-row">
+      {{ comment_form.body.label_tag }}
+      {{ comment_form.body }}
+      {{ comment_form.body.errors }}
+    </div>
+    <div class="form-row">
+      <label>{{ comment_form.internal_note }} {{ comment_form.internal_note.label }}</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Add comment</button>
+  </form>
+
+  <div class="ticket-detail-actions">
+    {% if ticket.status != "closed" %}
+    <form method="post" style="display:inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="close">
+      <button type="submit" class="btn btn-ghost">Mark as closed</button>
+    </form>
+    {% else %}
+    <form method="post" style="display:inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reopen">
+      <button type="submit" class="btn btn-primary">Reopen ticket</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
