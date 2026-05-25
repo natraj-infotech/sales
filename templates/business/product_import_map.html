@@ -19,6 +19,12 @@
 {% block content %}
 <div class="tracker-card">
   <p style="margin-top:0;">Confirm how your file columns map to product fields. Suggested matches are pre-selected where header names match.</p>
+  {% if data_row_count is not None %}
+  <p class="muted" style="margin-bottom:1rem;">
+    Using row <strong>{{ header_row_number }}</strong> as column headers.
+    <strong>{{ data_row_count }}</strong> data row(s) detected below it.
+  </p>
+  {% endif %}
   <p class="muted" style="margin-bottom:0.5rem;">{{ file_headers|length }} column(s) detected in your file:</p>
   <ol class="tracker-import-columns-list muted">
     {% for h in file_headers %}

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import csv
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from io import BytesIO, StringIO
 from typing import Any, Callable
 
 from accounts.models import CompanyProfile
-from business.import_io import load_workbook_bytes
+from business.import_io import (
+    detect_header_row,
+    iter_spreadsheet_rows,
+    norm_header as _norm_header_io,
+)
 from business.models import Client, ClientSubscription, Product, Vendor
 
 PRESET_VENDOR_CHOICES: tuple[tuple[str, str], ...] = (
@@ -168,10 +170,7 @@ CASE_STATUS_MAP: dict[str, str] = {
 
 
 def _norm_header(val: Any) -> str:
-    if val is None:
-        return ""
-    s = str(val).strip().lower().replace(" ", "_")
-    return s
+    return _norm_header_io(val)
 
 
 def _cell_str(val: Any) -> str:
@@ -425,7 +424,7 @@ def suggest_column_mapping(header_row: list[Any]) -> dict[str, int]:
     return {key: detected[key] for key, _, _ in MAPPING_UI_FIELDS if key in detected}
 
 
-_HEADER_HINT_WORDS = frozenset(
+_SUBSCRIPTION_HEADER_HINTS = frozenset(
     {
         "subscription",
         "customer",
@@ -444,56 +443,13 @@ _HEADER_HINT_WORDS = frozenset(
 )
 
 
-def find_best_header_row_index(rows: list[tuple[Any, ...] | list[str]]) -> int:
-    """Pick the row that looks most like column headers (not a title row)."""
-    best_i = 0
-    best_score = -1.0
-    for i, row in enumerate(rows[:12]):
-        if not row:
-            continue
-        score = 0.0
-        for cell in row:
-            key = _norm_header(cell)
-            if not key:
-                continue
-            if key in HEADER_ALIASES:
-                score += 2.0
-            elif any(hint in key for hint in _HEADER_HINT_WORDS):
-                score += 1.0
-            else:
-                score += 0.15
-        if score > best_score:
-            best_score = score
-            best_i = i
-    return best_i
-
-
-def _peek_file_rows(
-    file_bytes: bytes, filename: str, *, limit: int = 15
-) -> list[tuple[Any, ...] | list[str]]:
-    return list(_take(_file_row_iterator(file_bytes, filename), limit))
-
-
-def _take(iterator: Iterator[Any], limit: int) -> Iterator[Any]:
-    for i, item in enumerate(iterator):
-        if i >= limit:
-            break
-        yield item
-
-
 def detect_import_header(
     file_bytes: bytes, filename: str = ""
 ) -> tuple[int, list[Any]]:
     """Return (header_row_index, padded header row)."""
-    rows = _peek_file_rows(file_bytes, filename)
-    if not rows:
-        return 0, []
-    idx = find_best_header_row_index(rows)
-    row = list(rows[idx])
-    width = max(len(r) for r in rows)
-    if len(row) < width:
-        row.extend([None] * (width - len(row)))
-    return idx, row
+    return detect_header_row(
+        file_bytes, filename, HEADER_ALIASES, _SUBSCRIPTION_HEADER_HINTS
+    )
 
 
 def _read_header_row_raw(file_bytes: bytes, filename: str = "") -> list[Any]:
@@ -514,7 +470,7 @@ def count_subscription_data_rows(
 ) -> int:
     """Rows after the detected header row."""
     try:
-        rows = list(_file_row_iterator(file_bytes, filename))
+        rows = list(iter_spreadsheet_rows(file_bytes, filename))
     except Exception:
         return 0
     return max(0, len(rows) - header_row_index - 1)
@@ -537,62 +493,6 @@ def build_mapping_form_rows(
         }
         for key, label, required in MAPPING_UI_FIELDS
     ]
-
-
-def _decode_csv_text(file_bytes: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
-        try:
-            return file_bytes.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return file_bytes.decode("utf-8", errors="replace")
-
-
-def _file_row_iterator(
-    file_bytes: bytes,
-    filename: str,
-    *,
-    min_cols: int = 0,
-) -> Iterator[tuple[Any, ...] | list[str]]:
-    lower = (filename or "").lower()
-    if lower.endswith(".csv"):
-        return _iter_csv_rows(file_bytes, min_cols=min_cols)
-    return _iter_xlsx_rows(file_bytes, min_cols=min_cols)
-
-
-def _iter_xlsx_rows(
-    file_bytes: bytes, *, min_cols: int = 0
-) -> Iterator[tuple[Any, ...]]:
-    wb = load_workbook_bytes(file_bytes, read_only=False)
-    try:
-        ws = wb.active
-        max_col = max(ws.max_column or 0, min_cols, 1)
-        for row in ws.iter_rows(
-            min_col=1,
-            max_col=max_col,
-            values_only=True,
-        ):
-            yield tuple(row) if row is not None else tuple()
-    finally:
-        wb.close()
-
-
-def _iter_csv_rows(
-    file_bytes: bytes, *, min_cols: int = 0
-) -> Iterator[list[str]]:
-    text = _decode_csv_text(file_bytes)
-    sample = text[:8192]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(StringIO(text), dialect)
-    for row in reader:
-        if not row:
-            continue
-        if min_cols and len(row) < min_cols:
-            row = row + [""] * (min_cols - len(row))
-        yield row
 
 
 def _import_subscription_rows(
@@ -777,7 +677,7 @@ def import_subscriptions_from_file(
     try:
         _, header_row = detect_import_header(file_bytes, filename)
         min_cols = len(header_row)
-        rows_iter = _file_row_iterator(
+        rows_iter = iter_spreadsheet_rows(
             file_bytes, filename, min_cols=min_cols
         )
     except Exception as exc:  # noqa: BLE001

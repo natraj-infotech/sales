@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import csv
 import re
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
-from io import BytesIO, StringIO
 from typing import Any, Callable
 
 from accounts.models import CompanyProfile
-from business.import_io import load_workbook_bytes, read_header_labels, read_raw_header_row
+from business.import_io import detect_header_row, iter_spreadsheet_rows
 from business.models import Product, Vendor
 
 IMPORT_HEADERS: tuple[str, ...] = (
@@ -297,61 +295,66 @@ def build_mapping_form_rows(
     ]
 
 
+_PRODUCT_HEADER_HINTS = frozenset(
+    {
+        "item",
+        "name",
+        "sku",
+        "vendor",
+        "price",
+        "hsn",
+        "category",
+        "brand",
+        "unit",
+        "stock",
+        "gst",
+        "tax",
+        "type",
+        "description",
+    }
+)
+
+
+def detect_import_header(
+    file_bytes: bytes, filename: str = ""
+) -> tuple[int, list[Any]]:
+    return detect_header_row(
+        file_bytes,
+        filename,
+        HEADER_ALIASES,
+        _PRODUCT_HEADER_HINTS,
+        norm_fn=_norm_header,
+    )
+
+
 def _read_header_row_raw(file_bytes: bytes, filename: str = "") -> list[Any]:
-    return read_raw_header_row(file_bytes, filename)
+    _, row = detect_import_header(file_bytes, filename)
+    return row
 
 
 def read_import_headers(file_bytes: bytes, filename: str = "") -> list[str]:
-    return read_header_labels(file_bytes, filename)
+    _, row = detect_import_header(file_bytes, filename)
+    return [
+        _cell_str(cell) if _cell_str(cell) else f"Column {idx + 1}"
+        for idx, cell in enumerate(row)
+    ]
+
+
+def count_product_data_rows(
+    file_bytes: bytes, filename: str = "", header_row_index: int = 0
+) -> int:
+    try:
+        rows = list(iter_spreadsheet_rows(file_bytes, filename))
+    except Exception:
+        return 0
+    return max(0, len(rows) - header_row_index - 1)
 
 
 def import_needs_column_mapping(file_bytes: bytes, filename: str = "") -> bool:
-    raw_headers = _read_header_row_raw(file_bytes, filename)
+    _, raw_headers = detect_import_header(file_bytes, filename)
     if not raw_headers:
         return True
     return bool(validate_column_mapping(auto_column_mapping(raw_headers)))
-
-
-def _decode_csv_text(file_bytes: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
-        try:
-            return file_bytes.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return file_bytes.decode("utf-8", errors="replace")
-
-
-def _file_row_iterator(
-    file_bytes: bytes, filename: str
-) -> Iterator[tuple[Any, ...] | list[str]]:
-    lower = (filename or "").lower()
-    if lower.endswith(".csv"):
-        return _iter_csv_rows(file_bytes)
-    return _iter_xlsx_rows(file_bytes)
-
-
-def _iter_xlsx_rows(file_bytes: bytes) -> Iterator[tuple[Any, ...]]:
-    wb = load_workbook_bytes(file_bytes, read_only=True)
-    try:
-        ws = wb.active
-        for row in ws.iter_rows(values_only=True):
-            if row is not None:
-                yield row
-    finally:
-        wb.close()
-
-
-def _iter_csv_rows(file_bytes: bytes) -> Iterator[list[str]]:
-    text = _decode_csv_text(file_bytes)
-    sample = text[:8192]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(StringIO(text), dialect)
-    for row in reader:
-        if row:
-            yield row
 
 
 def _get_or_create_vendor(
@@ -451,16 +454,21 @@ def _import_product_rows(
     company: CompanyProfile,
     rows_iter: Iterator[tuple[Any, ...] | list[str]],
     column_mapping: dict[str, int] | None = None,
+    header_row_index: int = 0,
 ) -> tuple[int, int, list[tuple[int, str]]]:
     """Returns (created_count, updated_count, errors)."""
     errors: list[tuple[int, str]] = []
     created = 0
     updated = 0
+    skipped_blank = 0
 
-    try:
-        header_row = list(next(rows_iter))
-    except StopIteration:
+    all_rows = list(rows_iter)
+    if not all_rows:
         return 0, 0, [(0, "The file has no rows.")]
+
+    hdr_i = min(max(header_row_index, 0), len(all_rows) - 1)
+    header_row = list(all_rows[hdr_i])
+    data_rows = all_rows[hdr_i + 1 :]
 
     if column_mapping is not None:
         col_map = column_mapping
@@ -470,6 +478,15 @@ def _import_product_rows(
     if map_errors:
         return 0, 0, [(0, map_errors[0])]
 
+    if not data_rows:
+        return 0, 0, [
+            (
+                0,
+                "No data rows found below the header row. "
+                "Check that the file has product rows under the column titles.",
+            )
+        ]
+
     products_by_name = {p.name.strip().lower(): p for p in company.products.all()}
     products_by_sku = {
         p.sku.strip().lower(): p
@@ -478,15 +495,17 @@ def _import_product_rows(
     }
     vendors_by_lower = {v.name.strip().lower(): v for v in company.vendors.all()}
     max_col_idx = max(col_map.values()) if col_map else 0
+    header_width = max(len(header_row), max_col_idx + 1)
 
-    row_num = 1
-    for data_row in rows_iter:
+    row_num = hdr_i + 1
+    for data_row in data_rows:
         row_num += 1
         if data_row is None:
             continue
         data_row = tuple(data_row)
-        if len(data_row) <= max_col_idx:
-            data_row = data_row + (None,) * (max_col_idx + 1 - len(data_row))
+        pad_to = max(header_width, max_col_idx + 1)
+        if len(data_row) < pad_to:
+            data_row = data_row + (None,) * (pad_to - len(data_row))
 
         def get(field: str) -> Any:
             idx = col_map.get(field)
@@ -495,6 +514,7 @@ def _import_product_rows(
             return data_row[idx]
 
         if not _cell_str(get("name")) and not _cell_str(get("sku")):
+            skipped_blank += 1
             continue
 
         product, err, was_created = _upsert_product(
@@ -508,6 +528,18 @@ def _import_product_rows(
         else:
             updated += 1
 
+    if created == 0 and updated == 0 and not errors:
+        if skipped_blank:
+            errors.append(
+                (
+                    0,
+                    f"All {skipped_blank} data row(s) look empty for the columns you mapped. "
+                    "Re-check Item name and SKU column selections.",
+                )
+            )
+        else:
+            errors.append((0, "No product rows could be imported from this file."))
+
     return created, updated, errors
 
 
@@ -516,6 +548,7 @@ def import_products_from_file(
     file_bytes: bytes,
     filename: str = "",
     column_mapping: dict[str, int] | None = None,
+    header_row_index: int = 0,
 ) -> tuple[int, int, list[tuple[int, str]]]:
     if not file_bytes:
         return 0, 0, [(0, "Empty file.")]
@@ -525,9 +558,18 @@ def import_products_from_file(
         return 0, 0, [(0, "Unsupported file type. Upload a .xlsx or .csv file.")]
 
     try:
-        rows_iter = _file_row_iterator(file_bytes, filename)
+        _, header_row = detect_import_header(file_bytes, filename)
+        min_cols = len(header_row)
+        rows_iter = iter_spreadsheet_rows(
+            file_bytes, filename, min_cols=min_cols
+        )
     except Exception as exc:  # noqa: BLE001
         kind = "CSV" if lower.endswith(".csv") else "Excel"
         return 0, 0, [(0, f"Could not read {kind} file: {exc}")]
 
-    return _import_product_rows(company, rows_iter, column_mapping=column_mapping)
+    return _import_product_rows(
+        company,
+        rows_iter,
+        column_mapping=column_mapping,
+        header_row_index=header_row_index,
+    )

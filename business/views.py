@@ -1,11 +1,6 @@
 import csv
-import uuid
 from datetime import timedelta
 from io import StringIO
-from pathlib import Path
-
-from django.conf import settings
-from django.core.cache import cache
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -42,6 +37,7 @@ from .models import (
     Vendor,
 )
 from .caselock_inbox import send_caselock_decision_email
+from .import_stash import product_import_stash, subscription_import_stash
 from .subscription_import import (
     IMPORT_HEADERS,
     IMPORT_SAMPLE_ROW,
@@ -58,11 +54,6 @@ from .subscription_import import (
     _cell_str,
     _read_header_row_raw,
 )
-
-IMPORT_CACHE_PREFIX = "subscription_import:"
-IMPORT_SESSION_KEY = "subscription_import_token"
-IMPORT_CACHE_TIMEOUT = 3600
-IMPORT_TMP_DIR = settings.BASE_DIR / ".import_tmp"
 
 User = get_user_model()
 
@@ -342,52 +333,29 @@ def product_bulk_delete(request):
     return redirect("product_list")
 
 
-PRODUCT_IMPORT_CACHE_PREFIX = "product_import:"
-PRODUCT_IMPORT_SESSION_KEY = "product_import_token"
-
-
-def _product_import_cache_key(user_id: int, token: str) -> str:
-    return f"{PRODUCT_IMPORT_CACHE_PREFIX}{user_id}:{token}"
-
-
 def _stash_product_import(request, file_bytes: bytes, filename: str) -> str:
-    from .product_import import auto_column_mapping, _cell_str, _read_header_row_raw
-
     from .product_import import (
+        auto_column_mapping,
+        count_product_data_rows,
+        detect_import_header,
         read_import_headers as read_product_import_headers,
-        _read_header_row_raw as read_product_raw_headers,
     )
 
-    raw_headers = read_product_raw_headers(file_bytes, filename)
+    header_row_index, raw_headers = detect_import_header(file_bytes, filename)
     headers = read_product_import_headers(file_bytes, filename)
-    token = str(uuid.uuid4())
-    cache.set(
-        _product_import_cache_key(request.user.pk, token),
+    return product_import_stash.stash(
+        request,
+        file_bytes,
         {
-            "bytes": file_bytes,
             "filename": filename,
             "headers": headers,
             "suggested": auto_column_mapping(raw_headers),
+            "header_row_index": header_row_index,
+            "data_row_count": count_product_data_rows(
+                file_bytes, filename, header_row_index
+            ),
         },
-        IMPORT_CACHE_TIMEOUT,
     )
-    request.session[PRODUCT_IMPORT_SESSION_KEY] = token
-    return token
-
-
-def _get_stashed_product_import(request):
-    token = request.session.get(PRODUCT_IMPORT_SESSION_KEY)
-    if not token:
-        return None, None
-    data = cache.get(_product_import_cache_key(request.user.pk, token))
-    if not data:
-        return None, None
-    return token, data
-
-
-def _clear_stashed_product_import(request, token: str) -> None:
-    cache.delete(_product_import_cache_key(request.user.pk, token))
-    request.session.pop(PRODUCT_IMPORT_SESSION_KEY, None)
 
 
 def _product_import_messages(
@@ -477,7 +445,7 @@ def product_import_map(request):
     )
 
     company = _company(request)
-    token, data = _get_stashed_product_import(request)
+    token, data = product_import_stash.get(request)
     if not data:
         messages.error(
             request,
@@ -500,13 +468,21 @@ def product_import_map(request):
                 for err in map_errors:
                     messages.error(request, err)
             else:
+                file_bytes = product_import_stash.read_bytes(data)
+                if not file_bytes:
+                    messages.error(
+                        request,
+                        "Uploaded file could not be read. Please upload again.",
+                    )
+                    return redirect("product_import")
                 created, updated, errs = import_products_from_file(
                     company,
-                    data["bytes"],
+                    file_bytes,
                     data["filename"],
                     column_mapping=col_map,
+                    header_row_index=data.get("header_row_index", 0),
                 )
-                _clear_stashed_product_import(request, token)
+                product_import_stash.clear(request, token)
                 _product_import_messages(request, created, updated, errs)
                 return redirect("product_list")
 
@@ -522,6 +498,8 @@ def product_import_map(request):
             "filename": data["filename"],
             "mapping_rows": mapping_rows,
             "file_headers": file_headers,
+            "data_row_count": data.get("data_row_count"),
+            "header_row_number": (data.get("header_row_index") or 0) + 1,
         },
     )
 
@@ -644,10 +622,6 @@ def subscription_list(request):
     )
 
 
-def _import_cache_key(user_id: int, token: str) -> str:
-    return f"{IMPORT_CACHE_PREFIX}{user_id}:{token}"
-
-
 def _stash_import_upload(
     request,
     file_bytes: bytes,
@@ -657,65 +631,23 @@ def _stash_import_upload(
 ) -> str:
     from .subscription_import import read_import_headers as read_sub_import_headers
 
-    IMPORT_TMP_DIR.mkdir(parents=True, exist_ok=True)
     header_row_index, raw_headers = detect_import_header(file_bytes, filename)
     headers = read_sub_import_headers(file_bytes, filename)
-    token = str(uuid.uuid4())
-    file_path = IMPORT_TMP_DIR / f"{request.user.pk}_{token}.upload"
-    file_path.write_bytes(file_bytes)
-    data_row_count = count_subscription_data_rows(
-        file_bytes, filename, header_row_index
-    )
-    cache.set(
-        _import_cache_key(request.user.pk, token),
+    return subscription_import_stash.stash(
+        request,
+        file_bytes,
         {
-            "path": str(file_path),
             "filename": filename,
             "headers": headers,
             "suggested": suggest_column_mapping(raw_headers),
             "vendor_id": vendor_id,
             "vendor_name": vendor_name,
             "header_row_index": header_row_index,
-            "data_row_count": data_row_count,
+            "data_row_count": count_subscription_data_rows(
+                file_bytes, filename, header_row_index
+            ),
         },
-        IMPORT_CACHE_TIMEOUT,
     )
-    request.session[IMPORT_SESSION_KEY] = token
-    return token
-
-
-def _read_stashed_import_bytes(data: dict) -> bytes:
-    path = data.get("path")
-    if path:
-        file_path = Path(path)
-        if file_path.is_file():
-            return file_path.read_bytes()
-    legacy = data.get("bytes")
-    if isinstance(legacy, (bytes, bytearray)) and legacy:
-        return bytes(legacy)
-    return b""
-
-
-def _get_stashed_import(request):
-    token = request.session.get(IMPORT_SESSION_KEY)
-    if not token:
-        return None, None
-    data = cache.get(_import_cache_key(request.user.pk, token))
-    if not data:
-        return None, None
-    if not _read_stashed_import_bytes(data):
-        return None, None
-    return token, data
-
-
-def _clear_stashed_import(request, token: str) -> None:
-    data = cache.get(_import_cache_key(request.user.pk, token))
-    if data:
-        path = data.get("path")
-        if path:
-            Path(path).unlink(missing_ok=True)
-    cache.delete(_import_cache_key(request.user.pk, token))
-    request.session.pop(IMPORT_SESSION_KEY, None)
 
 
 def _subscription_import_messages(
@@ -861,7 +793,7 @@ def _render_subscription_import_map(
 @require_http_methods(["GET", "POST"])
 def subscription_import_map(request):
     company = _company(request)
-    token, data = _get_stashed_import(request)
+    token, data = subscription_import_stash.get(request)
     if not data:
         messages.error(
             request,
@@ -906,7 +838,7 @@ def subscription_import_map(request):
                 import_errors=[],
             )
 
-        file_bytes = _read_stashed_import_bytes(data)
+        file_bytes = subscription_import_stash.read_bytes(data)
         if not file_bytes:
             messages.error(
                 request,
@@ -930,7 +862,7 @@ def subscription_import_map(request):
             vendor_name=import_vendor.name,
         )
         if created or updated:
-            _clear_stashed_import(request, token)
+            subscription_import_stash.clear(request, token)
             return redirect(
                 f"{reverse('subscription_list')}?vendor={import_vendor.pk}"
             )
