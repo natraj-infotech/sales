@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Map product columns{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Map product columns</h1>
+      <p class="tracker-page-subtitle">Match columns from <strong>{{ filename }}</strong></p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_import' %}">Upload a different file</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p style="margin-top:0;">Confirm how your file columns map to product fields. Suggested matches are pre-selected where header names match.</p>
+  <p class="muted" style="margin-bottom:0.5rem;">{{ file_headers|length }} column(s) detected in your file:</p>
+  <ol class="tracker-import-columns-list muted">
+    {% for h in file_headers %}
+    <li><strong>Column {{ forloop.counter }}:</strong> {{ h }}</li>
+    {% endfor %}
+  </ol>
+
+  <form method="post" class="tracker-sub-filter-form">
+    {% csrf_token %}
+    <table class="tracker-import-map-table" style="margin-bottom:1.25rem;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding-bottom:0.5rem;">App field</th>
+          <th style="text-align:left;padding-bottom:0.5rem;">Your file column</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in mapping_rows %}
+        <tr>
+          <td>{{ row.label }}{% if row.required %} <span class="muted">*</span>{% endif %}</td>
+          <td>
+            <select name="map_{{ row.key }}" class="tracker-import-map-select"{% if row.required %} required{% endif %}>
+              <option value="">— Not mapped —</option>
+              {% for idx, label in row.choices %}
+              <option value="{{ idx }}" {% if row.selected == idx %}selected{% endif %} title="{{ label }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="tracker-sub-filter-actions">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-upload"/></svg>
+        Import with this mapping
+      </button>
+      <a class="btn-filter-reset" href="{% url 'product_import' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

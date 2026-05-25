@@ -37,10 +37,25 @@ urlpatterns = [
     path("products/", views.product_list, name="product_list"),
     path("products/bulk-delete/", views.product_bulk_delete, name="product_bulk_delete"),
     path("products/import/", views.product_import, name="product_import"),
+    path(
+        "products/import/map/",
+        views.product_import_map,
+        name="product_import_map",
+    ),
+    path(
+        "products/import/template/",
+        views.product_import_template,
+        name="product_import_template",
+    ),
     path("products/add/", views.product_add, name="product_add"),
     path("products/<int:pk>/edit/", views.product_edit, name="product_edit"),
     path("subscriptions/", views.subscription_list, name="subscription_list"),
     path("subscriptions/import/", views.subscription_import, name="subscription_import"),
+    path(
+        "subscriptions/import/map/",
+        views.subscription_import_map,
+        name="subscription_import_map",
+    ),
     path(
         "subscriptions/import/template/",
         views.subscription_import_template,
@@ -51,6 +66,11 @@ urlpatterns = [
         "subscriptions/<int:pk>/edit/",
         views.subscription_edit,
         name="subscription_edit",
+    ),
+    path(
+        "subscriptions/<int:pk>/renew/",
+        views.subscription_renew,
+        name="subscription_renew",
     ),
     path("support/tickets/", views.support_ticket_list, name="support_ticket_list"),
     path("support/tickets/add/", views.support_ticket_add, name="support_ticket_add"),

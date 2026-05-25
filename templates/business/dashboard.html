@@ -2,6 +2,51 @@
 
 {% block title %}Dashboard{% endblock %}
 
+{% block extra_css %}
+<style>
+  .dashboard-expiring-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+  .dashboard-expiring-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .dashboard-expiring-filters a {
+    display: inline-block;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid var(--border, #e2e8f0);
+    background: #fff;
+    color: var(--text, #334155);
+  }
+  .dashboard-expiring-filters a:hover {
+    border-color: var(--primary, #2563eb);
+    color: var(--primary, #2563eb);
+  }
+  .dashboard-expiring-filters a.is-active {
+    background: var(--primary, #2563eb);
+    border-color: var(--primary, #2563eb);
+    color: #fff;
+  }
+  .dashboard-expiring-meta {
+    font-size: 0.875rem;
+    color: var(--muted, #64748b);
+  }
+  .dashboard-expiring-meta strong {
+    color: var(--text, #0f172a);
+  }
+</style>
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header">
   <div class="tracker-page-header-text">
@@ -50,6 +95,61 @@
     <a class="btn btn-ghost" href="{% url 'client_add' %}">Add client</a>
     <a class="btn btn-ghost" href="{% url 'product_add' %}">Add product</a>
   </div>
+</div>
+
+<div class="tracker-card">
+  <div class="dashboard-expiring-header">
+    <h3 class="tracker-card-section-title" style="margin:0;">Expiring subscriptions</h3>
+    <div class="dashboard-expiring-filters" role="group" aria-label="Expiring within">
+      {% for days in expiring_filters %}
+      <a href="?expiring_days={{ days }}" class="{% if expiring_days == days %}is-active{% endif %}">{{ days }} days</a>
+      {% endfor %}
+    </div>
+  </div>
+  <p class="dashboard-expiring-meta">
+    <strong>{{ expiring_count }}</strong> active subscription{{ expiring_count|pluralize }} expiring in the next <strong>{{ expiring_days }}</strong> days.
+    {% if expiring_count %}
+    <a href="{{ expiring_list_url }}">View all in list</a>
+    {% endif %}
+  </p>
+  {% if expiring_subs %}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Client</th>
+        <th>Product</th>
+        <th>Status</th>
+        <th>End date</th>
+        <th>Days left</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in expiring_subs %}
+      <tr>
+        <td>{{ s.client.name }}</td>
+        <td>{{ s.product.name }}</td>
+        <td>{{ s.get_status_display }}</td>
+        <td>{{ s.end_date }}</td>
+        <td>{{ s.days_until_expiry }}</td>
+        <td>
+          <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ dashboard_renew_next|urlencode }}">Renew</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if expiring_count > expiring_subs|length %}
+  <p class="muted" style="margin:0.75rem 0 0;font-size:0.875rem;">
+    Showing first {{ expiring_subs|length }} of {{ expiring_count }}.
+    <a href="{{ expiring_list_url }}">Open full list</a>
+  </p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No active subscriptions expiring in the next {{ expiring_days }} days.</p>
+  {% endif %}
 </div>
 
 <div class="tracker-card">

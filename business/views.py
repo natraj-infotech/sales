@@ -1,4 +1,11 @@
+import csv
+import uuid
 from datetime import timedelta
+from io import StringIO
+from pathlib import Path
+
+from django.conf import settings
+from django.core.cache import cache
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -18,6 +25,7 @@ from .forms import (
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
+    SubscriptionRenewForm,
     ProductForm,
     SupportTicketCommentForm,
     SupportTicketForm,
@@ -34,7 +42,27 @@ from .models import (
     Vendor,
 )
 from .caselock_inbox import send_caselock_decision_email
-from .subscription_import import import_subscriptions_from_xlsx
+from .subscription_import import (
+    IMPORT_HEADERS,
+    IMPORT_SAMPLE_ROW,
+    PRESET_VENDOR_CHOICES,
+    build_mapping_form_rows,
+    column_mapping_from_post,
+    ensure_import_vendor,
+    import_subscriptions_from_file,
+    resolve_import_vendor_name,
+    suggest_column_mapping,
+    validate_column_mapping,
+    count_subscription_data_rows,
+    detect_import_header,
+    _cell_str,
+    _read_header_row_raw,
+)
+
+IMPORT_CACHE_PREFIX = "subscription_import:"
+IMPORT_SESSION_KEY = "subscription_import_token"
+IMPORT_CACHE_TIMEOUT = 3600
+IMPORT_TMP_DIR = settings.BASE_DIR / ".import_tmp"
 
 User = get_user_model()
 
@@ -43,9 +71,48 @@ def _company(request):
     return get_object_or_404(CompanyProfile, user=request.user)
 
 
+EXPIRING_SOON_DAYS = (90, 45, 30, 15, 7)
+
+
+def _parse_expiring_days(raw: str, *, default: int = 30) -> int:
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if days in EXPIRING_SOON_DAYS:
+        return days
+    return default
+
+
+def _filter_expiring_soon(qs, days: int, today=None):
+    today = today or timezone.now().date()
+    until = today + timedelta(days=days)
+    return qs.filter(
+        end_date__isnull=False,
+        end_date__gte=today,
+        end_date__lte=until,
+    )
+
+
+def _expiring_subscription_choices():
+    return [("", "All")] + [
+        (str(days), f"Next {days} days") for days in EXPIRING_SOON_DAYS
+    ]
+
+
 @login_required
 def dashboard(request):
     company = _company(request)
+    expiring_days = _parse_expiring_days(request.GET.get("expiring_days", ""))
+    today = timezone.now().date()
+    expiring_qs = _filter_expiring_soon(
+        company.subscriptions.filter(status=ClientSubscription.Status.ACTIVE),
+        expiring_days,
+        today,
+    )
+    expiring_subs = expiring_qs.select_related("client", "product", "vendor").order_by(
+        "end_date", "client__name"
+    )[:50]
     ctx = {
         "company": company,
         "counts": {
@@ -60,6 +127,16 @@ def dashboard(request):
             status=ClientSubscription.Status.ACTIVE
         ).aggregate(total=Sum("billing_amount"))["total"]
         or 0,
+        "expiring_days": expiring_days,
+        "expiring_filters": EXPIRING_SOON_DAYS,
+        "expiring_subs": expiring_subs,
+        "expiring_count": expiring_qs.count(),
+        "expiring_list_url": (
+            f"{reverse('subscription_list')}?expiring_soon={expiring_days}"
+        ),
+        "dashboard_renew_next": (
+            f"{reverse('dashboard')}?expiring_days={expiring_days}"
+        ),
     }
     return render(request, "business/dashboard.html", ctx)
 
@@ -265,9 +342,188 @@ def product_bulk_delete(request):
     return redirect("product_list")
 
 
+PRODUCT_IMPORT_CACHE_PREFIX = "product_import:"
+PRODUCT_IMPORT_SESSION_KEY = "product_import_token"
+
+
+def _product_import_cache_key(user_id: int, token: str) -> str:
+    return f"{PRODUCT_IMPORT_CACHE_PREFIX}{user_id}:{token}"
+
+
+def _stash_product_import(request, file_bytes: bytes, filename: str) -> str:
+    from .product_import import auto_column_mapping, _cell_str, _read_header_row_raw
+
+    from .product_import import (
+        read_import_headers as read_product_import_headers,
+        _read_header_row_raw as read_product_raw_headers,
+    )
+
+    raw_headers = read_product_raw_headers(file_bytes, filename)
+    headers = read_product_import_headers(file_bytes, filename)
+    token = str(uuid.uuid4())
+    cache.set(
+        _product_import_cache_key(request.user.pk, token),
+        {
+            "bytes": file_bytes,
+            "filename": filename,
+            "headers": headers,
+            "suggested": auto_column_mapping(raw_headers),
+        },
+        IMPORT_CACHE_TIMEOUT,
+    )
+    request.session[PRODUCT_IMPORT_SESSION_KEY] = token
+    return token
+
+
+def _get_stashed_product_import(request):
+    token = request.session.get(PRODUCT_IMPORT_SESSION_KEY)
+    if not token:
+        return None, None
+    data = cache.get(_product_import_cache_key(request.user.pk, token))
+    if not data:
+        return None, None
+    return token, data
+
+
+def _clear_stashed_product_import(request, token: str) -> None:
+    cache.delete(_product_import_cache_key(request.user.pk, token))
+    request.session.pop(PRODUCT_IMPORT_SESSION_KEY, None)
+
+
+def _product_import_messages(
+    request, created: int, updated: int, errs: list
+) -> None:
+    if created or updated:
+        parts = []
+        if created:
+            parts.append(f"{created} added")
+        if updated:
+            parts.append(f"{updated} updated")
+        messages.success(request, f"Import complete: {', '.join(parts)}.")
+    for row_no, msg in errs[:25]:
+        if row_no:
+            messages.warning(request, f"Row {row_no}: {msg}")
+        else:
+            messages.error(request, msg)
+    if len(errs) > 25:
+        messages.warning(
+            request,
+            f"{len(errs) - 25} more row(s) had issues (not listed).",
+        )
+
+
 @login_required
+@require_http_methods(["GET", "POST"])
 def product_import(request):
-    return render(request, "business/product_import.html", {})
+    company = _company(request)
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+        if not upload:
+            messages.error(request, "Choose a .xlsx or .csv file to upload.")
+            return redirect("product_import")
+        name_lower = (upload.name or "").lower()
+        if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
+            messages.error(request, "Please upload a .xlsx or .csv file.")
+            return redirect("product_import")
+        _stash_product_import(request, upload.read(), upload.name or "")
+        messages.info(request, "Review the column mapping, then run import.")
+        return redirect("product_import_map")
+
+    return render(request, "business/product_import.html", {"company": company})
+
+
+@login_required
+def product_import_template(request):
+    from .product_import import IMPORT_HEADERS, IMPORT_SAMPLE_ROW
+
+    _company(request)
+    fmt = (request.GET.get("format") or "xlsx").lower()
+    if fmt == "csv":
+        buf = StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(IMPORT_HEADERS)
+        writer.writerow(IMPORT_SAMPLE_ROW)
+        response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            'attachment; filename="product_import_template.csv"'
+        )
+        return response
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Products"
+    ws.append(list(IMPORT_HEADERS))
+    ws.append(list(IMPORT_SAMPLE_ROW))
+    response = HttpResponse(
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        'attachment; filename="product_import_template.xlsx"'
+    )
+    wb.save(response)
+    return response
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def product_import_map(request):
+    from .product_import import (
+        build_mapping_form_rows,
+        column_mapping_from_post,
+        import_products_from_file,
+        validate_column_mapping,
+    )
+
+    company = _company(request)
+    token, data = _get_stashed_product_import(request)
+    if not data:
+        messages.error(
+            request,
+            "No import file in progress. Upload your Excel or CSV file again.",
+        )
+        return redirect("product_import")
+
+    file_headers = data["headers"]
+    header_count = len(file_headers)
+
+    if request.method == "POST":
+        col_map = column_mapping_from_post(
+            request.POST, suggested=data.get("suggested")
+        )
+        if any(idx >= header_count for idx in col_map.values()):
+            messages.error(request, "Invalid column selection. Try again.")
+        else:
+            map_errors = validate_column_mapping(col_map)
+            if map_errors:
+                for err in map_errors:
+                    messages.error(request, err)
+            else:
+                created, updated, errs = import_products_from_file(
+                    company,
+                    data["bytes"],
+                    data["filename"],
+                    column_mapping=col_map,
+                )
+                _clear_stashed_product_import(request, token)
+                _product_import_messages(request, created, updated, errs)
+                return redirect("product_list")
+
+    mapping_rows = build_mapping_form_rows(
+        file_headers,
+        data.get("suggested") or {},
+    )
+    return render(
+        request,
+        "business/product_import_map.html",
+        {
+            "company": company,
+            "filename": data["filename"],
+            "mapping_rows": mapping_rows,
+            "file_headers": file_headers,
+        },
+    )
 
 
 @login_required
@@ -310,7 +566,9 @@ def product_edit(request, pk):
 @login_required
 def subscription_list(request):
     company = _company(request)
-    qs = company.subscriptions.select_related("client", "product", "vendor")
+    base_qs = company.subscriptions.select_related("client", "product", "vendor")
+    total_count = base_qs.count()
+    qs = base_qs.all()
     today = timezone.now().date()
 
     client_id = request.GET.get("client", "").strip()
@@ -334,20 +592,10 @@ def subscription_list(request):
         qs = qs.filter(end_date__lte=fd_end)
 
     expiring = request.GET.get("expiring_soon", "").strip()
-    if expiring == "7":
-        until = today + timedelta(days=7)
-        qs = qs.filter(
-            end_date__isnull=False,
-            end_date__gte=today,
-            end_date__lte=until,
-        )
-    elif expiring == "30":
-        until = today + timedelta(days=30)
-        qs = qs.filter(
-            end_date__isnull=False,
-            end_date__gte=today,
-            end_date__lte=until,
-        )
+    if expiring:
+        days = _parse_expiring_days(expiring, default=0)
+        if days:
+            qs = _filter_expiring_soon(qs, days, today)
 
     categories = (
         company.products.exclude(category="")
@@ -356,12 +604,28 @@ def subscription_list(request):
         .order_by("category")
     )
 
+    has_active_filters = any(
+        (
+            client_id,
+            product_id,
+            vendor_id,
+            category,
+            fd_start,
+            fd_end,
+            expiring,
+        )
+    )
+    filtered_count = qs.count()
+
     return render(
         request,
         "business/subscription_list.html",
         {
             "company": company,
             "object_list": qs,
+            "total_count": total_count,
+            "filtered_count": filtered_count,
+            "has_active_filters": has_active_filters,
             "clients": company.clients.all().order_by("name"),
             "products": company.products.all().order_by("name"),
             "vendors": company.vendors.all().order_by("name"),
@@ -375,52 +639,142 @@ def subscription_list(request):
                 "end_date": fd_end,
                 "expiring_soon": expiring,
             },
-            "expiring_choices": [
-                ("", "All"),
-                ("7", "Next 7 days"),
-                ("30", "Next 30 days"),
-            ],
+            "expiring_choices": _expiring_subscription_choices(),
         },
     )
+
+
+def _import_cache_key(user_id: int, token: str) -> str:
+    return f"{IMPORT_CACHE_PREFIX}{user_id}:{token}"
+
+
+def _stash_import_upload(
+    request,
+    file_bytes: bytes,
+    filename: str,
+    vendor_id: int,
+    vendor_name: str,
+) -> str:
+    from .subscription_import import read_import_headers as read_sub_import_headers
+
+    IMPORT_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    header_row_index, raw_headers = detect_import_header(file_bytes, filename)
+    headers = read_sub_import_headers(file_bytes, filename)
+    token = str(uuid.uuid4())
+    file_path = IMPORT_TMP_DIR / f"{request.user.pk}_{token}.upload"
+    file_path.write_bytes(file_bytes)
+    data_row_count = count_subscription_data_rows(
+        file_bytes, filename, header_row_index
+    )
+    cache.set(
+        _import_cache_key(request.user.pk, token),
+        {
+            "path": str(file_path),
+            "filename": filename,
+            "headers": headers,
+            "suggested": suggest_column_mapping(raw_headers),
+            "vendor_id": vendor_id,
+            "vendor_name": vendor_name,
+            "header_row_index": header_row_index,
+            "data_row_count": data_row_count,
+        },
+        IMPORT_CACHE_TIMEOUT,
+    )
+    request.session[IMPORT_SESSION_KEY] = token
+    return token
+
+
+def _read_stashed_import_bytes(data: dict) -> bytes:
+    path = data.get("path")
+    if path:
+        file_path = Path(path)
+        if file_path.is_file():
+            return file_path.read_bytes()
+    legacy = data.get("bytes")
+    if isinstance(legacy, (bytes, bytearray)) and legacy:
+        return bytes(legacy)
+    return b""
+
+
+def _get_stashed_import(request):
+    token = request.session.get(IMPORT_SESSION_KEY)
+    if not token:
+        return None, None
+    data = cache.get(_import_cache_key(request.user.pk, token))
+    if not data:
+        return None, None
+    if not _read_stashed_import_bytes(data):
+        return None, None
+    return token, data
+
+
+def _clear_stashed_import(request, token: str) -> None:
+    data = cache.get(_import_cache_key(request.user.pk, token))
+    if data:
+        path = data.get("path")
+        if path:
+            Path(path).unlink(missing_ok=True)
+    cache.delete(_import_cache_key(request.user.pk, token))
+    request.session.pop(IMPORT_SESSION_KEY, None)
+
+
+def _subscription_import_messages(
+    request,
+    created: int,
+    updated: int,
+    errs: list,
+    *,
+    vendor_name: str = "",
+) -> None:
+    total = created + updated
+    if total:
+        parts = []
+        if created:
+            parts.append(f"{created} new")
+        if updated:
+            parts.append(f"{updated} updated")
+        msg = f"Import complete: {', '.join(parts)} subscription(s)."
+        if vendor_name:
+            msg += f" Showing subscriptions for {vendor_name}."
+        messages.success(request, msg)
+    elif errs:
+        messages.error(
+            request,
+            f"No subscriptions imported ({len(errs)} row error(s)). "
+            "Check the mapping and error list below.",
+        )
+    for row_no, msg in errs[:25]:
+        if row_no:
+            messages.warning(request, f"Row {row_no}: {msg}")
+        else:
+            messages.error(request, msg)
+    if len(errs) > 25:
+        messages.warning(
+            request,
+            f"{len(errs) - 25} more row(s) had issues (not listed).",
+        )
 
 
 @login_required
 def subscription_import_template(request):
     _company(request)
+    fmt = (request.GET.get("format") or "xlsx").lower()
+    if fmt == "csv":
+        buf = StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(IMPORT_HEADERS)
+        writer.writerow(IMPORT_SAMPLE_ROW)
+        response = HttpResponse(buf.getvalue(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            'attachment; filename="subscription_import_template.csv"'
+        )
+        return response
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Subscriptions"
-    headers = [
-        "client",
-        "product",
-        "vendor",
-        "quantity",
-        "start_date",
-        "end_date",
-        "billing_amount",
-        "invoice_number",
-        "serial_number",
-        "subscription_code",
-        "status",
-        "notes",
-    ]
-    ws.append(headers)
-    ws.append(
-        [
-            "Acme Ltd",
-            "Example product name",
-            "",
-            1,
-            "2026-01-01",
-            "",
-            0,
-            "",
-            "",
-            "",
-            "active",
-            "",
-        ]
-    )
+    ws.append(list(IMPORT_HEADERS))
+    ws.append(list(IMPORT_SAMPLE_ROW))
     response = HttpResponse(
         content_type=(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -438,32 +792,170 @@ def subscription_import_template(request):
 def subscription_import(request):
     company = _company(request)
     if request.method == "POST":
+        vendor_name = resolve_import_vendor_name(
+            request.POST.get("vendor_choice", ""),
+            request.POST.get("vendor_other_name", ""),
+        )
+        if not vendor_name:
+            messages.error(
+                request,
+                "Choose a vendor (Redington, Tata, or Other with a name).",
+            )
+            return redirect("subscription_import")
         upload = request.FILES.get("file")
         if not upload:
-            messages.error(request, "Choose an Excel file (.xlsx) to upload.")
+            messages.error(request, "Choose a .xlsx or .csv file to upload.")
             return redirect("subscription_import")
-        if not (upload.name or "").lower().endswith(".xlsx"):
-            messages.error(request, "Please upload an .xlsx file.")
+        name_lower = (upload.name or "").lower()
+        if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
+            messages.error(request, "Please upload a .xlsx or .csv file.")
             return redirect("subscription_import")
-        created, errs = import_subscriptions_from_xlsx(company, upload.read())
-        if created:
-            messages.success(request, f"Imported {created} subscription(s).")
-        for row_no, msg in errs[:25]:
-            if row_no:
-                messages.warning(request, f"Row {row_no}: {msg}")
-            else:
-                messages.error(request, msg)
-        if len(errs) > 25:
-            messages.warning(
-                request,
-                f"{len(errs) - 25} more row(s) had issues (not listed).",
-            )
-        return redirect("subscription_list")
+        vendor = ensure_import_vendor(company, vendor_name)
+        _stash_import_upload(
+            request,
+            upload.read(),
+            upload.name or "",
+            vendor.pk,
+            vendor.name,
+        )
+        messages.info(request, "Map your file columns, then run import.")
+        return redirect("subscription_import_map")
 
     return render(
         request,
         "business/subscription_import.html",
-        {"company": company},
+        {
+            "company": company,
+            "vendor_choices": PRESET_VENDOR_CHOICES,
+        },
+    )
+
+
+def _render_subscription_import_map(
+    request,
+    *,
+    company,
+    data,
+    import_vendor,
+    file_headers,
+    mapping_rows,
+    import_errors,
+):
+    return render(
+        request,
+        "business/subscription_import_map.html",
+        {
+            "company": company,
+            "filename": data["filename"],
+            "vendor_name": data.get("vendor_name") or import_vendor.name,
+            "mapping_rows": mapping_rows,
+            "file_headers": file_headers,
+            "import_errors": import_errors,
+            "data_row_count": data.get("data_row_count"),
+            "header_row_number": (data.get("header_row_index") or 0) + 1,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def subscription_import_map(request):
+    company = _company(request)
+    token, data = _get_stashed_import(request)
+    if not data:
+        messages.error(
+            request,
+            "No import file in progress. Upload your Excel or CSV file again.",
+        )
+        return redirect("subscription_import")
+
+    file_headers = data["headers"]
+    header_count = len(file_headers)
+
+    import_vendor = get_object_or_404(
+        Vendor, pk=data["vendor_id"], company=company
+    )
+
+    if request.method == "POST":
+        col_map = column_mapping_from_post(request.POST)
+        mapping_rows = build_mapping_form_rows(file_headers, col_map)
+        invalid_idx = [idx for idx in col_map.values() if idx >= header_count]
+        if invalid_idx:
+            messages.error(request, "Invalid column selection. Try again.")
+            return _render_subscription_import_map(
+                request,
+                company=company,
+                data=data,
+                import_vendor=import_vendor,
+                file_headers=file_headers,
+                mapping_rows=mapping_rows,
+                import_errors=[],
+            )
+
+        map_errors = validate_column_mapping(col_map)
+        if map_errors:
+            for err in map_errors:
+                messages.error(request, err)
+            return _render_subscription_import_map(
+                request,
+                company=company,
+                data=data,
+                import_vendor=import_vendor,
+                file_headers=file_headers,
+                mapping_rows=mapping_rows,
+                import_errors=[],
+            )
+
+        file_bytes = _read_stashed_import_bytes(data)
+        if not file_bytes:
+            messages.error(
+                request,
+                "Uploaded file could not be read. Please upload again.",
+            )
+            return redirect("subscription_import")
+
+        created, updated, errs = import_subscriptions_from_file(
+            company,
+            file_bytes,
+            data["filename"],
+            column_mapping=col_map,
+            import_vendor=import_vendor,
+            header_row_index=data.get("header_row_index", 0),
+        )
+        _subscription_import_messages(
+            request,
+            created,
+            updated,
+            errs,
+            vendor_name=import_vendor.name,
+        )
+        if created or updated:
+            _clear_stashed_import(request, token)
+            return redirect(
+                f"{reverse('subscription_list')}?vendor={import_vendor.pk}"
+            )
+        return _render_subscription_import_map(
+            request,
+            company=company,
+            data=data,
+            import_vendor=import_vendor,
+            file_headers=file_headers,
+            mapping_rows=mapping_rows,
+            import_errors=errs[:30],
+        )
+
+    mapping_rows = build_mapping_form_rows(
+        file_headers,
+        data.get("suggested") or {},
+    )
+    return _render_subscription_import_map(
+        request,
+        company=company,
+        data=data,
+        import_vendor=import_vendor,
+        file_headers=file_headers,
+        mapping_rows=mapping_rows,
+        import_errors=[],
     )
 
 
@@ -503,6 +995,67 @@ def subscription_add(request):
             "title": title,
             "subtitle": subtitle,
             "asset_type_locked": asset_type or "",
+        },
+    )
+
+
+def _safe_next_url(raw: str, default: str) -> str:
+    next_url = (raw or "").strip()
+    if next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return default
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def subscription_renew(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(
+        ClientSubscription.objects.select_related("client", "product", "vendor"),
+        pk=pk,
+        company=company,
+    )
+    default_next = reverse("dashboard")
+    next_url = _safe_next_url(
+        request.POST.get("next") or request.GET.get("next"),
+        default_next,
+    )
+    suggested_start, suggested_end = obj.renewal_dates()
+
+    if request.method == "POST":
+        form = SubscriptionRenewForm(request.POST)
+        if form.is_valid():
+            new_start = form.cleaned_data["start_date"]
+            new_end = form.cleaned_data["end_date"]
+            obj.start_date = new_start
+            obj.end_date = new_end
+            obj.status = ClientSubscription.Status.ACTIVE
+            obj.save(update_fields=["start_date", "end_date", "status"])
+            end_label = new_end.strftime("%d %b %Y") if new_end else "no end date"
+            messages.success(
+                request,
+                f"Renewed {obj.client.name} — {obj.product.name}: "
+                f"{new_start.strftime('%d %b %Y')} to {end_label}.",
+            )
+            return redirect(next_url)
+    else:
+        form = SubscriptionRenewForm(
+            initial={
+                "start_date": suggested_start,
+                "end_date": suggested_end,
+            }
+        )
+
+    return render(
+        request,
+        "business/subscription_renew.html",
+        {
+            "company": company,
+            "subscription": obj,
+            "form": form,
+            "next_url": next_url,
+            "suggested_start": suggested_start,
+            "suggested_end": suggested_end,
         },
     )
 

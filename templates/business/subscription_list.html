@@ -27,7 +27,7 @@
     </a>
     <a class="btn-tracker-header" href="{% url 'subscription_import' %}">
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
-      Import Excel
+      Import
     </a>
   </div>
 </div>
@@ -107,6 +107,15 @@
   </form>
 </div>
 
+{% if has_active_filters %}
+<p class="muted" style="margin:0 0 1rem 1.75rem;">
+  Showing <strong>{{ filtered_count }}</strong> of <strong>{{ total_count }}</strong> subscriptions.
+  {% if filtered_count < total_count %}
+  <a href="{% url 'subscription_list' %}">Show all</a> to include every subscription (including imports under other vendors).
+  {% endif %}
+</p>
+{% endif %}
+
 <div class="tracker-card tracker-card--flush-bottom tracker-card-subscriptions">
   <div class="tracker-table-scroll">
     <table class="tracker-table-subscriptions">
@@ -139,6 +148,9 @@
           <td>{{ s.serial_number|default:"—" }}</td>
           <td>{{ s.subscription_list_id }}</td>
           <td class="col-actions">
+            {% if filters.expiring_soon %}
+            <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ request.get_full_path|urlencode }}" style="margin-right:0.35rem;">Renew</a>
+            {% endif %}
             <a class="btn-table-edit" href="{% url 'subscription_edit' s.pk %}">
               <svg aria-hidden="true"><use href="#i-pencil"/></svg>
               Edit

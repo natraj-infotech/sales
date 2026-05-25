@@ -370,3 +370,29 @@ class CaseLockPublicForm(forms.ModelForm):
             "placeholder",
             "Additional client email",
         )
+
+
+class SubscriptionRenewForm(forms.Form):
+    start_date = forms.DateField(
+        label="New start date",
+        widget=forms.DateInput(
+            attrs={"type": "date", "placeholder": "dd-mm-yyyy"},
+            format="%Y-%m-%d",
+        ),
+    )
+    end_date = forms.DateField(
+        label="New end date",
+        required=False,
+        widget=forms.DateInput(
+            attrs={"type": "date", "placeholder": "dd-mm-yyyy"},
+            format="%Y-%m-%d",
+        ),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get("start_date")
+        end = cleaned.get("end_date")
+        if start and end and end < start:
+            raise forms.ValidationError("End date must be on or after the start date.")
+        return cleaned

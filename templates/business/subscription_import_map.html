@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Map import columns{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Map columns</h1>
+      <p class="tracker-page-subtitle">{{ filename }} · Vendor: <strong>{{ vendor_name }}</strong></p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'subscription_import' %}">Start over</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p style="margin-top:0;">Match each field below to a column in your file. Fields marked <span class="muted">*</span> are required; Price is optional.</p>
+  {% if data_row_count is not None %}
+  <p class="muted" style="margin-bottom:1rem;">
+    Using row <strong>{{ header_row_number }}</strong> as column headers.
+    <strong>{{ data_row_count }}</strong> data row(s) detected below it.
+  </p>
+  {% endif %}
+  {% if import_errors %}
+  <div style="margin-bottom:1rem;padding:0.75rem 1rem;border:1px solid #f5c2c2;border-radius:8px;background:#fef2f2;">
+    <strong style="display:block;margin-bottom:0.5rem;">Import had no successful rows</strong>
+    <ul style="margin:0;padding-left:1.25rem;font-size:0.875rem;">
+      {% for row_no, msg in import_errors %}
+      <li>Row {{ row_no }}: {{ msg }}</li>
+      {% endfor %}
+    </ul>
+    <p class="muted" style="margin:0.75rem 0 0;font-size:0.875rem;">Fix the column mapping or file data, then click Import again.</p>
+  </div>
+  {% endif %}
+  <p class="muted" style="margin-bottom:0.5rem;">{{ file_headers|length }} column(s) detected in your file:</p>
+  <ol class="tracker-import-columns-list muted">
+    {% for h in file_headers %}
+    <li><strong>Column {{ forloop.counter }}:</strong> {{ h }}</li>
+    {% endfor %}
+  </ol>
+
+  <form method="post" class="tracker-sub-filter-form">
+    {% csrf_token %}
+    <table class="tracker-import-map-table" style="margin-bottom:1.25rem;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding-bottom:0.5rem;">Field</th>
+          <th style="text-align:left;padding-bottom:0.5rem;">Your file column</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in mapping_rows %}
+        <tr>
+          <td>{{ row.label }}{% if row.required %} <span class="muted">*</span>{% endif %}</td>
+          <td>
+            <select name="map_{{ row.key }}" class="tracker-import-map-select"{% if row.required %} required{% endif %}>
+              <option value="">— Select column —</option>
+              {% for idx, label in row.choices %}
+              <option value="{{ idx }}" {% if row.selected == idx %}selected{% endif %} title="{{ label }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <ul class="muted" style="margin-bottom:1.25rem;">
+      <li>Every subscription will use vendor <strong>{{ vendor_name }}</strong>.</li>
+      <li>New customers and products are created automatically when missing.</li>
+    </ul>
+    <div class="tracker-sub-filter-actions">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-upload"/></svg>
+        Import subscriptions
+      </button>
+      <a class="btn-filter-reset" href="{% url 'subscription_import' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

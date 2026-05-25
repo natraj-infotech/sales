@@ -7,7 +7,7 @@
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
     <div>
       <h1 class="tracker-page-title">Import client subscriptions</h1>
-      <p class="tracker-page-subtitle">Bulk load subscriptions from an Excel workbook (.xlsx)</p>
+      <p class="tracker-page-subtitle">Choose vendor, upload file, then map your columns</p>
     </div>
   </div>
   <div class="tracker-page-actions">
@@ -18,29 +18,66 @@
 
 {% block content %}
 <div class="tracker-card">
-  <p style="margin-top:0;">Download the template for the correct column headers, then upload your filled file. <strong>Client</strong> and <strong>product</strong> must match names already in your account (case-insensitive). <strong>Start date</strong> is required; use <code>YYYY-MM-DD</code> or <code>DD/MM/YYYY</code>.</p>
-  <ul class="muted" style="margin-bottom:1.25rem;">
-    <li>Optional: vendor, quantity (defaults to 1), end date, billing amount / price, invoice number, serial number, subscription id, status (<code>active</code>, <code>paused</code>, <code>ended</code>), notes.</li>
-    <li>Leave vendor blank if not applicable. Unknown vendor names are rejected so rows are not saved with the wrong link.</li>
-  </ul>
-  <p style="margin-bottom:1rem;">
+  <p style="margin-top:0;">Step 1: Select the <strong>vendor</strong> for this import. Step 2: Upload your Excel or CSV file. Step 3: Map these fields to your columns:</p>
+  <ol class="muted" style="margin-bottom:1.25rem;line-height:1.6;">
+    <li>Subscription id</li>
+    <li>Product name</li>
+    <li>Customer name</li>
+    <li>Start date</li>
+    <li>End date</li>
+    <li>Quantity</li>
+    <li>Price (optional)</li>
+  </ol>
+  <p style="margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
     <a class="btn-tracker-header" href="{% url 'subscription_import_template' %}">
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Download Excel template
     </a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'subscription_import_template' %}?format=csv">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Download CSV template
+    </a>
   </p>
-  <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:32rem;">
+  <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:36rem;">
     {% csrf_token %}
+    <div class="tracker-sub-filter-field" style="margin-bottom:1rem;">
+      <label for="id_vendor_choice">Vendor</label>
+      <select name="vendor_choice" id="id_vendor_choice" class="select-full" required>
+        <option value="">— Select vendor —</option>
+        {% for value, label in vendor_choices %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="vendor-other-wrap" class="tracker-sub-filter-field" style="margin-bottom:1.25rem;display:none;">
+      <label for="id_vendor_other_name">Vendor name</label>
+      <input type="text" name="vendor_other_name" id="id_vendor_other_name" maxlength="255" placeholder="Enter vendor name">
+    </div>
     <div class="tracker-sub-filter-field">
-      <label for="id_file">Excel file (.xlsx)</label>
-      <input type="file" name="file" id="id_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      <label for="id_file">Excel or CSV file</label>
+      <input type="file" name="file" id="id_file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
     </div>
     <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
       <button type="submit" class="btn-filter-apply">
         <svg aria-hidden="true"><use href="#i-upload"/></svg>
-        Import
+        Continue to column mapping
       </button>
     </div>
   </form>
 </div>
+<script>
+(function () {
+  var select = document.getElementById('id_vendor_choice');
+  var wrap = document.getElementById('vendor-other-wrap');
+  var otherInput = document.getElementById('id_vendor_other_name');
+  function sync() {
+    var isOther = select.value === 'other';
+    wrap.style.display = isOther ? 'block' : 'none';
+    otherInput.required = isOther;
+    if (!isOther) otherInput.value = '';
+  }
+  select.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

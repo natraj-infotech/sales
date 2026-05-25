@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Renew subscription{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="tracker-mock-form-shell">
+  <div class="tracker-mock-form-card">
+    <header class="tracker-mock-form-card-header">
+      <h1 class="tracker-mock-form-card-title">Renew subscription</h1>
+      <p class="tracker-mock-form-card-subtitle">
+        Set the new period for {{ subscription.client.name }} — {{ subscription.product.name }}
+      </p>
+    </header>
+    <div class="tracker-mock-form-body">
+      <section class="tracker-mock-section" style="margin-bottom:1.25rem;">
+        <h2 class="tracker-mock-section-title">Current subscription</h2>
+        <div class="tracker-mock-grid">
+          <div class="tracker-mock-field">
+            <span class="tracker-mock-label">Client</span>
+            <div class="tracker-mock-readonly">{{ subscription.client.name }}</div>
+          </div>
+          <div class="tracker-mock-field">
+            <span class="tracker-mock-label">Product</span>
+            <div class="tracker-mock-readonly">{{ subscription.product.name }}</div>
+          </div>
+          <div class="tracker-mock-field">
+            <span class="tracker-mock-label">Current period</span>
+            <div class="tracker-mock-readonly">
+              {{ subscription.start_date|date:"d M Y" }}
+              —
+              {% if subscription.end_date %}{{ subscription.end_date|date:"d M Y" }}{% else %}—{% endif %}
+            </div>
+          </div>
+          {% if subscription.vendor %}
+          <div class="tracker-mock-field">
+            <span class="tracker-mock-label">Vendor</span>
+            <div class="tracker-mock-readonly">{{ subscription.vendor.name }}</div>
+          </div>
+          {% endif %}
+        </div>
+        <p class="muted" style="margin:0.75rem 0 0;font-size:0.875rem;">
+          Suggested renewal:
+          {{ suggested_start|date:"d M Y" }} to {{ suggested_end|date:"d M Y" }}
+          (same term length as the current period).
+        </p>
+      </section>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <section class="tracker-mock-section" aria-labelledby="renew-section-dates">
+          <h2 id="renew-section-dates" class="tracker-mock-section-title">New dates</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.start_date %}
+            {% include "includes/form_field_mock.html" with field=form.end_date %}
+          </div>
+        </section>
+
+        <div class="tracker-mock-form-actions">
+          <button type="submit" class="btn-mock-save">Save renewal</button>
+          <a class="btn-mock-cancel" href="{{ next_url }}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

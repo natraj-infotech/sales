@@ -866,6 +866,90 @@
       border-color: #fff;
       box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
     }
+    /* Forms on white cards (import pages, etc.) */
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field {
+      flex: none;
+      width: 100%;
+      min-width: 0;
+    }
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: normal;
+      color: var(--text);
+    }
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field select,
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field input[type="text"],
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field input[type="date"],
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field input[type="file"] {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border-input);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text);
+      font-size: 0.9375rem;
+      box-shadow: var(--shadow-soft);
+    }
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field select {
+      appearance: auto;
+      cursor: pointer;
+    }
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field select:focus,
+    .tracker-card .tracker-sub-filter-form .tracker-sub-filter-field input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .tracker-import-map-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .tracker-import-map-table td {
+      padding: 0.65rem 0.5rem;
+      vertical-align: middle;
+    }
+    .tracker-import-map-table td:first-child {
+      width: 11rem;
+      white-space: nowrap;
+    }
+    .tracker-import-map-table td:last-child {
+      min-width: 18rem;
+    }
+    .tracker-import-map-select {
+      display: block;
+      width: 100%;
+      min-width: 18rem;
+      max-width: 100%;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border-input);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text);
+      font-size: 0.9375rem;
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+    }
+    .tracker-import-map-select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .tracker-import-columns-list {
+      max-height: 10rem;
+      overflow-y: auto;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.25rem;
+      border: 1px solid var(--border-input);
+      border-radius: var(--radius-sm);
+      background: #fafbfd;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    .tracker-import-columns-list li {
+      margin: 0;
+    }
     .tracker-sub-filter-actions {
       display: flex;
       flex-wrap: nowrap;

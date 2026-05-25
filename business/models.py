@@ -1,7 +1,9 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from accounts.models import CompanyProfile
 
@@ -113,7 +115,7 @@ class ClientSubscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-start_date", "-id"]
+        ordering = ["-created_at", "-start_date", "-id"]
 
     def __str__(self):
         return f"{self.client} — {self.product}"
@@ -126,6 +128,26 @@ class ClientSubscription(models.Model):
     def subscription_list_id(self):
         code = (self.subscription_code or "").strip()
         return code if code else self.subscription_display_id
+
+    @property
+    def days_until_expiry(self):
+        if not self.end_date:
+            return None
+        return (self.end_date - timezone.localdate()).days
+
+    def renewal_dates(self, today=None):
+        """Next start/end after renew: same term length, starting day after current end."""
+        today = today or timezone.localdate()
+        if self.end_date:
+            term_days = (self.end_date - self.start_date).days
+            if term_days < 1:
+                term_days = 365
+            new_start = self.end_date + timedelta(days=1)
+            new_end = new_start + timedelta(days=term_days)
+        else:
+            new_start = today
+            new_end = today + timedelta(days=365)
+        return new_start, new_end
 
 
 class CaseLockInbox(models.Model):
