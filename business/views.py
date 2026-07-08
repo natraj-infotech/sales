@@ -4,7 +4,7 @@ from io import StringIO
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db.models import Count, ProtectedError, Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -68,6 +68,42 @@ def _company(request):
     if company is None:
         return get_object_or_404(CompanyProfile, user=request.user)
     return company
+
+
+def _delete_success_message(
+    request, entity_count: int, sub_count: int, entity_label: str
+) -> None:
+    if entity_count == 0:
+        messages.warning(request, f"No {entity_label} were deleted.")
+        return
+    msg = f"Deleted {entity_count} {entity_label}."
+    if sub_count:
+        msg += f" Removed {sub_count} related subscription(s)."
+    messages.success(request, msg)
+
+
+def _delete_clients(company, qs) -> tuple[int, int]:
+    sub_count = company.subscriptions.filter(client__in=qs).count()
+    entity_count = qs.count()
+    if entity_count:
+        qs.delete()
+    return entity_count, sub_count
+
+
+def _delete_products(company, qs) -> tuple[int, int]:
+    sub_count = company.subscriptions.filter(product__in=qs).count()
+    entity_count = qs.count()
+    if entity_count:
+        qs.delete()
+    return entity_count, sub_count
+
+
+def _delete_vendors(company, qs) -> tuple[int, int]:
+    sub_count = company.subscriptions.filter(vendor__in=qs).count()
+    entity_count = qs.count()
+    if entity_count:
+        qs.delete()
+    return entity_count, sub_count
 
 
 EXPIRING_SOON_DAYS = (90, 45, 30, 15, 7)
@@ -190,15 +226,80 @@ def vendor_bulk_delete(request):
         messages.warning(request, "Select at least one vendor to delete.")
         return redirect("vendor_list")
     qs = company.vendors.filter(pk__in=ids)
-    n = qs.count()
-    qs.delete()
-    messages.success(request, f"Deleted {n} vendor(s).")
+    n, sub_count = _delete_vendors(company, qs)
+    _delete_success_message(request, n, sub_count, "vendor(s)")
     return redirect("vendor_list")
 
 
 @sales_module_required
+@require_http_methods(["POST"])
+def vendor_delete(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(Vendor, pk=pk, company=company)
+    n, sub_count = _delete_vendors(company, company.vendors.filter(pk=obj.pk))
+    _delete_success_message(request, n, sub_count, "vendor")
+    return redirect("vendor_list")
+
+
+@sales_module_required
+def vendor_export(request):
+    from .vendor_import import build_vendor_export_bytes
+
+    company = _company(request)
+    content = build_vendor_export_bytes(company)
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = 'attachment; filename="vendors_export.xlsx"'
+    return response
+
+
+def _vendor_import_messages(
+    request, created: int, updated: int, errs: list[tuple[int, str]]
+) -> None:
+    if created:
+        messages.success(request, f"Imported {created} new vendor(s).")
+    if updated:
+        messages.success(request, f"Updated {updated} existing vendor(s).")
+    if not created and not updated and not errs:
+        messages.info(request, "No changes were made.")
+    for row_no, msg in errs[:25]:
+        if row_no:
+            messages.warning(request, f"Row {row_no}: {msg}")
+        else:
+            messages.error(request, msg)
+    if len(errs) > 25:
+        messages.warning(
+            request,
+            f"{len(errs) - 25} more row(s) had issues (not listed).",
+        )
+
+
+@sales_module_required
+@require_http_methods(["GET", "POST"])
 def vendor_import(request):
-    return render(request, "business/vendor_import.html", {})
+    company = _company(request)
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+        if not upload:
+            messages.error(request, "Choose an Excel or CSV file to upload.")
+            return redirect("vendor_import")
+        name_lower = (upload.name or "").lower()
+        if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
+            messages.error(request, "Please upload a .xlsx or .csv file.")
+            return redirect("vendor_import")
+        from .vendor_import import import_vendors_from_file
+
+        created, updated, errs = import_vendors_from_file(
+            company,
+            upload.read(),
+            upload.name or "",
+        )
+        _vendor_import_messages(request, created, updated, errs)
+        return redirect("vendor_list")
+
+    return render(request, "business/vendor_import.html", {"company": company})
 
 
 @sales_module_required
@@ -243,6 +344,67 @@ def client_list(request):
     return _crud_list(
         request, Client, "business/client_list.html", ("name", "email", "phone", "gst_number")
     )
+
+
+@sales_module_required
+def client_export(request):
+    from .client_import import build_client_export_bytes
+
+    company = _company(request)
+    content = build_client_export_bytes(company)
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = 'attachment; filename="clients_export.xlsx"'
+    return response
+
+
+def _client_import_messages(
+    request, created: int, updated: int, errs: list[tuple[int, str]]
+) -> None:
+    if created:
+        messages.success(request, f"Imported {created} new client(s).")
+    if updated:
+        messages.success(request, f"Updated {updated} existing client(s).")
+    if not created and not updated and not errs:
+        messages.info(request, "No changes were made.")
+    for row_no, msg in errs[:25]:
+        if row_no:
+            messages.warning(request, f"Row {row_no}: {msg}")
+        else:
+            messages.error(request, msg)
+    if len(errs) > 25:
+        messages.warning(
+            request,
+            f"{len(errs) - 25} more row(s) had issues (not listed).",
+        )
+
+
+@sales_module_required
+@require_http_methods(["GET", "POST"])
+def client_import(request):
+    company = _company(request)
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+        if not upload:
+            messages.error(request, "Choose an Excel or CSV file to upload.")
+            return redirect("client_import")
+        name_lower = (upload.name or "").lower()
+        if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
+            messages.error(request, "Please upload a .xlsx or .csv file.")
+            return redirect("client_import")
+        from .client_import import import_clients_from_file
+
+        created, updated, errs = import_clients_from_file(
+            company,
+            upload.read(),
+            upload.name or "",
+        )
+        _client_import_messages(request, created, updated, errs)
+        return redirect("client_list")
+
+    return render(request, "business/client_import.html", {"company": company})
 
 
 @sales_module_required
@@ -294,6 +456,16 @@ def client_edit(request, pk):
 
 
 @sales_module_required
+@require_http_methods(["POST"])
+def client_delete(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(Client, pk=pk, company=company)
+    n, sub_count = _delete_clients(company, company.clients.filter(pk=obj.pk))
+    _delete_success_message(request, n, sub_count, "client")
+    return redirect("client_list")
+
+
+@sales_module_required
 def product_list(request):
     company = _company(request)
     q = request.GET.get("q", "").strip()
@@ -327,17 +499,18 @@ def product_bulk_delete(request):
         messages.warning(request, "Select at least one product to delete.")
         return redirect("product_list")
     qs = company.products.filter(pk__in=ids)
-    n = qs.count()
-    try:
-        qs.delete()
-    except ProtectedError:
-        messages.error(
-            request,
-            "Cannot delete: one or more products are linked to client subscriptions. "
-            "Remove or change those subscriptions first.",
-        )
-        return redirect("product_list")
-    messages.success(request, f"Deleted {n} product(s).")
+    n, sub_count = _delete_products(company, qs)
+    _delete_success_message(request, n, sub_count, "product(s)")
+    return redirect("product_list")
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def product_delete(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(Product, pk=pk, company=company)
+    n, sub_count = _delete_products(company, company.products.filter(pk=obj.pk))
+    _delete_success_message(request, n, sub_count, "product")
     return redirect("product_list")
 
 
@@ -389,23 +562,84 @@ def _product_import_messages(
 
 
 @sales_module_required
+def product_export(request):
+    from .product_bulk_edit import build_product_export_bytes
+
+    company = _company(request)
+    content = build_product_export_bytes(company)
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = 'attachment; filename="products_export.xlsx"'
+    return response
+
+
+def _product_bulk_import_messages(
+    request, created: int, updated: int, errs: list[tuple[int, str]]
+) -> None:
+    if created:
+        messages.success(request, f"Imported {created} new product(s).")
+    if updated:
+        messages.success(request, f"Updated {updated} existing product(s).")
+    if not created and not updated and not errs:
+        messages.info(request, "No changes were made.")
+    for row_no, msg in errs[:25]:
+        if row_no:
+            messages.warning(request, f"Row {row_no}: {msg}")
+        else:
+            messages.error(request, msg)
+    if len(errs) > 25:
+        messages.warning(
+            request,
+            f"{len(errs) - 25} more row(s) had issues (not listed).",
+        )
+
+
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def product_import(request):
     company = _company(request)
     if request.method == "POST":
         upload = request.FILES.get("file")
         if not upload:
-            messages.error(request, "Choose a .xlsx or .csv file to upload.")
+            messages.error(request, "Choose an Excel or CSV file to upload.")
             return redirect("product_import")
         name_lower = (upload.name or "").lower()
         if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
             messages.error(request, "Please upload a .xlsx or .csv file.")
             return redirect("product_import")
+        from .product_bulk_edit import import_products_bulk_from_file
+
+        created, updated, errs = import_products_bulk_from_file(
+            company,
+            upload.read(),
+            upload.name or "",
+        )
+        _product_bulk_import_messages(request, created, updated, errs)
+        return redirect("product_list")
+
+    return render(request, "business/product_import.html", {"company": company})
+
+
+@sales_module_required
+@require_http_methods(["GET", "POST"])
+def product_import_advanced(request):
+    company = _company(request)
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+        if not upload:
+            messages.error(request, "Choose a .xlsx or .csv file to upload.")
+            return redirect("product_import_advanced")
+        name_lower = (upload.name or "").lower()
+        if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
+            messages.error(request, "Please upload a .xlsx or .csv file.")
+            return redirect("product_import_advanced")
         _stash_product_import(request, upload.read(), upload.name or "")
         messages.info(request, "Review the column mapping, then run import.")
         return redirect("product_import_map")
 
-    return render(request, "business/product_import.html", {"company": company})
+    return render(request, "business/product_import_advanced.html", {"company": company})
 
 
 @sales_module_required
@@ -459,7 +693,7 @@ def product_import_map(request):
             request,
             "No import file in progress. Upload your Excel or CSV file again.",
         )
-        return redirect("product_import")
+        return redirect("product_import_advanced")
 
     file_headers = data["headers"]
     header_count = len(file_headers)
@@ -482,7 +716,7 @@ def product_import_map(request):
                         request,
                         "Uploaded file could not be read. Please upload again.",
                     )
-                    return redirect("product_import")
+                    return redirect("product_import_advanced")
                 created, updated, errs = import_products_from_file(
                     company,
                     file_bytes,

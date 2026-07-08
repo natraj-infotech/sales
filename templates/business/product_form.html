@@ -12,7 +12,7 @@
     background: linear-gradient(168deg, #0b2444 0%, #143a62 42%, #081a30 100%);
   }
   .product-mock-card {
-    max-width: 52rem;
+    max-width: min(100%, 72rem);
     margin: 0 auto;
     background: #f8fafc;
     border-radius: 12px;
@@ -39,7 +39,7 @@
     color: rgba(255, 255, 255, 0.9);
   }
   .product-mock-back-wrap {
-    max-width: 52rem;
+    max-width: min(100%, 72rem);
     margin: 0 auto 0.45rem;
     padding-left: 0.15rem;
   }
@@ -309,6 +309,12 @@
           </button>
         </div>
       </form>
+      {% if object %}
+      <form method="post" action="{% url 'product_delete' object.pk %}" class="product-mock-actions" style="margin-top:0.75rem;" onsubmit="return confirm('Delete {{ object.name|escapejs }} and all related subscriptions?');">
+        {% csrf_token %}
+        <button type="submit" class="product-mock-submit" style="background:#dc2626;">Delete product</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 </div>

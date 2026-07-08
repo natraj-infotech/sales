@@ -83,14 +83,14 @@ def _send_mail_via_inbox(inbox: CaseLockInbox, to_email: str, subject: str, body
         except Exception:
             logger.exception("Graph sendMail failed for mailbox %s", inbox.mailbox_email)
     if not ok:
-        ok = send_smtp_outbound(
+        ok, err = send_smtp_outbound(
             inbox.mailbox_email,
             inbox.mailbox_app_password,
             [to_email],
             subject,
             body,
         )
-    return ok
+        return ok
 
 
 def _should_skip_message(msg) -> bool:

@@ -15,11 +15,15 @@
       <svg aria-hidden="true"><use href="#i-plus"/></svg>
       Add product
     </a>
-    <a class="btn-tracker-header" href="{% url 'product_import' %}">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_export' %}">
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
-      Import products
+      Export Excel
     </a>
-    <button type="submit" form="product-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected products? Products linked to subscriptions cannot be removed.');">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_import' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Import Excel
+    </a>
+    <button type="submit" form="product-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected products and all related subscriptions?');">
       <svg aria-hidden="true"><use href="#i-trash"/></svg>
       Delete selected
     </button>
@@ -83,6 +87,14 @@
                 <svg aria-hidden="true"><use href="#i-pencil"/></svg>
                 Edit
               </a>
+              <button type="submit"
+                class="btn btn-ghost"
+                style="color:#dc2626;padding:0.35rem 0.75rem;font-size:0.78rem;margin-top:0.35rem;display:block;"
+                formaction="{% url 'product_delete' p.pk %}"
+                formmethod="post"
+                onclick="return confirm('Delete {{ p.name|escapejs }} and all related subscriptions?');">
+                Delete
+              </button>
             </td>
           </tr>
           {% empty %}

@@ -5,6 +5,7 @@ Django settings for client subscription starter project.
 import os
 from pathlib import Path
 
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -170,6 +171,10 @@ SOCIALACCOUNT_PROVIDERS = {
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
+# Outbound SMTP override (optional — auto-detected from mailbox domain/MX when unset)
+OUTBOUND_SMTP_HOST = os.environ.get("OUTBOUND_SMTP_HOST", "").strip()
+OUTBOUND_SMTP_PORT = int(os.environ.get("OUTBOUND_SMTP_PORT", "587") or 587)
+
 # Inbound support mail (IMAP) — used by `manage.py fetch_support_inbox`
 SUPPORT_IMAP_HOST = os.environ.get("SUPPORT_IMAP_HOST", "imap.gmail.com")
 SUPPORT_IMAP_PORT = int(os.environ.get("SUPPORT_IMAP_PORT", "993"))
@@ -220,5 +225,9 @@ CELERY_BEAT_SCHEDULE = {
     "fetch-caselock-inbox-every-15-seconds": {
         "task": "business.tasks.fetch_caselock_inbox_task",
         "schedule": 15.0,
+    },
+    "send-expiry-notifications-daily": {
+        "task": "business.tasks.send_expiry_notifications_task",
+        "schedule": crontab(hour=8, minute=0),
     },
 }

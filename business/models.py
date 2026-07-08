@@ -96,10 +96,10 @@ class ClientSubscription(models.Model):
         Client, on_delete=models.CASCADE, related_name="subscriptions"
     )
     product = models.ForeignKey(
-        Product, on_delete=models.PROTECT, related_name="subscriptions"
+        Product, on_delete=models.CASCADE, related_name="subscriptions"
     )
     vendor = models.ForeignKey(
-        Vendor, on_delete=models.SET_NULL, null=True, blank=True
+        Vendor, on_delete=models.CASCADE, null=True, blank=True
     )
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.ACTIVE
@@ -148,6 +148,30 @@ class ClientSubscription(models.Model):
             new_start = today
             new_end = today + timedelta(days=365)
         return new_start, new_end
+
+
+class SubscriptionExpiryNotice(models.Model):
+    """Tracks client reminder emails already sent for a subscription threshold."""
+
+    subscription = models.ForeignKey(
+        ClientSubscription,
+        on_delete=models.CASCADE,
+        related_name="expiry_notices",
+    )
+    days_before = models.PositiveSmallIntegerField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subscription", "days_before"],
+                name="unique_expiry_notice_per_subscription_day",
+            ),
+        ]
+        ordering = ["-sent_at"]
+
+    def __str__(self):
+        return f"{self.subscription_id} @ {self.days_before} days"
 
 
 class CaseLockInbox(models.Model):

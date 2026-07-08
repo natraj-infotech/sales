@@ -226,6 +226,12 @@
           </button>
         </div>
       </form>
+      {% if object %}
+      <form method="post" action="{% url 'vendor_delete' object.pk %}" class="vendor-actions" style="margin-top:0.75rem;" onsubmit="return confirm('Delete {{ object.name|escapejs }} and all related subscriptions?');">
+        {% csrf_token %}
+        <button type="submit" class="vendor-submit" style="background:#dc2626;">Delete vendor</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 </div>

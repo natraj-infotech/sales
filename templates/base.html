@@ -226,12 +226,14 @@
       margin-left: 260px;
       padding: 1.25rem 1.5rem 2rem;
       min-width: 0;
-      max-width: 1200px;
+      width: calc(100% - 260px);
+      max-width: none;
       box-sizing: border-box;
-      transition: margin-left 0.28s ease;
+      transition: margin-left 0.28s ease, width 0.28s ease;
     }
     .layout.sidebar-collapsed .tracker-main {
       margin-left: 72px;
+      width: calc(100% - 72px);
     }
     /* Collapsed rail: expand labels on hover (main shifts so content stays clear) */
     .layout.sidebar-collapsed .sidebar:hover {
@@ -265,6 +267,7 @@
     }
     .layout.sidebar-collapsed:has(.sidebar:hover) .tracker-main {
       margin-left: 260px;
+      width: calc(100% - 260px);
     }
 
     /* Blue page header (Tracker365 strip) */
@@ -613,7 +616,7 @@
       flex: 1 1 auto;
       min-width: 0;
       width: auto;
-      max-width: 640px;
+      max-width: none;
     }
     .toolbar form .select-inline {
       flex: 0 1 auto;
@@ -1053,7 +1056,7 @@
       background: linear-gradient(168deg, #0b2444 0%, #143a62 42%, #081a30 100%);
     }
     .tracker-mock-form-card {
-      max-width: 56rem;
+      max-width: min(100%, 72rem);
       margin: 0 auto;
       background: #fff;
       border-radius: var(--radius);

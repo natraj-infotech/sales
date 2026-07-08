@@ -7,7 +7,7 @@
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
     <div>
       <h1 class="tracker-page-title">Import products</h1>
-      <p class="tracker-page-subtitle">Bulk load from Excel (.xlsx) or CSV</p>
+      <p class="tracker-page-subtitle">Bulk update product details from Excel or CSV</p>
     </div>
   </div>
   <div class="tracker-page-actions">
@@ -18,23 +18,20 @@
 
 {% block content %}
 <div class="tracker-card">
-  <p style="margin-top:0;">Upload your product export. The first row should be column headers. On the next screen you will <strong>map each field</strong> to a column in your file before import runs.</p>
+  <p style="margin-top:0;">Export your products, fill in missing details in Excel, then upload the same file here to update them in bulk.</p>
   <p class="muted" style="font-size:0.9rem;line-height:1.5;margin-bottom:1.25rem;">
-    Item ID, Item Name, HSN/SAC, Is Taxable, GST Rate (%), Cess Rate (%), Unit, Account Code, Type, Description, Purchase Price, Sales Price, Is Active, Is Inventory, Opening Stock, Opening Stock Value, Preferred Vendor, Reorder Level, Category, Brand, Manufacturer, Model Number, SKU, UPC, EAN, MPN, ISBN, Color, Size, Material, Weight, Length, Width, Height, Dimension Unit, Weight Unit
+    Expected columns: <strong>Product ID</strong>, <strong>Name</strong>, <strong>Category</strong>, <strong>Type</strong>, <strong>Company</strong>, <strong>Tax</strong>, <strong>Depreciation</strong>, <strong>HSN Code</strong>, <strong>Company Number</strong>, <strong>Company Email</strong>, <strong>Components</strong>, <strong>Notes</strong>, <strong>Vendor</strong>, <strong>Company Part Number</strong>, <strong>Sales Price</strong>, <strong>Description</strong>
   </p>
   <ul class="muted" style="margin-bottom:1.25rem;">
-    <li><strong>Item Name</strong> is required. Existing products with the same name or SKU are updated.</li>
-    <li><strong>Preferred Vendor</strong> is created automatically when missing.</li>
-    <li>Extra columns (inventory, dimensions, barcodes, etc.) are stored in product notes.</li>
+    <li>Keep <strong>Product ID</strong> unchanged so existing products are updated correctly.</li>
+    <li>Rows with a matching Product ID update that product. Rows without an ID but with a matching name are updated too.</li>
+    <li><strong>Vendor</strong> must match an existing vendor name in your company.</li>
+    <li>New rows need a <strong>Name</strong> and can be added without a Product ID.</li>
   </ul>
-  <p style="margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:0.75rem;">
-    <a class="btn-tracker-header" href="{% url 'product_import_template' %}">
+  <p style="margin-bottom:1rem;">
+    <a class="btn-tracker-header" href="{% url 'product_export' %}">
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
-      Download Excel template
-    </a>
-    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_import_template' %}?format=csv">
-      <svg aria-hidden="true"><use href="#i-upload"/></svg>
-      Download CSV template
+      Download current products (Excel)
     </a>
   </p>
   <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:32rem;">
@@ -46,9 +43,13 @@
     <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
       <button type="submit" class="btn-filter-apply">
         <svg aria-hidden="true"><use href="#i-upload"/></svg>
-        Continue to column mapping
+        Import and update products
       </button>
     </div>
   </form>
+  <p class="muted" style="margin-top:1.25rem;margin-bottom:0;">
+    Importing from a different spreadsheet format?
+    <a href="{% url 'product_import_advanced' %}">Use column mapping import</a>.
+  </p>
 </div>
 {% endblock %}

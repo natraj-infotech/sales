@@ -73,6 +73,26 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="App password for the outgoing mailbox.",
     )
+    expiry_client_emails_enabled = models.BooleanField(
+        "email clients before subscription expiry",
+        default=False,
+        help_text="Send renewal reminders to clients when subscriptions hit selected day thresholds.",
+    )
+    expiry_team_digest_enabled = models.BooleanField(
+        "daily team digest for expiring subscriptions",
+        default=False,
+        help_text="Send a daily summary to your sales team listing subscriptions expiring soon.",
+    )
+    expiry_notify_at_days = models.CharField(
+        max_length=64,
+        default="30,15,7",
+        help_text="Comma-separated days-before-expiry thresholds (e.g. 30,15,7).",
+    )
+    expiry_team_extra_emails = models.TextField(
+        blank=True,
+        help_text="Optional extra recipients for the team digest (comma or newline separated).",
+    )
+    expiry_team_digest_last_sent = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

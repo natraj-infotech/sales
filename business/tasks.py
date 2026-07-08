@@ -3,6 +3,7 @@ from celery import shared_task
 from accounts.models import CompanyProfile
 
 from .caselock_inbox import fetch_all_caselock_inboxes
+from .expiry_notifications import send_expiry_notifications_for_all_companies
 from .support_inbox import fetch_tickets_for_company
 
 
@@ -31,3 +32,9 @@ def fetch_support_inbox_task():
 def fetch_caselock_inbox_task():
     """Poll all configured Case lock mailboxes and email form links."""
     return fetch_all_caselock_inboxes()
+
+
+@shared_task
+def send_expiry_notifications_task():
+    """Send client expiry reminders and team digests for enabled companies."""
+    return send_expiry_notifications_for_all_companies()

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Import clients{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Import clients</h1>
+      <p class="tracker-page-subtitle">Bulk update client details from Excel or CSV</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_list' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p style="margin-top:0;">Export your clients, fill in missing GST numbers, emails, and contacts in Excel, then upload the same file here to update them in bulk.</p>
+  <p class="muted" style="font-size:0.9rem;line-height:1.5;margin-bottom:1.25rem;">
+    Expected columns: <strong>Client ID</strong>, <strong>Name</strong>, <strong>GST Number</strong>, <strong>Email</strong>, <strong>Contact</strong>, <strong>Notes</strong>
+  </p>
+  <ul class="muted" style="margin-bottom:1.25rem;">
+    <li>Keep <strong>Client ID</strong> unchanged so existing clients are updated correctly.</li>
+    <li>Rows with a matching Client ID update that client. Rows without an ID but with a matching name are updated too.</li>
+    <li>New rows need a <strong>Name</strong> and can be added without a Client ID.</li>
+  </ul>
+  <p style="margin-bottom:1rem;">
+    <a class="btn-tracker-header" href="{% url 'client_export' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Download current clients (Excel)
+    </a>
+  </p>
+  <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:32rem;">
+    {% csrf_token %}
+    <div class="tracker-sub-filter-field">
+      <label for="id_file">Excel or CSV file</label>
+      <input type="file" name="file" id="id_file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
+    </div>
+    <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-upload"/></svg>
+        Import and update clients
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

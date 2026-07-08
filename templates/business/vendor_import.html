@@ -7,7 +7,7 @@
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
     <div>
       <h1 class="tracker-page-title">Import vendors</h1>
-      <p class="tracker-page-subtitle">Bulk load vendors from a file</p>
+      <p class="tracker-page-subtitle">Bulk update vendor details from Excel or CSV</p>
     </div>
   </div>
   <div class="tracker-page-actions">
@@ -18,7 +18,33 @@
 
 {% block content %}
 <div class="tracker-card">
-  <p class="muted" style="margin-top:0;">CSV import is not configured yet. Use <strong>Add vendor</strong> to enter records, or check back after your team connects a file upload.</p>
-  <p style="margin-bottom:0;"><a class="btn btn-primary" href="{% url 'vendor_add' %}">Add vendor</a></p>
+  <p style="margin-top:0;">Export your vendors, fill in missing GST numbers, emails, and phone numbers in Excel, then upload the same file here to update them in bulk.</p>
+  <p class="muted" style="font-size:0.9rem;line-height:1.5;margin-bottom:1.25rem;">
+    Expected columns: <strong>Vendor ID</strong>, <strong>Name</strong>, <strong>GST Number</strong>, <strong>Email 1–3</strong>, <strong>Phone 1–3</strong>, <strong>Website</strong>, <strong>Notes</strong>
+  </p>
+  <ul class="muted" style="margin-bottom:1.25rem;">
+    <li>Keep <strong>Vendor ID</strong> unchanged so existing vendors are updated correctly.</li>
+    <li>Rows with a matching Vendor ID update that vendor. Rows without an ID but with a matching name are updated too.</li>
+    <li>New rows need a <strong>Name</strong> and can be added without a Vendor ID.</li>
+  </ul>
+  <p style="margin-bottom:1rem;">
+    <a class="btn-tracker-header" href="{% url 'vendor_export' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Download current vendors (Excel)
+    </a>
+  </p>
+  <form method="post" enctype="multipart/form-data" class="tracker-sub-filter-form" style="max-width:32rem;">
+    {% csrf_token %}
+    <div class="tracker-sub-filter-field">
+      <label for="id_file">Excel or CSV file</label>
+      <input type="file" name="file" id="id_file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
+    </div>
+    <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
+      <button type="submit" class="btn-filter-apply">
+        <svg aria-hidden="true"><use href="#i-upload"/></svg>
+        Import and update vendors
+      </button>
+    </div>
+  </form>
 </div>
 {% endblock %}

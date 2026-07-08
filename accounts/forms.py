@@ -1,12 +1,27 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
+from business.expiry_notifications import VALID_NOTIFY_DAYS, parse_notify_days
+
 from .models import CompanyMember, CompanyProfile
 
 User = get_user_model()
 
+EXPIRY_DAY_CHOICES = [
+    (str(days), f"{days} days before expiry") for days in sorted(VALID_NOTIFY_DAYS)
+]
+
 
 class CompanyProfileForm(forms.ModelForm):
+    expiry_notify_day_choices = forms.MultipleChoiceField(
+        label="Notify at these day thresholds",
+        choices=EXPIRY_DAY_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Client reminders are sent once per subscription at each selected threshold. "
+        "The team digest lists all subscriptions expiring within the largest selected window.",
+    )
+
     class Meta:
         model = CompanyProfile
         fields = (
@@ -20,9 +35,13 @@ class CompanyProfileForm(forms.ModelForm):
             "support_email_app_password",
             "outgoing_email",
             "outgoing_email_app_password",
+            "expiry_client_emails_enabled",
+            "expiry_team_digest_enabled",
+            "expiry_team_extra_emails",
         )
         widgets = {
             "address": forms.Textarea(attrs={"rows": 4}),
+            "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
@@ -33,6 +52,18 @@ class CompanyProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
+        self.fields["expiry_client_emails_enabled"].help_text = (
+            "Send renewal reminders to the client email on file when a subscription "
+            "reaches a selected day threshold."
+        )
+        self.fields["expiry_team_digest_enabled"].label = "Daily team digest"
+        self.fields["expiry_team_digest_enabled"].help_text = (
+            "Send one daily email with an Excel attachment to the company owner, "
+            "sales team, and any extra addresses below listing subscriptions "
+            "expiring soon."
+        )
+        self.fields["expiry_team_extra_emails"].label = "Extra team digest recipients"
         if self.instance.pk:
             for name in (
                 "support_email_app_password",
@@ -40,6 +71,31 @@ class CompanyProfileForm(forms.ModelForm):
             ):
                 self.fields[name].required = False
                 self.fields[name].help_text = "Leave blank to keep the saved app password."
+            selected = [
+                str(day) for day in parse_notify_days(self.instance.expiry_notify_at_days)
+            ]
+            self.fields["expiry_notify_day_choices"].initial = selected
+
+    def clean_expiry_notify_day_choices(self):
+        selected = self.cleaned_data.get("expiry_notify_day_choices") or []
+        days: list[int] = []
+        for raw in selected:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise forms.ValidationError("Invalid day threshold selected.") from exc
+            if value not in VALID_NOTIFY_DAYS:
+                raise forms.ValidationError(f"{value} is not an allowed threshold.")
+            if value not in days:
+                days.append(value)
+        if not days and (
+            self.cleaned_data.get("expiry_client_emails_enabled")
+            or self.cleaned_data.get("expiry_team_digest_enabled")
+        ):
+            raise forms.ValidationError(
+                "Select at least one day threshold when expiry notifications are enabled."
+            )
+        return selected
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -52,6 +108,10 @@ class CompanyProfileForm(forms.ModelForm):
                 instance.outgoing_email_app_password = (
                     self.instance.outgoing_email_app_password
                 )
+        selected_days = self.cleaned_data.get("expiry_notify_day_choices") or []
+        if selected_days:
+            ordered = sorted({int(day) for day in selected_days}, reverse=True)
+            instance.expiry_notify_at_days = ",".join(str(day) for day in ordered)
         if commit:
             instance.save()
         return instance

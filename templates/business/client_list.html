@@ -12,6 +12,14 @@
   </div>
   <div class="tracker-page-actions">
     <a class="btn-tracker-header" href="{% url 'client_add' %}">+ Add client</a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_export' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Export Excel
+    </a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_import' %}">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Import Excel
+    </a>
   </div>
 </div>
 {% endblock %}
@@ -26,7 +34,7 @@
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Name</th><th>GST number</th><th>Email</th><th>Contact</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>GST number</th><th>Email</th><th>Contact</th><th>Actions</th></tr></thead>
       <tbody>
         {% for c in object_list %}
         <tr>
@@ -34,7 +42,13 @@
           <td>{{ c.gst_number|default:"—" }}</td>
           <td>{{ c.email|default:"—" }}</td>
           <td>{{ c.phone|default:"—" }}</td>
-          <td><a href="{% url 'client_edit' c.pk %}">Edit</a></td>
+          <td>
+            <a href="{% url 'client_edit' c.pk %}">Edit</a>
+            <form method="post" action="{% url 'client_delete' c.pk %}" style="display:inline;margin-left:0.5rem;" onsubmit="return confirm('Delete {{ c.name|escapejs }} and all related subscriptions?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost" style="color:#dc2626;padding:0.2rem 0.5rem;font-size:0.8125rem;">Delete</button>
+            </form>
+          </td>
         </tr>
         {% empty %}
         <tr><td colspan="5" class="muted" style="padding:1rem;">No clients. <a href="{% url 'client_add' %}">Add one</a>.</td></tr>

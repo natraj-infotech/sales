@@ -11,7 +11,7 @@
     </div>
   </div>
   <div class="tracker-page-actions">
-    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_import' %}">Upload a different file</a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'product_import_advanced' %}">Upload a different file</a>
   </div>
 </div>
 {% endblock %}
@@ -62,7 +62,7 @@
         <svg aria-hidden="true"><use href="#i-upload"/></svg>
         Import with this mapping
       </button>
-      <a class="btn-filter-reset" href="{% url 'product_import' %}">Cancel</a>
+      <a class="btn-filter-reset" href="{% url 'product_import_advanced' %}">Cancel</a>
     </div>
   </form>
 </div>

@@ -2,6 +2,162 @@
 
 {% block title %}Company profile{% endblock %}
 
+{% block extra_css %}
+<style>
+  .expiry-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.9fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .expiry-panel { grid-template-columns: 1fr; }
+  }
+  .expiry-panel__settings,
+  .expiry-panel__actions {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: #fafbfd;
+    padding: 1rem 1.1rem;
+  }
+  .expiry-panel__actions {
+    background: linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
+  }
+  .expiry-intro {
+    margin: -0.35rem 0 1rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .expiry-toggles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .expiry-toggle-card {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.85rem 0.9rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .expiry-toggle-card:hover {
+    border-color: #bfdbfe;
+    box-shadow: var(--shadow-soft);
+  }
+  .expiry-toggle-card input {
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+    accent-color: var(--header-blue);
+    cursor: pointer;
+  }
+  .expiry-toggle-card__title {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+  }
+  .expiry-toggle-card__help {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .expiry-thresholds {
+    margin-bottom: 1rem;
+  }
+  .expiry-thresholds__label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.55rem;
+  }
+  .expiry-threshold-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .expiry-threshold-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border-input);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+  .expiry-threshold-pill input {
+    width: 0.95rem;
+    height: 0.95rem;
+    margin: 0;
+    accent-color: var(--header-blue);
+    cursor: pointer;
+  }
+  .expiry-threshold-pill:has(input:checked) {
+    border-color: #93c5fd;
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+  }
+  .expiry-action-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .expiry-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.62rem 0.9rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .expiry-action-btn--primary {
+    background: var(--header-blue);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(43, 111, 214, 0.35);
+  }
+  .expiry-action-btn--primary:hover {
+    background: var(--header-blue-deep);
+    color: #fff;
+  }
+  .expiry-action-btn--ghost {
+    background: #fff;
+    color: var(--text-secondary);
+    border-color: var(--border-input);
+  }
+  .expiry-action-btn--ghost:hover {
+    background: var(--accent-soft);
+    border-color: #bfdbfe;
+    color: var(--accent);
+  }
+  .expiry-action-note {
+    margin: 0 0 0.85rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+</style>
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header">
   <div class="tracker-page-header-text">
@@ -61,9 +217,106 @@
     </div>
 
     <h3 class="tracker-card-section-title">Outgoing email (SMTP)</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Required for client expiry reminders and the daily team digest. Use the same app password approach as support mail.
+    </p>
     <div class="tracker-form-grid">
       {% include "includes/form_field_tracker.html" with field=form.outgoing_email icon="mail" %}
       {% include "includes/form_field_tracker.html" with field=form.outgoing_email_app_password icon="lock" %}
+    </div>
+
+    <h3 class="tracker-card-section-title">Subscription expiry notifications</h3>
+    <p class="expiry-intro">
+      Choose which emails to send, set day thresholds, and send manually anytime.
+      Automatic daily sends run at 8:00 UTC when Celery worker and beat are running.
+    </p>
+
+    <div class="expiry-panel">
+      <div class="expiry-panel__settings">
+        <div class="expiry-toggles">
+          <label class="expiry-toggle-card">
+            {{ form.expiry_client_emails_enabled }}
+            <span>
+              <span class="expiry-toggle-card__title">{{ form.expiry_client_emails_enabled.label }}</span>
+              {% if form.expiry_client_emails_enabled.help_text %}
+              <span class="expiry-toggle-card__help">{{ form.expiry_client_emails_enabled.help_text }}</span>
+              {% endif %}
+            </span>
+          </label>
+          <label class="expiry-toggle-card">
+            {{ form.expiry_team_digest_enabled }}
+            <span>
+              <span class="expiry-toggle-card__title">{{ form.expiry_team_digest_enabled.label }}</span>
+              {% if form.expiry_team_digest_enabled.help_text %}
+              <span class="expiry-toggle-card__help">{{ form.expiry_team_digest_enabled.help_text }}</span>
+              {% endif %}
+            </span>
+          </label>
+        </div>
+        {{ form.expiry_client_emails_enabled.errors }}
+        {{ form.expiry_team_digest_enabled.errors }}
+
+        <div class="expiry-thresholds">
+          <span class="expiry-thresholds__label">Notify at these day thresholds</span>
+          <div class="expiry-threshold-pills">
+            {% for checkbox in form.expiry_notify_day_choices %}
+            <label class="expiry-threshold-pill">
+              {{ checkbox.tag }}
+              <span>{{ checkbox.choice_label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% if form.expiry_notify_day_choices.help_text %}
+          <span class="tracker-helptext">{{ form.expiry_notify_day_choices.help_text }}</span>
+          {% endif %}
+          {{ form.expiry_notify_day_choices.errors }}
+        </div>
+
+        {% include "includes/form_field_tracker.html" with field=form.expiry_team_extra_emails icon="mail" full_width=True %}
+      </div>
+
+      {% if editing and company %}
+      <aside class="expiry-panel__actions" aria-label="Send expiry emails now">
+        <h4 class="tracker-card-section-title" style="margin-top:0;">Send now</h4>
+        <p class="expiry-action-note">
+          Save your settings first. Outgoing SMTP must be configured above.
+          Client reminders only go out for subscriptions hitting a selected threshold today.
+        </p>
+        <div class="expiry-action-stack">
+          <button type="submit"
+            class="expiry-action-btn expiry-action-btn--primary"
+            formaction="{% url 'company_send_expiry_notifications' %}"
+            formmethod="post"
+            name="action"
+            value="client">
+            Send client reminders
+          </button>
+          <button type="submit"
+            class="expiry-action-btn expiry-action-btn--primary"
+            formaction="{% url 'company_send_expiry_notifications' %}"
+            formmethod="post"
+            name="action"
+            value="team">
+            Send team digest
+          </button>
+          <button type="submit"
+            class="expiry-action-btn expiry-action-btn--ghost"
+            formaction="{% url 'company_send_expiry_notifications' %}"
+            formmethod="post"
+            name="action"
+            value="both">
+            Send both
+          </button>
+        </div>
+      </aside>
+      {% else %}
+      <aside class="expiry-panel__actions" aria-label="Send expiry emails now">
+        <h4 class="tracker-card-section-title" style="margin-top:0;">Send now</h4>
+        <p class="expiry-action-note">
+          Save your company profile first to unlock manual send buttons here.
+        </p>
+      </aside>
+      {% endif %}
     </div>
   </form>
 </div>

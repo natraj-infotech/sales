@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_http_methods
 
 from .forms import AddCompanyMemberForm, CompanyProfileForm, UpdateCompanyMemberForm
 from .models import CompanyMember, CompanyProfile
@@ -72,8 +73,62 @@ def company_setup(request):
     return render(
         request,
         "accounts/company_setup.html",
-        {"form": form, "editing": profile is not None},
+        {"form": form, "editing": profile is not None, "company": profile},
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def company_send_expiry_notifications(request):
+    company = get_company_for_user(request.user)
+    if company is None or not user_is_owner(request.user, company):
+        messages.error(request, "Only the company owner can send expiry notifications.")
+        return redirect("company_setup")
+
+    action = request.POST.get("action", "").strip()
+    from business.expiry_notifications import (
+        send_client_expiry_emails,
+        send_team_expiry_digest,
+    )
+
+    client_sent = 0
+    team_sent = 0
+    logs: list[str] = []
+
+    if action in {"client", "both"}:
+        count, client_logs = send_client_expiry_emails(company, force=True)
+        client_sent += count
+        logs.extend(client_logs)
+    if action in {"team", "both"}:
+        count, team_logs = send_team_expiry_digest(company, force=True)
+        team_sent += count
+        logs.extend(team_logs)
+
+    if action not in {"client", "team", "both"}:
+        messages.error(request, "Unknown send action.")
+        return redirect("company_setup")
+
+    for line in logs:
+        if any(word in line.lower() for word in ("failed", "skipped")):
+            messages.warning(request, line)
+        else:
+            messages.success(request, line)
+
+    if not logs:
+        messages.info(request, "No expiry notifications were sent.")
+
+    if client_sent or team_sent:
+        summary_parts = []
+        if client_sent:
+            summary_parts.append(f"{client_sent} client email batch(es)")
+        if team_sent:
+            summary_parts.append(f"{team_sent} team digest(s)")
+        messages.success(
+            request,
+            "Sent " + " and ".join(summary_parts) + ".",
+        )
+
+    return redirect("company_setup")
 
 
 @sales_grant_required

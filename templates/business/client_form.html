@@ -33,6 +33,12 @@
           <a class="btn-mock-cancel" href="{% url 'client_list' %}">Cancel</a>
         </div>
       </form>
+      {% if object %}
+      <form method="post" action="{% url 'client_delete' object.pk %}" class="tracker-mock-form-actions" style="margin-top:0.75rem;" onsubmit="return confirm('Delete {{ object.name|escapejs }} and all related subscriptions?');">
+        {% csrf_token %}
+        <button type="submit" class="btn-mock-cancel" style="background:#dc2626;">Delete client</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 </div>
