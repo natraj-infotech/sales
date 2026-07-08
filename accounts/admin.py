@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import User, CompanyProfile
+from .models import User, CompanyProfile, CompanyMember
 
 
 @admin.register(User)
@@ -47,3 +47,18 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "created_at",
     )
     search_fields = ("company_name", "email", "gst_number", "user__email")
+
+
+@admin.register(CompanyMember)
+class CompanyMemberAdmin(admin.ModelAdmin):
+    list_display = (
+        "company",
+        "user",
+        "role",
+        "sales_access",
+        "can_grant_sales",
+        "joined_at",
+    )
+    list_filter = ("role", "sales_access", "can_grant_sales")
+    search_fields = ("company__company_name", "user__email")
+    autocomplete_fields = ("company", "user")

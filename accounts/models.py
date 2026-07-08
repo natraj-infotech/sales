@@ -78,3 +78,51 @@ class CompanyProfile(models.Model):
 
     def __str__(self):
         return self.company_name
+
+    def company_user_ids(self):
+        member_ids = self.members.values_list("user_id", flat=True)
+        return {self.user_id, *member_ids}
+
+
+class CompanyMember(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "owner", "Owner"
+        MEMBER = "member", "Member"
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="members",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="company_memberships",
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.MEMBER,
+    )
+    sales_access = models.BooleanField(
+        default=False,
+        help_text="Can view and manage sales module data for this company.",
+    )
+    can_grant_sales = models.BooleanField(
+        default=False,
+        help_text="Can grant or revoke sales module access for teammates.",
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounts_company_member"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "user"],
+                name="unique_company_member",
+            ),
+        ]
+        ordering = ["role", "user__email"]
+
+    def __str__(self):
+        return f"{self.user.email} @ {self.company.company_name}"

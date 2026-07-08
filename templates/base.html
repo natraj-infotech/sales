@@ -1509,13 +1509,14 @@
         </button>
       </div>
       <div class="sidebar-brand">
-        <a href="{% url 'dashboard' %}" class="logo-wordmark">
+        <a href="{% url 'root' %}" class="logo-wordmark">
           <div class="wordmark"><span class="wm-tracker">TRACKER</span><span class="wm-365">365</span></div>
           <p class="tagline">Client subscriptions</p>
         </a>
       </div>
       <h1>Menu</h1>
       <nav aria-label="Main">
+        {% if user_has_sales_access %}
         <a href="{% url 'dashboard' %}" title="Dashboard">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-home"/></svg>
           <span class="nav-text">Dashboard</span>
@@ -1536,10 +1537,20 @@
           <svg class="nav-ic" aria-hidden="true"><use href="#i-box"/></svg>
           <span class="nav-text">Products</span>
         </a>
+        {% endif %}
+        {% if user_is_company_owner %}
         <a href="{% url 'company_setup' %}" title="Company profile">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-building"/></svg>
           <span class="nav-text">Company profile</span>
         </a>
+        {% endif %}
+        {% if user_can_grant_sales %}
+        <a href="{% url 'company_team' %}" title="Team access">
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-users"/></svg>
+          <span class="nav-text">Team access</span>
+        </a>
+        {% endif %}
+        {% if user_is_company_owner %}
         <a href="{% url 'support_ticket_list' %}" title="Support tickets">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-ticket"/></svg>
           <span class="nav-text">Support tickets</span>
@@ -1548,6 +1559,7 @@
           <svg class="nav-ic" aria-hidden="true"><use href="#i-lock"/></svg>
           <span class="nav-text">Case lock</span>
         </a>
+        {% endif %}
         <a href="{% url 'account_logout' %}" class="nav-logout" title="Log out">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-log-out"/></svg>
           <span class="nav-text">Log out</span>

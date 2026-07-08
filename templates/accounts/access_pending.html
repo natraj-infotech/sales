@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Access pending{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-users"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Waiting for sales access</h1>
+      <p class="tracker-page-subtitle">Your account is linked to {{ company.company_name }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <p>You are part of the <strong>{{ company.company_name }}</strong> team, but you do not have sales module access yet.</p>
+  <p class="muted">Ask your company owner or a sales manager to grant you access from the team access page.</p>
+  <p class="muted">Once access is granted, you will be able to view and manage subscriptions, clients, products, and vendors for this company.</p>
+</div>
+{% endblock %}

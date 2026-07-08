@@ -12,12 +12,16 @@ class RequireCompanyProfileMiddleware:
         "/caselock/fill/",
     )
 
+    EXACT_PATHS = (
+        "/company/access/",
+    )
+
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         path = request.path
-        if path.startswith("/company/setup"):
+        if path.startswith("/company/setup") or path in self.EXACT_PATHS:
             return self.get_response(request)
 
         exempt = any(path.startswith(p) for p in self.PREFIXES)
@@ -31,8 +35,11 @@ class RequireCompanyProfileMiddleware:
 def _user_has_company(user):
     from django.core.exceptions import ObjectDoesNotExist
 
+    from .models import CompanyMember
+
     try:
         user.company_profile
         return True
     except ObjectDoesNotExist:
-        return False
+        pass
+    return CompanyMember.objects.filter(user=user).exists()

@@ -3,7 +3,6 @@ from datetime import timedelta
 from io import StringIO
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.db.models import Count, ProtectedError, Q, Sum
 from django.http import HttpResponse
@@ -14,6 +13,12 @@ from django.views.decorators.http import require_http_methods
 from openpyxl import Workbook
 
 from accounts.models import CompanyProfile
+from accounts.permissions import (
+    company_owner_required,
+    company_users,
+    get_company_for_user,
+    sales_module_required,
+)
 
 from .forms import (
     CaseLockInboxForm,
@@ -59,7 +64,10 @@ User = get_user_model()
 
 
 def _company(request):
-    return get_object_or_404(CompanyProfile, user=request.user)
+    company = get_company_for_user(request.user)
+    if company is None:
+        return get_object_or_404(CompanyProfile, user=request.user)
+    return company
 
 
 EXPIRING_SOON_DAYS = (90, 45, 30, 15, 7)
@@ -91,7 +99,7 @@ def _expiring_subscription_choices():
     ]
 
 
-@login_required
+@sales_module_required
 def dashboard(request):
     company = _company(request)
     expiring_days = _parse_expiring_days(request.GET.get("expiring_days", ""))
@@ -150,7 +158,7 @@ def _crud_list(request, model, template_name, search_fields):
     )
 
 
-@login_required
+@sales_module_required
 def vendor_list(request):
     company = _company(request)
     q = request.GET.get("q", "").strip()
@@ -173,7 +181,7 @@ def vendor_list(request):
     )
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["POST"])
 def vendor_bulk_delete(request):
     company = _company(request)
@@ -188,12 +196,12 @@ def vendor_bulk_delete(request):
     return redirect("vendor_list")
 
 
-@login_required
+@sales_module_required
 def vendor_import(request):
     return render(request, "business/vendor_import.html", {})
 
 
-@login_required
+@sales_module_required
 def vendor_add(request):
     company = _company(request)
     if request.method == "POST":
@@ -212,7 +220,7 @@ def vendor_add(request):
     )
 
 
-@login_required
+@sales_module_required
 def vendor_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Vendor, pk=pk, company=company)
@@ -230,14 +238,14 @@ def vendor_edit(request, pk):
     )
 
 
-@login_required
+@sales_module_required
 def client_list(request):
     return _crud_list(
         request, Client, "business/client_list.html", ("name", "email", "phone", "gst_number")
     )
 
 
-@login_required
+@sales_module_required
 def client_add(request):
     company = _company(request)
     if request.method == "POST":
@@ -261,7 +269,7 @@ def client_add(request):
     )
 
 
-@login_required
+@sales_module_required
 def client_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Client, pk=pk, company=company)
@@ -285,7 +293,7 @@ def client_edit(request, pk):
     )
 
 
-@login_required
+@sales_module_required
 def product_list(request):
     company = _company(request)
     q = request.GET.get("q", "").strip()
@@ -310,7 +318,7 @@ def product_list(request):
     )
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["POST"])
 def product_bulk_delete(request):
     company = _company(request)
@@ -380,7 +388,7 @@ def _product_import_messages(
         )
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def product_import(request):
     company = _company(request)
@@ -400,7 +408,7 @@ def product_import(request):
     return render(request, "business/product_import.html", {"company": company})
 
 
-@login_required
+@sales_module_required
 def product_import_template(request):
     from .product_import import IMPORT_HEADERS, IMPORT_SAMPLE_ROW
 
@@ -434,7 +442,7 @@ def product_import_template(request):
     return response
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def product_import_map(request):
     from .product_import import (
@@ -504,7 +512,7 @@ def product_import_map(request):
     )
 
 
-@login_required
+@sales_module_required
 def product_add(request):
     company = _company(request)
     if request.method == "POST":
@@ -523,7 +531,7 @@ def product_add(request):
     )
 
 
-@login_required
+@sales_module_required
 def product_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Product, pk=pk, company=company)
@@ -541,7 +549,7 @@ def product_edit(request, pk):
     )
 
 
-@login_required
+@sales_module_required
 def subscription_list(request):
     company = _company(request)
     base_qs = company.subscriptions.select_related("client", "product", "vendor")
@@ -687,7 +695,7 @@ def _subscription_import_messages(
         )
 
 
-@login_required
+@sales_module_required
 def subscription_import_template(request):
     _company(request)
     fmt = (request.GET.get("format") or "xlsx").lower()
@@ -719,7 +727,7 @@ def subscription_import_template(request):
     return response
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def subscription_import(request):
     company = _company(request)
@@ -789,7 +797,7 @@ def _render_subscription_import_map(
     )
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def subscription_import_map(request):
     company = _company(request)
@@ -891,7 +899,7 @@ def subscription_import_map(request):
     )
 
 
-@login_required
+@sales_module_required
 def subscription_add(request):
     company = _company(request)
     asset_type = (
@@ -938,7 +946,7 @@ def _safe_next_url(raw: str, default: str) -> str:
     return default
 
 
-@login_required
+@sales_module_required
 @require_http_methods(["GET", "POST"])
 def subscription_renew(request, pk):
     company = _company(request)
@@ -992,7 +1000,7 @@ def subscription_renew(request, pk):
     )
 
 
-@login_required
+@sales_module_required
 def subscription_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(ClientSubscription, pk=pk, company=company)
@@ -1024,7 +1032,7 @@ def subscription_edit(request, pk):
     )
 
 
-@login_required
+@company_owner_required
 def support_ticket_list(request):
     company = _company(request)
 
@@ -1059,7 +1067,7 @@ def support_ticket_list(request):
         ).count(),
     }
 
-    assignees = User.objects.filter(company_profile=company).order_by("email")
+    assignees = company_users(company)
 
     return render(
         request,
@@ -1078,12 +1086,12 @@ def support_ticket_list(request):
     )
 
 
-@login_required
+@company_owner_required
 @require_http_methods(["POST"])
 def support_ticket_update(request, pk):
     company = _company(request)
     ticket = get_object_or_404(SupportTicket, pk=pk, company=company)
-    assignees = User.objects.filter(company_profile=company).order_by("email")
+    assignees = company_users(company)
     updates = []
     status = request.POST.get("status", "").strip()
     if status and status in dict(SupportTicket.Status.choices):
@@ -1122,7 +1130,7 @@ def support_ticket_update(request, pk):
     return redirect(url)
 
 
-@login_required
+@company_owner_required
 def support_ticket_add(request):
     company = _company(request)
     if request.method == "POST":
@@ -1146,7 +1154,7 @@ def support_ticket_add(request):
     )
 
 
-@login_required
+@company_owner_required
 @require_http_methods(["GET", "POST"])
 def support_ticket_detail(request, pk):
     company = _company(request)
@@ -1228,7 +1236,7 @@ def caselock_public_form(request, invite_id):
     )
 
 
-@login_required
+@company_owner_required
 def caselock_inbox_list(request):
     company = _company(request)
     qs = (
@@ -1243,7 +1251,7 @@ def caselock_inbox_list(request):
     )
 
 
-@login_required
+@company_owner_required
 def caselock_inbox_add(request):
     company = _company(request)
     if request.method == "POST":
@@ -1270,7 +1278,7 @@ def caselock_inbox_add(request):
     )
 
 
-@login_required
+@company_owner_required
 def caselock_inbox_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(CaseLockInbox, pk=pk, company=company)
@@ -1294,7 +1302,7 @@ def caselock_inbox_edit(request, pk):
     )
 
 
-@login_required
+@company_owner_required
 def caselock_submissions(request):
     company = _company(request)
     qs = (
@@ -1321,7 +1329,7 @@ def caselock_submissions(request):
     )
 
 
-@login_required
+@company_owner_required
 @require_http_methods(["POST"])
 def caselock_submission_status_update(request, pk):
     company = _company(request)

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Team access{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-users"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Team access</h1>
+      <p class="tracker-page-subtitle">Grant sales module access to teammates at {{ company.company_name }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <h2 class="tracker-card-section-title">Add teammate</h2>
+  <p class="muted">The person must already have a Tracker365 account with the same email they use to sign in.</p>
+  <form method="post" class="tracker-form-grid" style="margin-top: 1rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <div class="form-field-tracker form-field-tracker--full">
+      {{ add_form.email.label_tag }}
+      {{ add_form.email }}
+      {% if add_form.email.help_text %}<span class="tracker-helptext">{{ add_form.email.help_text }}</span>{% endif %}
+      {{ add_form.email.errors }}
+    </div>
+    <div class="form-field-tracker">
+      <label>{{ add_form.sales_access }} {{ add_form.sales_access.label }}</label>
+      {% if add_form.sales_access.help_text %}<span class="tracker-helptext">{{ add_form.sales_access.help_text }}</span>{% endif %}
+    </div>
+    {% if add_form.can_grant_sales %}
+    <div class="form-field-tracker">
+      <label>{{ add_form.can_grant_sales }} {{ add_form.can_grant_sales.label }}</label>
+      {% if add_form.can_grant_sales.help_text %}<span class="tracker-helptext">{{ add_form.can_grant_sales.help_text }}</span>{% endif %}
+    </div>
+    {% endif %}
+    <div class="form-field-tracker form-field-tracker--full">
+      <button type="submit" class="btn btn-primary">Add teammate</button>
+    </div>
+  </form>
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom">
+  <h2 class="tracker-card-section-title">Team members</h2>
+  <div class="table-wrap">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Sales access</th>
+          <th>Can grant sales</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for member in members %}
+        <tr>
+          <td>{{ member.user.email }}</td>
+          <td>{{ member.get_role_display }}</td>
+          <td>{% if member.sales_access %}Yes{% else %}No{% endif %}</td>
+          <td>{% if member.can_grant_sales %}Yes{% else %}No{% endif %}</td>
+          <td class="col-actions">
+            {% if member.role != "owner" %}
+            <form method="post" style="display:flex;flex-direction:column;gap:0.35rem;align-items:flex-start;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="member_id" value="{{ member.pk }}">
+              <label style="font-size:0.78rem;">
+                <input type="checkbox" name="sales_access" {% if member.sales_access %}checked{% endif %}>
+                Sales access
+              </label>
+              {% if requester_is_owner %}
+              <label style="font-size:0.78rem;">
+                <input type="checkbox" name="can_grant_sales" {% if member.can_grant_sales %}checked{% endif %}>
+                Can grant sales
+              </label>
+              {% endif %}
+              <div style="display:flex;gap:0.35rem;">
+                <button type="submit" class="btn-table-edit">Save</button>
+              </div>
+            </form>
+            <form method="post" style="margin-top:0.35rem;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove">
+              <input type="hidden" name="member_id" value="{{ member.pk }}">
+              <button type="submit" class="btn btn-ghost" style="font-size:0.75rem;">Remove</button>
+            </form>
+            {% else %}
+            <span class="muted">Owner</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="muted">No team members yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
