@@ -7,7 +7,7 @@ import smtplib
 from collections.abc import Sequence
 
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,8 @@ def send_smtp_outbound(
     to_addresses: list[str],
     subject: str,
     body: str,
+    html_body: str | None = None,
+    cc_addresses: Sequence[str] | None = None,
     attachments: Sequence[Attachment] | None = None,
 ) -> tuple[bool, str | None]:
     """Return (success, error_message)."""
@@ -81,6 +83,7 @@ def send_smtp_outbound(
     if not sender or not password:
         return False, "Outgoing email or app password is missing."
     recipients = [t.strip() for t in to_addresses if (t or "").strip()]
+    cc_recipients = [t.strip() for t in (cc_addresses or ()) if (t or "").strip()]
     if not recipients:
         return False, "No recipient email addresses were provided."
 
@@ -94,13 +97,25 @@ def send_smtp_outbound(
             password=password,
             use_tls=True,
         )
-        message = EmailMessage(
-            subject,
-            body,
-            sender,
-            recipients,
-            connection=conn,
-        )
+        if html_body:
+            message = EmailMultiAlternatives(
+                subject,
+                body,
+                sender,
+                recipients,
+                connection=conn,
+                cc=cc_recipients,
+            )
+            message.attach_alternative(html_body, "text/html")
+        else:
+            message = EmailMessage(
+                subject,
+                body,
+                sender,
+                recipients,
+                connection=conn,
+                cc=cc_recipients,
+            )
         for filename, content, mimetype in attachments or ():
             message.attach(filename, content, mimetype)
         message.send(fail_silently=False)
@@ -116,6 +131,8 @@ def send_company_outbound(
     to_addresses: list[str],
     subject: str,
     body: str,
+    html_body: str | None = None,
+    cc_addresses: Sequence[str] | None = None,
     attachments: Sequence[Attachment] | None = None,
 ) -> tuple[bool, str | None]:
     """Backward-compatible wrapper using company configured sender."""
@@ -128,5 +145,12 @@ def send_company_outbound(
         )
         return False, "Configure outgoing SMTP email and app password in Company profile."
     return send_smtp_outbound(
-        sender, password, to_addresses, subject, body, attachments=attachments
+        sender,
+        password,
+        to_addresses,
+        subject,
+        body,
+        html_body=html_body,
+        cc_addresses=cc_addresses,
+        attachments=attachments,
     )

@@ -52,6 +52,12 @@ class CompanyProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._original_support_email_app_password = (
+            self.instance.support_email_app_password if self.instance.pk else ""
+        )
+        self._original_outgoing_email_app_password = (
+            self.instance.outgoing_email_app_password if self.instance.pk else ""
+        )
         self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
         self.fields["expiry_client_emails_enabled"].help_text = (
             "Send renewal reminders to the client email on file when a subscription "
@@ -102,11 +108,11 @@ class CompanyProfileForm(forms.ModelForm):
         if self.instance.pk:
             if not self.cleaned_data.get("support_email_app_password"):
                 instance.support_email_app_password = (
-                    self.instance.support_email_app_password
+                    self._original_support_email_app_password
                 )
             if not self.cleaned_data.get("outgoing_email_app_password"):
                 instance.outgoing_email_app_password = (
-                    self.instance.outgoing_email_app_password
+                    self._original_outgoing_email_app_password
                 )
         selected_days = self.cleaned_data.get("expiry_notify_day_choices") or []
         if selected_days:

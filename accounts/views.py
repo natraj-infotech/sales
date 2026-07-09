@@ -85,6 +85,22 @@ def company_send_expiry_notifications(request):
         messages.error(request, "Only the company owner can send expiry notifications.")
         return redirect("company_setup")
 
+    form = CompanyProfileForm(request.POST, instance=company)
+    if not form.is_valid():
+        messages.error(
+            request,
+            "Fix the company profile settings below before sending expiry notifications.",
+        )
+        return render(
+            request,
+            "accounts/company_setup.html",
+            {"form": form, "editing": True, "company": company},
+        )
+
+    company = form.save(commit=False)
+    company.user = request.user
+    company.save()
+
     action = request.POST.get("action", "").strip()
     from business.expiry_notifications import (
         send_client_expiry_emails,

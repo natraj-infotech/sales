@@ -70,6 +70,28 @@ def _company(request):
     return company
 
 
+def _subscription_product_options(company, asset_type_prefilter=""):
+    products = company.products.all().order_by("name", "pk")
+    asset_type_prefilter = (asset_type_prefilter or "").strip().lower()
+    if asset_type_prefilter:
+        products = [
+            p
+            for p in products
+            if (p.asset_type or "").strip().lower() == asset_type_prefilter
+            or (p.category or "").strip().lower() == asset_type_prefilter
+        ]
+    return [
+        {
+            "id": p.pk,
+            "name": p.name,
+            "category": (p.category or "").strip(),
+            "asset_type": (p.asset_type or "").strip(),
+            "company_name": (p.company_name or "").strip(),
+        }
+        for p in products
+    ]
+
+
 def _delete_success_message(
     request,
     entity_count: int,
@@ -1202,6 +1224,7 @@ def subscription_add(request):
             "title": title,
             "subtitle": subtitle,
             "asset_type_locked": asset_type or "",
+            "product_options": _subscription_product_options(company, asset_type),
         },
     )
 
@@ -1295,6 +1318,7 @@ def subscription_edit(request, pk):
             "subtitle": subtitle,
             "object": obj,
             "asset_type_locked": "",
+            "product_options": _subscription_product_options(company),
         },
     )
 

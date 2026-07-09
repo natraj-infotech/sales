@@ -67,4 +67,78 @@
     </div>
   </div>
 </div>
+{{ product_options|json_script:"subscription-product-options" }}
+<script>
+  (function () {
+    var productSelect = document.getElementById("id_product");
+    var categorySelect = document.getElementById("id_category_filter");
+    var companySelect = document.getElementById("id_company_name_filter");
+    var optionsNode = document.getElementById("subscription-product-options");
+    if (!productSelect || !optionsNode) return;
+
+    var products = [];
+    try {
+      products = JSON.parse(optionsNode.textContent || "[]");
+    } catch (err) {
+      products = [];
+    }
+
+    function normalize(value) {
+      return (value || "").trim().toLowerCase();
+    }
+
+    function matchesFilters(product, categoryValue, companyValue) {
+      var productCategory = normalize(product.category);
+      var productType = normalize(product.asset_type);
+      var productCompany = normalize(product.company_name);
+      var wantedCategory = normalize(categoryValue);
+      var wantedCompany = normalize(companyValue);
+
+      if (wantedCategory && productCategory !== wantedCategory && productType !== wantedCategory) {
+        return false;
+      }
+      if (wantedCompany && productCompany !== wantedCompany) {
+        return false;
+      }
+      return true;
+    }
+
+    function rebuildProductOptions() {
+      var selectedValue = productSelect.value;
+      var categoryValue = categorySelect ? categorySelect.value : "";
+      var companyValue = companySelect ? companySelect.value : "";
+      var filtered = products.filter(function (product) {
+        return matchesFilters(product, categoryValue, companyValue);
+      });
+
+      productSelect.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select product";
+      productSelect.appendChild(placeholder);
+
+      filtered.forEach(function (product) {
+        var option = document.createElement("option");
+        option.value = String(product.id);
+        option.textContent = product.name;
+        if (String(product.id) === String(selectedValue)) {
+          option.selected = true;
+        }
+        productSelect.appendChild(option);
+      });
+
+      if (!filtered.some(function (product) { return String(product.id) === String(selectedValue); })) {
+        productSelect.value = "";
+      }
+    }
+
+    if (categorySelect) {
+      categorySelect.addEventListener("change", rebuildProductOptions);
+    }
+    if (companySelect) {
+      companySelect.addEventListener("change", rebuildProductOptions);
+    }
+    rebuildProductOptions();
+  })();
+</script>
 {% endblock %}

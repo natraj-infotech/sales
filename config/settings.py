@@ -230,4 +230,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "business.tasks.send_expiry_notifications_task",
         "schedule": crontab(hour=8, minute=0),
     },
+    "send-expiry-notifications-evening": {
+        "task": "business.tasks.send_expiry_notifications_task",
+        "schedule": crontab(hour=20, minute=0),
+    },
 }

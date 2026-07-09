@@ -6,13 +6,18 @@ import logging
 import re
 from collections import defaultdict
 from datetime import timedelta
+from html import escape
 from io import BytesIO
 
 from django.utils import timezone
 from openpyxl import Workbook
 
 from accounts.models import CompanyMember, CompanyProfile
-from business.models import ClientSubscription, SubscriptionExpiryNotice
+from business.models import (
+    ClientSubscription,
+    SubscriptionExpiryDispatch,
+    SubscriptionExpiryNotice,
+)
 from business.outbound_mail import send_company_outbound
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,7 @@ DIGEST_EXPORT_HEADERS: tuple[str, ...] = (
 XLSX_MIME = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+DOUBLE_SEND_DAYS_REMAINING = 10
 
 
 def parse_notify_days(raw: str) -> list[int]:
@@ -95,6 +101,30 @@ def _team_recipients(company: CompanyProfile) -> list[str]:
     return recipients
 
 
+def _client_reminder_cc_recipients(company: CompanyProfile) -> list[str]:
+    recipients: list[str] = []
+
+    owner_email = (company.user.email or "").strip().lower()
+    if owner_email:
+        recipients.append(owner_email)
+
+    company_email = (company.email or "").strip().lower()
+    if company_email and company_email not in recipients:
+        recipients.append(company_email)
+
+    member_emails = (
+        CompanyMember.objects.filter(company=company)
+        .select_related("user")
+        .order_by("user__email")
+    )
+    for membership in member_emails:
+        email = (membership.user.email or "").strip().lower()
+        if email and email not in recipients:
+            recipients.append(email)
+
+    return recipients
+
+
 def _active_expiring_on_day(company: CompanyProfile, days_before: int, today):
     target_end = today + timedelta(days=days_before)
     return (
@@ -121,6 +151,15 @@ def _active_expiring_within(company: CompanyProfile, max_days: int, today):
     )
 
 
+def _selected_threshold_window(days_remaining: int, thresholds: list[int]) -> int | None:
+    eligible = sorted(threshold for threshold in thresholds if days_remaining <= threshold)
+    return eligible[0] if eligible else None
+
+
+def _max_daily_sends(days_remaining: int) -> int:
+    return 2 if days_remaining <= DOUBLE_SEND_DAYS_REMAINING else 1
+
+
 def _format_subscription_line(sub: ClientSubscription) -> str:
     days = sub.days_until_expiry
     days_text = f"{days} day(s)" if days is not None else "—"
@@ -132,7 +171,17 @@ def _format_subscription_line(sub: ClientSubscription) -> str:
     )
 
 
-def _client_email_body(company: CompanyProfile, sub: ClientSubscription, days_before: int) -> str:
+def _subscription_bill_type(sub: ClientSubscription) -> str:
+    if sub.start_date and sub.end_date:
+        term_days = (sub.end_date - sub.start_date).days
+        if term_days >= 330:
+            return "Annual"
+        if term_days >= 25:
+            return "Monthly"
+    return "N/A"
+
+
+def _client_contact_lines(company: CompanyProfile) -> list[str]:
     contact_bits = [
         bit
         for bit in (
@@ -142,16 +191,138 @@ def _client_email_body(company: CompanyProfile, sub: ClientSubscription, days_be
         )
         if bit
     ]
-    contact_line = "\n".join(contact_bits) if contact_bits else "Please reply to this email."
+    return contact_bits
+
+
+def _client_reminder_subject(items: list[tuple[ClientSubscription, int, int | None]]) -> str:
+    if len(items) == 1:
+        sub, _, days_remaining = items[0]
+        remaining_text = (
+            f"{days_remaining} days" if days_remaining is not None else "soon"
+        )
+        return f"Subscription Renewal Reminder - {sub.product.name} expiring in {remaining_text}"
+    max_threshold = max(notice_threshold for _, notice_threshold, _ in items)
     return (
-        f"Dear {sub.client.name},\n\n"
-        f"This is a reminder that your subscription for {sub.product.name} "
-        f"with {company.company_name} will expire on {sub.end_date} "
-        f"({days_before} day(s) remaining).\n\n"
-        f"Subscription reference: {sub.subscription_list_id}\n"
-        f"Please contact us to renew and avoid interruption.\n\n"
-        f"{company.company_name}\n"
-        f"{contact_line}\n"
+        "Subscription Renewal Reminder - "
+        f"Services expiring within {max_threshold} days"
+    )
+
+
+def _client_email_body(
+    company: CompanyProfile,
+    client_name: str,
+    items: list[tuple[ClientSubscription, int, int | None]],
+) -> str:
+    contact_bits = _client_contact_lines(company)
+    threshold_days = max(notice_threshold for _, notice_threshold, _ in items)
+    lines = [
+        "Dear Sir/Madam,",
+        "",
+        f"Your subscription is expiring within the next {threshold_days} days.",
+        "",
+        "Kindly renew it to ensure there is no interruption to your services.",
+        "",
+        f"Company Name: {client_name}",
+        "",
+        "+----------------------------+----------+------------+",
+        "| Product Description        | Quantity | End Date   |",
+        "+----------------------------+----------+------------+",
+    ]
+    for sub, _, _ in items:
+        lines.extend(
+            [
+                f"| {sub.product.name[:26]:<26} | {str(sub.quantity):<8} | {sub.end_date.strftime('%d-%m-%Y'):<10} |",
+                f"| Subscription ID: {sub.subscription_list_id[:13]:<13} |          |            |",
+                f"| Bill Type: {_subscription_bill_type(sub):<16} |          |            |",
+                "+----------------------------+----------+------------+",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "We request you to share your confirmation at the earliest so that we can "
+            "initiate the renewal process and ensure uninterrupted service.",
+            "",
+            "Please feel free to contact us if you require any further information.",
+            "",
+            "Thank you.",
+            "",
+            "Best Regards,",
+            company.company_name,
+        ]
+    )
+    lines.extend(contact_bits)
+    return "\n".join(lines)
+
+
+def _client_email_html(
+    company: CompanyProfile,
+    client_name: str,
+    items: list[tuple[ClientSubscription, int, int | None]],
+) -> str:
+    threshold_days = max(notice_threshold for _, notice_threshold, _ in items)
+    rows: list[str] = []
+    for sub, _, _ in items:
+        rows.append(
+            """
+            <tr>
+              <td>
+                {product}<br>
+                Subscription ID: {subscription_id}<br>
+                Bill Type: {bill_type}
+              </td>
+              <td>{quantity}</td>
+              <td>{end_date}</td>
+            </tr>
+            """.format(
+                product=escape(sub.product.name),
+                subscription_id=escape(sub.subscription_list_id),
+                bill_type=escape(_subscription_bill_type(sub)),
+                quantity=escape(str(sub.quantity)),
+                end_date=escape(sub.end_date.strftime("%d-%m-%Y")),
+            ).strip()
+        )
+    contact_lines = "<br>\n  ".join(escape(bit) for bit in _client_contact_lines(company))
+    return """
+<p>Dear Sir/Madam,</p>
+
+<p>Your subscription is expiring within the next <strong>{threshold_days} days</strong>.</p>
+
+<p>Kindly renew it to ensure there is no interruption to your services.</p>
+
+<p><strong>Company Name:</strong> {client_name}</p>
+
+<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px;">
+  <thead style="background-color: #f2f2f2;">
+    <tr>
+      <th align="left">Product Description</th>
+      <th align="left">Quantity</th>
+      <th align="left">End Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {rows}
+  </tbody>
+</table>
+
+<p style="margin-top: 16px;">
+  We request you to share your confirmation at the earliest so that we can initiate the renewal process and ensure uninterrupted service.
+</p>
+
+<p>Please feel free to contact us if you require any further information.</p>
+
+<p>Thank you.</p>
+
+<p>
+  Best Regards,<br>
+  <strong>{company_name}</strong>{contact_lines}
+</p>
+""".strip().format(
+        threshold_days=escape(str(threshold_days)),
+        client_name=escape(client_name),
+        rows="\n    ".join(rows),
+        company_name=escape(company.company_name),
+        contact_lines=("<br>\n  " + contact_lines) if contact_lines else "",
     )
 
 
@@ -238,65 +409,98 @@ def send_client_expiry_emails(
         return 0, logs
 
     thresholds = parse_notify_days(company.expiry_notify_at_days)
-    grouped: dict[str, list[tuple[ClientSubscription, int]]] = defaultdict(list)
+    cc_recipients = _client_reminder_cc_recipients(company)
+    grouped: dict[
+        str, list[tuple[ClientSubscription, int, int | None, int]]
+    ] = defaultdict(list)
 
-    for days_before in thresholds:
-        for sub in _active_expiring_on_day(company, days_before, today):
-            if SubscriptionExpiryNotice.objects.filter(
-                subscription=sub,
-                days_before=days_before,
-            ).exists():
+    if force:
+        max_days = max(thresholds)
+        for sub in _active_expiring_within(company, max_days, today):
+            days_remaining = sub.days_until_expiry
+            if days_remaining is None:
+                continue
+            notice_threshold = _selected_threshold_window(days_remaining, thresholds)
+            if notice_threshold is None:
                 continue
             client_email = (sub.client.email or "").strip()
             if not client_email:
                 logs.append(
                     f"{company.company_name}: skipped subscription #{sub.pk} "
-                    f"({days_before} days) — client has no email."
+                    f"({days_remaining} days remaining) — client has no email."
                 )
                 continue
-            grouped[client_email].append((sub, days_before))
+            dispatch_count = SubscriptionExpiryDispatch.objects.filter(
+                subscription=sub,
+                threshold_window=notice_threshold,
+                sent_on=today,
+            ).count()
+            grouped[client_email].append(
+                (sub, notice_threshold, days_remaining, dispatch_count + 1)
+            )
+    else:
+        max_days = max(thresholds)
+        for sub in _active_expiring_within(company, max_days, today):
+            days_remaining = sub.days_until_expiry
+            if days_remaining is None:
+                continue
+            notice_threshold = _selected_threshold_window(days_remaining, thresholds)
+            if notice_threshold is None:
+                continue
+            client_email = (sub.client.email or "").strip()
+            if not client_email:
+                logs.append(
+                    f"{company.company_name}: skipped subscription #{sub.pk} "
+                    f"({days_remaining} days remaining) — client has no email."
+                )
+                continue
+            dispatch_count = SubscriptionExpiryDispatch.objects.filter(
+                subscription=sub,
+                threshold_window=notice_threshold,
+                sent_on=today,
+            ).count()
+            if dispatch_count >= _max_daily_sends(days_remaining):
+                continue
+            grouped[client_email].append(
+                (sub, notice_threshold, days_remaining, dispatch_count + 1)
+            )
 
     for client_email, items in grouped.items():
-        if len(items) == 1:
-            sub, days_before = items[0]
-            subject = (
-                f"Subscription expiring in {days_before} days — {sub.product.name}"
-            )
-            body = _client_email_body(company, sub, days_before)
-        else:
-            subject = f"Subscriptions expiring soon — {company.company_name}"
-            body_lines = [
-                f"Dear {items[0][0].client.name},",
-                "",
-                "The following subscriptions will expire soon:",
-                "",
-            ]
-            for sub, days_before in items:
-                body_lines.append(
-                    f"- {sub.product.name} — expires {sub.end_date} "
-                    f"({days_before} day(s) remaining) — ref {sub.subscription_list_id}"
-                )
-            body_lines.extend(
-                [
-                    "",
-                    "Please contact us to renew.",
-                    "",
-                    company.company_name,
-                ]
-            )
-            body = "\n".join(body_lines)
+        client_name = items[0][0].client.name
+        body_items = [(sub, threshold, days_remaining) for sub, threshold, days_remaining, _ in items]
+        subject = _client_reminder_subject(body_items)
+        body = _client_email_body(company, client_name, body_items)
+        html_body = _client_email_html(company, client_name, body_items)
 
-        ok, err = send_company_outbound(company, [client_email], subject, body)
+        ok, err = send_company_outbound(
+            company,
+            [client_email],
+            subject,
+            body,
+            html_body=html_body,
+            cc_addresses=cc_recipients,
+        )
         if ok:
             sent_count += 1
-            for sub, days_before in items:
+            for sub, notice_threshold, days_remaining, send_number in items:
+                SubscriptionExpiryDispatch.objects.get_or_create(
+                    subscription=sub,
+                    threshold_window=notice_threshold,
+                    sent_on=today,
+                    send_number=send_number,
+                )
                 SubscriptionExpiryNotice.objects.get_or_create(
                     subscription=sub,
-                    days_before=days_before,
+                    days_before=notice_threshold,
                 )
+            doubled = any(
+                (days_remaining is not None and days_remaining <= DOUBLE_SEND_DAYS_REMAINING)
+                for _, _, days_remaining, _ in items
+            )
+            cadence_note = " (double-send window)" if doubled else ""
             logs.append(
                 f"{company.company_name}: client reminder sent to {client_email} "
-                f"({len(items)} subscription(s))."
+                f"({len(items)} subscription(s)){cadence_note}."
             )
         else:
             logs.append(

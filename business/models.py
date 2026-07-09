@@ -174,6 +174,35 @@ class SubscriptionExpiryNotice(models.Model):
         return f"{self.subscription_id} @ {self.days_before} days"
 
 
+class SubscriptionExpiryDispatch(models.Model):
+    """Tracks each expiry reminder dispatch so daily quotas can be enforced."""
+
+    subscription = models.ForeignKey(
+        ClientSubscription,
+        on_delete=models.CASCADE,
+        related_name="expiry_dispatches",
+    )
+    threshold_window = models.PositiveSmallIntegerField()
+    sent_on = models.DateField()
+    send_number = models.PositiveSmallIntegerField(default=1)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-sent_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subscription", "threshold_window", "sent_on", "send_number"],
+                name="unique_expiry_dispatch_per_send_slot",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.subscription_id} @ {self.threshold_window} days "
+            f"on {self.sent_on} #{self.send_number}"
+        )
+
+
 class CaseLockInbox(models.Model):
     """
     Inbound mailbox tied to a product; unread mail triggers a Case lock form link

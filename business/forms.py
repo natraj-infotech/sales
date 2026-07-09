@@ -1,5 +1,6 @@
 from django import forms
 from django.db.models import Q
+from django.db.models.functions import Trim
 
 from .models import (
     Vendor,
@@ -195,14 +196,27 @@ class ProductForm(forms.ModelForm):
 def _subscription_product_queryset(company, data=None, asset_type_prefilter=None, instance=None):
     pq = company.products.all()
     if asset_type_prefilter:
-        pq = pq.filter(asset_type__iexact=asset_type_prefilter)
+        wanted = asset_type_prefilter.strip()
+        pq = pq.annotate(
+            trimmed_category=Trim("category"),
+            trimmed_asset_type=Trim("asset_type"),
+        ).filter(
+            Q(trimmed_category__iexact=wanted) | Q(trimmed_asset_type__iexact=wanted)
+        )
     if data is not None:
         cat = (data.get("category_filter") or "").strip()
         cn = (data.get("company_name_filter") or "").strip()
         if cat:
-            pq = pq.filter(Q(category__iexact=cat) | Q(asset_type__iexact=cat))
+            pq = pq.annotate(
+                trimmed_category=Trim("category"),
+                trimmed_asset_type=Trim("asset_type"),
+            ).filter(
+                Q(trimmed_category__iexact=cat) | Q(trimmed_asset_type__iexact=cat)
+            )
         if cn:
-            pq = pq.filter(company_name=cn)
+            pq = pq.annotate(trimmed_company_name=Trim("company_name")).filter(
+                trimmed_company_name__iexact=cn
+            )
     if instance and instance.pk and instance.product_id:
         pq = (pq | company.products.filter(pk=instance.product_id)).distinct()
     return pq
