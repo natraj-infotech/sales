@@ -20,6 +20,10 @@
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Import Excel
     </a>
+    <button type="submit" form="client-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected clients and all related subscriptions?');">
+      <svg aria-hidden="true"><use href="#i-trash"/></svg>
+      Delete selected
+    </button>
   </div>
 </div>
 {% endblock %}
@@ -32,29 +36,73 @@
       <button type="submit" class="btn btn-ghost">Search</button>
     </form>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Name</th><th>GST number</th><th>Email</th><th>Contact</th><th>Actions</th></tr></thead>
-      <tbody>
-        {% for c in object_list %}
-        <tr>
-          <td>{{ c.name }}</td>
-          <td>{{ c.gst_number|default:"—" }}</td>
-          <td>{{ c.email|default:"—" }}</td>
-          <td>{{ c.phone|default:"—" }}</td>
-          <td>
-            <a href="{% url 'client_edit' c.pk %}">Edit</a>
-            <form method="post" action="{% url 'client_delete' c.pk %}" style="display:inline;margin-left:0.5rem;" onsubmit="return confirm('Delete {{ c.name|escapejs }} and all related subscriptions?');">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-ghost" style="color:#dc2626;padding:0.2rem 0.5rem;font-size:0.8125rem;">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="5" class="muted" style="padding:1rem;">No clients. <a href="{% url 'client_add' %}">Add one</a>.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+
+  <form method="post" action="{% url 'client_bulk_delete' %}" id="client-bulk-form">
+    {% csrf_token %}
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro">
+        <thead>
+          <tr>
+            <th class="col-check">
+              <input type="checkbox" id="client-select-all" title="Select all" aria-label="Select all clients">
+            </th>
+            <th>Name</th>
+            <th>GST number</th>
+            <th>Email</th>
+            <th>Contact</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in object_list %}
+          <tr>
+            <td class="col-check">
+              <input type="checkbox" class="client-row-check" name="client_ids" value="{{ c.pk }}" aria-label="Select {{ c.name }}">
+            </td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.gst_number|default:"—" }}</td>
+            <td>{{ c.email|default:"—" }}</td>
+            <td>{{ c.phone|default:"—" }}</td>
+            <td class="col-actions">
+              <a class="btn-table-edit" href="{% url 'client_edit' c.pk %}">Edit</a>
+              <button type="submit"
+                class="btn btn-ghost"
+                style="color:#dc2626;padding:0.35rem 0.75rem;font-size:0.78rem;margin-top:0.35rem;display:block;"
+                formaction="{% url 'client_delete' c.pk %}"
+                formmethod="post"
+                onclick="return confirm('Delete {{ c.name|escapejs }} and all related subscriptions?');">
+                Delete
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+              No clients. <a href="{% url 'client_add' %}">Add one</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
 </div>
+
+<script>
+(function () {
+  var master = document.getElementById("client-select-all");
+  var boxes = document.querySelectorAll(".client-row-check");
+  if (!master || !boxes.length) return;
+  master.addEventListener("change", function () {
+    boxes.forEach(function (b) { b.checked = master.checked; });
+  });
+  boxes.forEach(function (b) {
+    b.addEventListener("change", function () {
+      var all = true;
+      boxes.forEach(function (x) { if (!x.checked) all = false; });
+      master.checked = all;
+    });
+  });
+})();
+</script>
 {% endblock %}

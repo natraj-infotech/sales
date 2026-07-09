@@ -34,6 +34,7 @@ urlpatterns = [
     path("vendors/<int:pk>/edit/", views.vendor_edit, name="vendor_edit"),
     path("vendors/<int:pk>/delete/", views.vendor_delete, name="vendor_delete"),
     path("clients/", views.client_list, name="client_list"),
+    path("clients/bulk-delete/", views.client_bulk_delete, name="client_bulk_delete"),
     path("clients/export/", views.client_export, name="client_export"),
     path("clients/import/", views.client_import, name="client_import"),
     path("clients/add/", views.client_add, name="client_add"),

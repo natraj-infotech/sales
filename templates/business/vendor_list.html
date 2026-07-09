@@ -23,7 +23,7 @@
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Import Excel
     </a>
-    <button type="submit" form="vendor-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected vendors and all related subscriptions?');">
+    <button type="submit" form="vendor-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected vendors, their linked products, and all related subscriptions?');">
       <svg aria-hidden="true"><use href="#i-trash"/></svg>
       Delete selected
     </button>
@@ -86,7 +86,7 @@
                 style="color:#dc2626;padding:0.35rem 0.75rem;font-size:0.78rem;margin-top:0.35rem;display:block;"
                 formaction="{% url 'vendor_delete' v.pk %}"
                 formmethod="post"
-                onclick="return confirm('Delete {{ v.name|escapejs }} and all related subscriptions?');">
+                onclick="return confirm('Delete {{ v.name|escapejs }}, linked products, and all related subscriptions?');">
                 Delete
               </button>
             </td>

@@ -71,12 +71,19 @@ def _company(request):
 
 
 def _delete_success_message(
-    request, entity_count: int, sub_count: int, entity_label: str
+    request,
+    entity_count: int,
+    sub_count: int,
+    entity_label: str,
+    *,
+    product_count: int = 0,
 ) -> None:
     if entity_count == 0:
         messages.warning(request, f"No {entity_label} were deleted.")
         return
     msg = f"Deleted {entity_count} {entity_label}."
+    if product_count:
+        msg += f" Removed {product_count} linked product(s)."
     if sub_count:
         msg += f" Removed {sub_count} related subscription(s)."
     messages.success(request, msg)
@@ -98,12 +105,18 @@ def _delete_products(company, qs) -> tuple[int, int]:
     return entity_count, sub_count
 
 
-def _delete_vendors(company, qs) -> tuple[int, int]:
-    sub_count = company.subscriptions.filter(vendor__in=qs).count()
+def _delete_vendors(company, qs) -> tuple[int, int, int]:
+    product_qs = company.products.filter(vendor__in=qs)
+    product_count = product_qs.count()
+    sub_count = company.subscriptions.filter(
+        Q(vendor__in=qs) | Q(product__in=product_qs)
+    ).count()
+    if product_count:
+        product_qs.delete()
     entity_count = qs.count()
     if entity_count:
         qs.delete()
-    return entity_count, sub_count
+    return entity_count, sub_count, product_count
 
 
 EXPIRING_SOON_DAYS = (90, 45, 30, 15, 7)
@@ -226,8 +239,10 @@ def vendor_bulk_delete(request):
         messages.warning(request, "Select at least one vendor to delete.")
         return redirect("vendor_list")
     qs = company.vendors.filter(pk__in=ids)
-    n, sub_count = _delete_vendors(company, qs)
-    _delete_success_message(request, n, sub_count, "vendor(s)")
+    n, sub_count, product_count = _delete_vendors(company, qs)
+    _delete_success_message(
+        request, n, sub_count, "vendor(s)", product_count=product_count
+    )
     return redirect("vendor_list")
 
 
@@ -236,8 +251,12 @@ def vendor_bulk_delete(request):
 def vendor_delete(request, pk):
     company = _company(request)
     obj = get_object_or_404(Vendor, pk=pk, company=company)
-    n, sub_count = _delete_vendors(company, company.vendors.filter(pk=obj.pk))
-    _delete_success_message(request, n, sub_count, "vendor")
+    n, sub_count, product_count = _delete_vendors(
+        company, company.vendors.filter(pk=obj.pk)
+    )
+    _delete_success_message(
+        request, n, sub_count, "vendor", product_count=product_count
+    )
     return redirect("vendor_list")
 
 
@@ -453,6 +472,20 @@ def client_edit(request, pk):
             "object": obj,
         },
     )
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def client_bulk_delete(request):
+    company = _company(request)
+    ids = request.POST.getlist("client_ids")
+    if not ids:
+        messages.warning(request, "Select at least one client to delete.")
+        return redirect("client_list")
+    qs = company.clients.filter(pk__in=ids)
+    n, sub_count = _delete_clients(company, qs)
+    _delete_success_message(request, n, sub_count, "client(s)")
+    return redirect("client_list")
 
 
 @sales_module_required
