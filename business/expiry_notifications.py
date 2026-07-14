@@ -206,15 +206,23 @@ def _client_reminder_subject(items: list[tuple[ClientSubscription, int, int | No
         "Subscription Renewal Reminder - "
         f"Services expiring within {max_threshold} days"
     )
-
+def _days_left_badge(days_remaining: int | None) -> tuple[str, str, str]:
+    """Return (label, emoji, accent_hex) for days-left status."""
+    if days_remaining is None:
+        return "—", "⚪", "#6B7280"
+    if days_remaining <= 7:
+        return f"{days_remaining} days", "🔴", "#DC2626"
+    if days_remaining <= 15:
+        return f"{days_remaining} days", "🟠", "#D97706"
+    return f"{days_remaining} days", "🟢", "#16A34A"
 
 def _client_email_body(
     company: CompanyProfile,
-    client_name: str,
-    items: list[tuple[ClientSubscription, int, int | None]],
+    sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
 ) -> str:
     contact_bits = _client_contact_lines(company)
-    threshold_days = max(notice_threshold for _, notice_threshold, _ in items)
+    all_items = [item for _, items in sections for item in items]
+    threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
     lines = [
         "Dear Sir/Madam,",
         "",
@@ -222,24 +230,30 @@ def _client_email_body(
         "",
         "Kindly renew it to ensure there is no interruption to your services.",
         "",
-        f"Company Name: {client_name}",
-        "",
-        "+----------------------------+----------+------------+",
-        "| Product Description        | Quantity | End Date   |",
-        "+----------------------------+----------+------------+",
     ]
-    for sub, _, _ in items:
+    for client_name, items in sections:
         lines.extend(
             [
-                f"| {sub.product.name[:26]:<26} | {str(sub.quantity):<8} | {sub.end_date.strftime('%d-%m-%Y'):<10} |",
-                f"| Subscription ID: {sub.subscription_list_id[:13]:<13} |          |            |",
-                f"| Bill Type: {_subscription_bill_type(sub):<16} |          |            |",
-                "+----------------------------+----------+------------+",
+                f"Company Name: {client_name}",
+                "",
+                "+----------------------------+----------+------------+-----------+",
+                "| Product Description        | Quantity | End Date   | Days Left |",
+                "+----------------------------+----------+------------+-----------+",
             ]
         )
+        for sub, _, days_remaining in items:
+            days_text = "—" if days_remaining is None else str(days_remaining)
+            lines.extend(
+                [
+                    f"| {sub.product.name[:26]:<26} | {str(sub.quantity):<8} | {sub.end_date.strftime('%d-%m-%Y'):<10} | {days_text:<9} |",
+                    f"| Subscription ID: {sub.subscription_list_id[:13]:<13} |          |            |           |",
+                    f"| Bill Type: {_subscription_bill_type(sub):<16} |          |            |           |",
+                    "+----------------------------+----------+------------+-----------+",
+                ]
+            )
+        lines.append("")
     lines.extend(
         [
-            "",
             "We request you to share your confirmation at the earliest so that we can "
             "initiate the renewal process and ensure uninterrupted service.",
             "",
@@ -254,77 +268,200 @@ def _client_email_body(
     lines.extend(contact_bits)
     return "\n".join(lines)
 
-
 def _client_email_html(
     company: CompanyProfile,
-    client_name: str,
-    items: list[tuple[ClientSubscription, int, int | None]],
+    sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
 ) -> str:
-    threshold_days = max(notice_threshold for _, notice_threshold, _ in items)
-    rows: list[str] = []
-    for sub, _, _ in items:
-        rows.append(
+    all_items = [item for _, items in sections for item in items]
+    threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
+
+    font = "'Segoe UI', Arial, Helvetica, sans-serif"
+    text = "#374151"
+    muted = "#6B7280"
+    blue = "#2563EB"
+    border = "#E5E7EB"
+    header_bg = "#2563EB"
+    page_bg = "#F3F4F6"
+    card_bg = "#FFFFFF"
+
+    section_blocks: list[str] = []
+    for client_name, items in sections:
+        rows: list[str] = []
+        for sub, _, days_remaining in items:
+            label, emoji, accent = _days_left_badge(days_remaining)
+            rows.append(
+                """
+                <tr>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;line-height:1.45;vertical-align:top;">
+                    <strong style="color:{text};">{product}</strong><br>
+                    <span style="color:{muted};font-size:12px;">Subscription ID: {subscription_id}</span><br>
+                    <span style="color:{muted};font-size:12px;">Bill Type: {bill_type}</span>
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;" align="center">
+                    {quantity}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;">
+                    {end_date}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};font-family:{font};font-size:13px;vertical-align:middle;" align="center">
+                    <span style="display:inline-block;padding:6px 10px;border:1px solid {accent};border-radius:4px;color:{accent};background-color:#FFFFFF;white-space:nowrap;">
+                      {emoji} {label}
+                    </span>
+                  </td>
+                </tr>
+                """.format(
+                    border=border,
+                    text=text,
+                    font=font,
+                    muted=muted,
+                    accent=accent,
+                    product=escape(sub.product.name),
+                    subscription_id=escape(sub.subscription_list_id),
+                    bill_type=escape(_subscription_bill_type(sub)),
+                    quantity=escape(str(sub.quantity)),
+                    end_date=escape(sub.end_date.strftime("%d-%m-%Y")),
+                    emoji=emoji,
+                    label=escape(label),
+                ).strip()
+            )
+
+        section_blocks.append(
             """
-            <tr>
-              <td>
-                {product}<br>
-                Subscription ID: {subscription_id}<br>
-                Bill Type: {bill_type}
-              </td>
-              <td>{quantity}</td>
-              <td>{end_date}</td>
-            </tr>
-            """.format(
-                product=escape(sub.product.name),
-                subscription_id=escape(sub.subscription_list_id),
-                bill_type=escape(_subscription_bill_type(sub)),
-                quantity=escape(str(sub.quantity)),
-                end_date=escape(sub.end_date.strftime("%d-%m-%Y")),
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;background-color:{card_bg};border:1px solid {border};border-radius:6px;">
+  <tr>
+    <td style="padding:16px 18px 10px 18px;font-family:{font};">
+      <p style="margin:0;font-size:15px;line-height:1.4;color:{blue};">
+        <strong>🏢 Company Name:</strong> {client_name}
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 18px 18px 18px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
+        <thead>
+          <tr>
+            <th align="left" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Product Description</th>
+            <th align="center" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Qty</th>
+            <th align="left" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">End Date</th>
+            <th align="center" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Days Left</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows}
+        </tbody>
+      </table>
+    </td>
+  </tr>
+</table>
+""".format(
+                card_bg=card_bg,
+                border=border,
+                font=font,
+                blue=blue,
+                header_bg=header_bg,
+                muted=muted,
+                client_name=escape(client_name),
+                rows="\n".join(rows),
             ).strip()
         )
-    contact_lines = "<br>\n  ".join(escape(bit) for bit in _client_contact_lines(company))
+
+    contact_bits = _client_contact_lines(company)
+    contact_html = ""
+    if contact_bits:
+        contact_html = (
+            "<br>\n              "
+            + "<br>\n              ".join(escape(bit) for bit in contact_bits)
+        )
+
+    reply_to = (company.outgoing_email or company.email or "").strip()
+    cta_html = ""
+    if reply_to:
+        cta_html = """
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;">
+                <tr>
+                  <td align="center" bgcolor="{blue}" style="background-color:{blue};border-radius:4px;">
+                    <a href="mailto:{reply_to}?subject={subject}"
+                       style="display:inline-block;padding:12px 22px;font-family:{font};font-size:14px;font-weight:600;color:#FFFFFF;text-decoration:none;">
+                      ✉️ Confirm renewal
+                    </a>
+                  </td>
+                </tr>
+              </table>
+""".format(
+            blue=blue,
+            font=font,
+            reply_to=escape(reply_to),
+            subject=escape("Subscription renewal confirmation"),
+        )
+
     return """
-<p>Dear Sir/Madam,</p>
-
-<p>Your subscription is expiring within the next <strong>{threshold_days} days</strong>.</p>
-
-<p>Kindly renew it to ensure there is no interruption to your services.</p>
-
-<p><strong>Company Name:</strong> {client_name}</p>
-
-<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 14px;">
-  <thead style="background-color: #f2f2f2;">
-    <tr>
-      <th align="left">Product Description</th>
-      <th align="left">Quantity</th>
-      <th align="left">End Date</th>
-    </tr>
-  </thead>
-  <tbody>
-    {rows}
-  </tbody>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:0;background-color:{page_bg};">
+  <tr>
+    <td align="center" style="padding:24px 12px;background-color:{page_bg};">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:{card_bg};border:1px solid {border};border-radius:8px;">
+        <tr>
+          <td style="padding:28px 28px 8px 28px;font-family:{font};">
+            <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">
+              🔔 Renewal reminder
+            </p>
+            <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:{blue};font-weight:700;font-family:{font};">
+              Subscription expiry notice
+            </h1>
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              Dear Sir/Madam,
+            </p>
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              Your subscription is expiring within the next <strong style="color:{blue};">{threshold_days} days</strong>.
+            </p>
+            <p style="margin:0 0 22px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              Kindly renew it to ensure there is no interruption to your services.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 28px;">
+            {sections}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 28px 28px 28px;font-family:{font};">
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
+              We request you to share your confirmation at the earliest so that we can initiate the renewal process and ensure uninterrupted service.
+            </p>
+            {cta_html}
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
+              Please feel free to contact us if you require any further information.
+            </p>
+            <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
+              Thank you.
+            </p>
+            <p style="margin:16px 0 0 0;font-size:15px;line-height:1.55;color:{text};">
+              Best Regards,<br>
+              <strong style="color:{blue};">{company_name}</strong>{contact_html}
+            </p>
+            <p style="margin:20px 0 0 0;padding-top:16px;border-top:1px solid {border};font-size:12px;line-height:1.5;color:{muted};">
+              🟢 &gt;15 days &nbsp;&nbsp; 🟠 8–15 days &nbsp;&nbsp; 🔴 ≤7 days
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 </table>
-
-<p style="margin-top: 16px;">
-  We request you to share your confirmation at the earliest so that we can initiate the renewal process and ensure uninterrupted service.
-</p>
-
-<p>Please feel free to contact us if you require any further information.</p>
-
-<p>Thank you.</p>
-
-<p>
-  Best Regards,<br>
-  <strong>{company_name}</strong>{contact_lines}
-</p>
 """.strip().format(
+        page_bg=page_bg,
+        card_bg=card_bg,
+        border=border,
+        font=font,
+        blue=blue,
+        text=text,
+        muted=muted,
         threshold_days=escape(str(threshold_days)),
-        client_name=escape(client_name),
-        rows="\n    ".join(rows),
+        sections="\n".join(section_blocks),
+        cta_html=cta_html,
         company_name=escape(company.company_name),
-        contact_lines=("<br>\n  " + contact_lines) if contact_lines else "",
+        contact_html=contact_html,
     )
-
 
 def _team_digest_body(
     company: CompanyProfile, subs, today, *, max_days: int, attachment_name: str
@@ -466,11 +603,26 @@ def send_client_expiry_emails(
             )
 
     for client_email, items in grouped.items():
-        client_name = items[0][0].client.name
-        body_items = [(sub, threshold, days_remaining) for sub, threshold, days_remaining, _ in items]
+        by_client: dict[int, list[tuple[ClientSubscription, int, int | None, int]]] = {}
+        for sub, notice_threshold, days_remaining, send_number in items:
+            by_client.setdefault(sub.client_id, []).append(
+                (sub, notice_threshold, days_remaining, send_number)
+            )
+
+        sections = [
+            (
+                client_items[0][0].client.name,
+                [
+                    (sub, threshold, days_remaining)
+                    for sub, threshold, days_remaining, _ in client_items
+                ],
+            )
+            for client_items in by_client.values()
+        ]
+        body_items = [item for _, client_items in sections for item in client_items]
         subject = _client_reminder_subject(body_items)
-        body = _client_email_body(company, client_name, body_items)
-        html_body = _client_email_html(company, client_name, body_items)
+        body = _client_email_body(company, sections)
+        html_body = _client_email_html(company, sections)
 
         ok, err = send_company_outbound(
             company,
@@ -510,7 +662,6 @@ def send_client_expiry_emails(
                 logs.append(err)
 
     return sent_count, logs
-
 
 def send_team_expiry_digest(
     company: CompanyProfile,

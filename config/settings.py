@@ -112,7 +112,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 
@@ -228,10 +228,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "send-expiry-notifications-daily": {
         "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(hour=8, minute=0),
+        "schedule": crontab(hour=11, minute=0),
     },
     "send-expiry-notifications-evening": {
         "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(hour=20, minute=0),
+        "schedule": crontab(hour=18, minute=0),
     },
 }
