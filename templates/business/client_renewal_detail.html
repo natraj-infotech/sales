@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Renewal response — {{ invite.client_email }}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Renewal response</h1>
+      <p class="tracker-page-subtitle">{{ invite.client_email }}</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_renewal_list' %}">Back to client renewals</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .cr-quote-panel {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    background: #f8fbff;
+  }
+  .cr-quote-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    margin-top: 0.75rem;
+  }
+  .cr-quote-note {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--muted, #64748b);
+    line-height: 1.45;
+  }
+  .cr-quote-status {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .cr-quote-status--sent { background: #d1fae5; color: #065f46; }
+  .cr-quote-status--pending { background: #fef3c7; color: #92400e; }
+  .cr-quote-status--error { background: #fee2e2; color: #991b1b; }
+</style>
+
+<div class="tracker-card" style="margin-bottom:1rem;">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Email timeline</h3>
+  <div class="tracker-mock-grid">
+    <div class="tracker-mock-field">
+      <span class="tracker-mock-label">Client email</span>
+      <div class="tracker-mock-readonly">{{ invite.client_email }}</div>
+    </div>
+    <div class="tracker-mock-field">
+      <span class="tracker-mock-label">Email sent</span>
+      <div class="tracker-mock-readonly">
+        {% if invite.email_sent_at %}{{ invite.email_sent_at|date:"d M Y, H:i" }}{% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="tracker-mock-field">
+      <span class="tracker-mock-label">Email read (Outlook)</span>
+      <div class="tracker-mock-readonly">
+        {% if invite.read_at %}
+          {{ invite.read_at|date:"d M Y, H:i" }}
+          {% if invite.read_source == "outlook_receipt" %} — read receipt{% elif invite.read_source == "outlook_open" %} — opened in email{% endif %}
+        {% else %}Not read{% endif %}
+      </div>
+    </div>
+    <div class="tracker-mock-field">
+      <span class="tracker-mock-label">Response received</span>
+      <div class="tracker-mock-readonly">
+        {{ invite.submitted_at|date:"d M Y, H:i" }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Renewal details</h3>
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide">
+      <thead>
+        <tr>
+          <th>Company name</th>
+          <th>Product</th>
+          <th>Current quantity</th>
+          <th>Renewal count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>{{ line.company_name }}</td>
+          <td>{{ line.product_name }}</td>
+          <td>{{ line.current_quantity }}</td>
+          <td><strong>{{ line.renewal_count }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="cr-quote-panel">
+    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:space-between;">
+      <h4 class="tracker-card-section-title" style="margin:0;">Zoho quotation</h4>
+      {% if invite.quotation_sent_at %}
+      <span class="cr-quote-status cr-quote-status--sent">Created in Zoho</span>
+      {% elif invite.quotation_error %}
+      <span class="cr-quote-status cr-quote-status--error">Last attempt failed</span>
+      {% else %}
+      <span class="cr-quote-status cr-quote-status--pending">Not sent</span>
+      {% endif %}
+    </div>
+
+    {% if invite.quotation_sent_at %}
+    <p class="cr-quote-note">
+      Quotation created {{ invite.quotation_sent_at|date:"d M Y, H:i" }}
+      {% if invite.zoho_quote_number %} · {{ invite.zoho_quote_number }}{% endif %}
+    </p>
+    {% elif invite.quotation_error %}
+    <p class="cr-quote-note" style="color:#b91c1c;">{{ invite.quotation_error }}</p>
+    {% else %}
+    <p class="cr-quote-note">
+      Create a Zoho CRM quote from the renewal quantities above
+      ({{ quoteable_count }} line{{ quoteable_count|pluralize }} with qty &gt; 0).
+      Price is taken from each subscription’s current billing amount.
+    </p>
+    {% endif %}
+
+    <div class="cr-quote-actions">
+      {% if zoho_connected and zoho_configured and quoteable_count %}
+      <form method="post" action="{% url 'client_renewal_send_quotation' invite.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">
+          {% if invite.quotation_sent_at %}Create quotation again{% else %}Send quotation to Zoho{% endif %}
+        </button>
+      </form>
+      {% elif not zoho_configured %}
+      <p class="cr-quote-note" style="margin:0;">Add ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET in server .env first.</p>
+      {% elif not zoho_connected %}
+      <a class="btn btn-primary" href="{% url 'company_setup' %}">Connect Zoho in Company profile</a>
+      {% else %}
+      <p class="cr-quote-note" style="margin:0;">No lines with renewal quantity greater than zero.</p>
+      {% endif %}
+
+      {% if invite.zoho_quote_url %}
+      <a class="btn btn-ghost" href="{{ invite.zoho_quote_url }}" target="_blank" rel="noopener">
+        Open quote in Zoho
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

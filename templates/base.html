@@ -235,39 +235,14 @@
       margin-left: 72px;
       width: calc(100% - 72px);
     }
-    /* Collapsed rail: expand labels on hover (main shifts so content stays clear) */
-    .layout.sidebar-collapsed .sidebar:hover {
-      width: 260px;
-      min-width: 260px;
+    .sidebar-toggle-icon-expand {
+      display: none;
     }
-    .layout.sidebar-collapsed .sidebar:hover .sidebar-top {
-      justify-content: flex-start;
-      padding-left: 1rem;
-      padding-right: 1rem;
+    .layout.sidebar-collapsed .sidebar-toggle-icon-collapse {
+      display: none;
     }
-    .layout.sidebar-collapsed .sidebar:hover .sidebar-brand {
+    .layout.sidebar-collapsed .sidebar-toggle-icon-expand {
       display: block;
-    }
-    .layout.sidebar-collapsed .sidebar:hover h1 {
-      display: block;
-    }
-    .layout.sidebar-collapsed .sidebar:hover .nav-text {
-      position: static;
-      width: auto;
-      height: auto;
-      padding: 0;
-      margin: 0;
-      overflow: visible;
-      clip: auto;
-      border: 0;
-    }
-    .layout.sidebar-collapsed .sidebar:hover nav a {
-      justify-content: flex-start;
-      padding: 0.62rem 0.85rem;
-    }
-    .layout.sidebar-collapsed:has(.sidebar:hover) .tracker-main {
-      margin-left: 260px;
-      width: calc(100% - 260px);
     }
 
     /* Blue page header (Tracker365 strip) */
@@ -467,6 +442,10 @@
     .guest-main {
       width: 100%;
       max-width: 440px;
+    }
+    .guest-wrap--wide main,
+    .guest-main--wide {
+      max-width: min(1100px, 100%);
     }
 
     .card {
@@ -1503,12 +1482,13 @@
 </head>
 <body>
   {% include "includes/tracker_svg_sprite.html" %}
-  {% if user.is_authenticated %}
+  {% if user.is_authenticated and not public_page %}
   <div class="layout" id="app-layout">
     <aside class="sidebar" id="app-sidebar">
       <div class="sidebar-top">
-        <button type="button" class="sidebar-hamburger-btn" id="sidebar-toggle" title="Toggle menu" aria-label="Toggle navigation menu" aria-expanded="true" aria-controls="app-sidebar">
-          <svg aria-hidden="true"><use href="#i-menu"/></svg>
+        <button type="button" class="sidebar-hamburger-btn" id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="app-sidebar">
+          <svg class="sidebar-toggle-icon-collapse" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+          <svg class="sidebar-toggle-icon-expand" aria-hidden="true"><use href="#i-chevron-right"/></svg>
         </button>
       </div>
       <div class="sidebar-brand">
@@ -1527,6 +1507,10 @@
         <a href="{% url 'subscription_list' %}" title="Client subscriptions">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-credit-card"/></svg>
           <span class="nav-text">Client subscriptions</span>
+        </a>
+        <a href="{% url 'client_renewal_list' %}" title="Client renewals">
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-mail"/></svg>
+          <span class="nav-text">Client renewals</span>
         </a>
         <a href="{% url 'vendor_list' %}" title="Vendors">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-id-card"/></svg>
@@ -1589,6 +1573,14 @@
     function setCollapsed(collapsed) {
       layout.classList.toggle("sidebar-collapsed", collapsed);
       toggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      toggleBtn.setAttribute(
+        "aria-label",
+        collapsed ? "Expand sidebar" : "Collapse sidebar"
+      );
+      toggleBtn.setAttribute(
+        "title",
+        collapsed ? "Expand sidebar" : "Collapse sidebar"
+      );
       try {
         localStorage.setItem(KEY, collapsed ? "1" : "0");
       } catch (e) {}
@@ -1602,8 +1594,8 @@
   })();
   </script>
   {% else %}
-  <div class="guest-wrap">
-    <main class="guest-main">
+  <div class="guest-wrap{% if public_page %} guest-wrap--wide{% endif %}">
+    <main class="guest-main{% if public_page %} guest-main--wide{% endif %}">
       {% block content_guest %}{% endblock %}
     </main>
   </div>

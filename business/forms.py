@@ -1,4 +1,5 @@
 from django import forms
+from django.forms import formset_factory
 from django.db.models import Q
 from django.db.models.functions import Trim
 
@@ -333,27 +334,6 @@ class ClientSubscriptionForm(forms.ModelForm):
         return obj
 
 
-class CaseLockInboxForm(forms.ModelForm):
-    class Meta:
-        model = CaseLockInbox
-        fields = (
-            "product",
-            "mailbox_email",
-            "mailbox_app_password",
-            "is_active",
-            "notes",
-        )
-        widgets = {
-            "mailbox_app_password": forms.PasswordInput(render_value=True),
-            "notes": forms.Textarea(attrs={"rows": 2}),
-        }
-
-    def __init__(self, *args, company=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if company is not None:
-            self.fields["product"].queryset = company.products.all().order_by("name")
-
-
 class CaseLockPublicForm(forms.ModelForm):
     class Meta:
         model = CaseLockSubmission
@@ -386,6 +366,45 @@ class CaseLockPublicForm(forms.ModelForm):
         )
 
 
+class RenewalConfirmLineForm(forms.Form):
+    line_id = forms.IntegerField(widget=forms.HiddenInput)
+    renewal_count = forms.IntegerField(
+        min_value=0,
+        label="Renewal count",
+        widget=forms.NumberInput(
+            attrs={
+                "min": 0,
+                "placeholder": "Qty",
+                "aria-label": "Renewal quantity",
+            }
+        ),
+    )
+
+
+RenewalConfirmLineFormSet = formset_factory(RenewalConfirmLineForm, extra=0)
+
+
+class CaseLockInboxForm(forms.ModelForm):
+    class Meta:
+        model = CaseLockInbox
+        fields = (
+            "product",
+            "mailbox_email",
+            "mailbox_app_password",
+            "is_active",
+            "notes",
+        )
+        widgets = {
+            "mailbox_app_password": forms.PasswordInput(render_value=True),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if company is not None:
+            self.fields["product"].queryset = company.products.all().order_by("name")
+
+
 class SubscriptionRenewForm(forms.Form):
     start_date = forms.DateField(
         label="New start date",
@@ -400,6 +419,20 @@ class SubscriptionRenewForm(forms.Form):
         widget=forms.DateInput(
             attrs={"type": "date", "placeholder": "dd-mm-yyyy"},
             format="%Y-%m-%d",
+        ),
+    )
+    quantity = forms.IntegerField(
+        label="New quantity",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": 0, "placeholder": "Qty"}),
+    )
+    billing_amount = forms.DecimalField(
+        label="New price",
+        min_value=0,
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={"min": 0, "step": "0.01", "placeholder": "0.00"}
         ),
     )
 

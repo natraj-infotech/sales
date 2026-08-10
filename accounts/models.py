@@ -50,6 +50,13 @@ class CompanyProfile(models.Model):
         related_name="company_profile",
     )
     company_name = models.CharField(max_length=255)
+    company_logo = models.ImageField(
+        "company logo",
+        upload_to="company_logos/",
+        blank=True,
+        null=True,
+        help_text="Shown in the header of client expiry reminder emails.",
+    )
     phone = models.CharField(max_length=64, blank=True)
     email = models.EmailField("company email", blank=True)
     address = models.TextField(blank=True)
@@ -93,11 +100,22 @@ class CompanyProfile(models.Model):
         help_text="Optional extra recipients for the team digest (comma or newline separated).",
     )
     expiry_team_digest_last_sent = models.DateField(null=True, blank=True)
+    zoho_refresh_token = models.TextField(blank=True)
+    zoho_access_token = models.TextField(blank=True)
+    zoho_access_token_expires_at = models.DateTimeField(null=True, blank=True)
+    zoho_api_domain = models.CharField(max_length=128, blank=True)
+    zoho_accounts_domain = models.CharField(max_length=128, blank=True)
+    zoho_connected_email = models.EmailField(blank=True)
+    zoho_connected_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.company_name
+
+    @property
+    def zoho_connected(self) -> bool:
+        return bool((self.zoho_refresh_token or "").strip())
 
     def company_user_ids(self):
         member_ids = self.members.values_list("user_id", flat=True)

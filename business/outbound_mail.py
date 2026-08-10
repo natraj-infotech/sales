@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import smtplib
 from collections.abc import Sequence
+from email.mime.image import MIMEImage
 
 from django.conf import settings
 from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connection
@@ -12,6 +13,8 @@ from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connectio
 logger = logging.getLogger(__name__)
 
 Attachment = tuple[str, bytes, str]
+# (content_id, filename, content_bytes, mimetype)
+InlineImage = tuple[str, str, bytes, str]
 
 
 def _smtp_for_address(email_addr: str) -> tuple[str, int]:
@@ -76,6 +79,8 @@ def send_smtp_outbound(
     html_body: str | None = None,
     cc_addresses: Sequence[str] | None = None,
     attachments: Sequence[Attachment] | None = None,
+    inline_images: Sequence[InlineImage] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[bool, str | None]:
     """Return (success, error_message)."""
     sender = (from_email or "").strip()
@@ -107,6 +112,8 @@ def send_smtp_outbound(
                 cc=cc_recipients,
             )
             message.attach_alternative(html_body, "text/html")
+            if inline_images:
+                message.mixed_subtype = "related"
         else:
             message = EmailMessage(
                 subject,
@@ -116,8 +123,21 @@ def send_smtp_outbound(
                 connection=conn,
                 cc=cc_recipients,
             )
+        for content_id, filename, content, mimetype in inline_images or ():
+            maintype, _, subtype = (mimetype or "image/png").partition("/")
+            if maintype != "image":
+                subtype = "png"
+            mime_image = MIMEImage(content, _subtype=subtype or "png")
+            mime_image.add_header("Content-ID", f"<{content_id}>")
+            mime_image.add_header(
+                "Content-Disposition", "inline", filename=filename or "logo.png"
+            )
+            message.attach(mime_image)
         for filename, content, mimetype in attachments or ():
             message.attach(filename, content, mimetype)
+        for header, value in (extra_headers or {}).items():
+            if value:
+                message.extra_headers[header] = value
         message.send(fail_silently=False)
         return True, None
     except Exception as exc:
@@ -134,6 +154,7 @@ def send_company_outbound(
     html_body: str | None = None,
     cc_addresses: Sequence[str] | None = None,
     attachments: Sequence[Attachment] | None = None,
+    inline_images: Sequence[InlineImage] | None = None,
 ) -> tuple[bool, str | None]:
     """Backward-compatible wrapper using company configured sender."""
     sender = (company.outgoing_email or "").strip()
@@ -153,4 +174,5 @@ def send_company_outbound(
         html_body=html_body,
         cc_addresses=cc_addresses,
         attachments=attachments,
+        inline_images=inline_images,
     )

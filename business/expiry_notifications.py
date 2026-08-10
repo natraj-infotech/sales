@@ -9,6 +9,8 @@ from datetime import timedelta
 from html import escape
 from io import BytesIO
 
+from django.conf import settings
+from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
 
@@ -17,8 +19,11 @@ from business.models import (
     ClientSubscription,
     SubscriptionExpiryDispatch,
     SubscriptionExpiryNotice,
+    SubscriptionRenewalInvite,
+    SubscriptionRenewalInviteLine,
 )
 from business.outbound_mail import send_company_outbound
+from business.renewal_read_tracking import send_renewal_email
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,42 @@ XLSX_MIME = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 DOUBLE_SEND_DAYS_REMAINING = 10
+
+
+def _public_base_url() -> str:
+    base = (getattr(settings, "PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+    if base:
+        return base
+    return "http://127.0.0.1:8000"
+
+
+def renewal_invite_absolute_url(invite: SubscriptionRenewalInvite) -> str:
+    path = reverse("renewal_confirm_public", kwargs={"invite_id": str(invite.pk)})
+    return f"{_public_base_url()}{path}"
+
+
+def _create_renewal_invite(
+    company: CompanyProfile,
+    client_email: str,
+    items: list[tuple[ClientSubscription, int, int | None, int]],
+) -> SubscriptionRenewalInvite:
+    invite = SubscriptionRenewalInvite.objects.create(
+        company=company,
+        client_email=client_email,
+    )
+    SubscriptionRenewalInviteLine.objects.bulk_create(
+        [
+            SubscriptionRenewalInviteLine(
+                invite=invite,
+                subscription=sub,
+                company_name=sub.client.name,
+                product_name=sub.product.name,
+                current_quantity=sub.quantity,
+            )
+            for sub, _, _, _ in items
+        ]
+    )
+    return invite
 
 
 def parse_notify_days(raw: str) -> list[int]:
@@ -219,6 +260,8 @@ def _days_left_badge(days_remaining: int | None) -> tuple[str, str, str]:
 def _client_email_body(
     company: CompanyProfile,
     sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
+    *,
+    renewal_url: str = "",
 ) -> str:
     contact_bits = _client_contact_lines(company)
     all_items = [item for _, items in sections for item in items]
@@ -257,6 +300,17 @@ def _client_email_body(
             "We request you to share your confirmation at the earliest so that we can "
             "initiate the renewal process and ensure uninterrupted service.",
             "",
+        ]
+    )
+    if renewal_url:
+        lines.extend(
+            [
+                f"Confirm renewal online: {renewal_url}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
             "Please feel free to contact us if you require any further information.",
             "",
             "Thank you.",
@@ -268,9 +322,52 @@ def _client_email_body(
     lines.extend(contact_bits)
     return "\n".join(lines)
 
+COMPANY_LOGO_CID = "company-logo"
+
+
+def _company_logo_inline(company: CompanyProfile) -> tuple[str, str, bytes, str] | None:
+    """Return (content_id, filename, bytes, mimetype) for the company logo, if available."""
+    logo = getattr(company, "company_logo", None)
+    if not logo or not getattr(logo, "name", ""):
+        return None
+    from pathlib import Path
+
+    path = Path(settings.MEDIA_ROOT) / logo.name
+    if not path.is_file():
+        try:
+            logo.open("rb")
+            content = logo.read()
+        except Exception:
+            logger.exception("Failed reading company logo for company %s", company.pk)
+            return None
+        finally:
+            try:
+                logo.close()
+            except Exception:
+                pass
+    else:
+        content = path.read_bytes()
+    if not content:
+        return None
+    name = path.name if path.is_file() else logo.name.rsplit("/", 1)[-1]
+    lower = name.lower()
+    if lower.endswith(".jpg") or lower.endswith(".jpeg"):
+        mimetype = "image/jpeg"
+    elif lower.endswith(".webp"):
+        mimetype = "image/webp"
+    elif lower.endswith(".gif"):
+        mimetype = "image/gif"
+    else:
+        mimetype = "image/png"
+    return COMPANY_LOGO_CID, name or "logo.png", content, mimetype
+
+
 def _client_email_html(
     company: CompanyProfile,
     sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
+    *,
+    renewal_url: str = "",
+    logo_cid: str = "",
 ) -> str:
     all_items = [item for _, items in sections for item in items]
     threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
@@ -279,8 +376,9 @@ def _client_email_html(
     text = "#374151"
     muted = "#6B7280"
     blue = "#2563EB"
+    header_bg = "#3B5998"
+    table_header_bg = header_bg
     border = "#E5E7EB"
-    header_bg = "#2563EB"
     page_bg = "#F3F4F6"
     card_bg = "#FFFFFF"
 
@@ -292,19 +390,19 @@ def _client_email_html(
             rows.append(
                 """
                 <tr>
-                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;line-height:1.45;vertical-align:top;">
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;line-height:1.45;vertical-align:top;background-color:{card_bg};">
                     <strong style="color:{text};">{product}</strong><br>
                     <span style="color:{muted};font-size:12px;">Subscription ID: {subscription_id}</span><br>
                     <span style="color:{muted};font-size:12px;">Bill Type: {bill_type}</span>
                   </td>
-                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;" align="center">
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;background-color:{card_bg};" align="center">
                     {quantity}
                   </td>
-                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;">
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;background-color:{card_bg};" align="center">
                     {end_date}
                   </td>
-                  <td style="padding:14px 12px;border:1px solid {border};font-family:{font};font-size:13px;vertical-align:middle;" align="center">
-                    <span style="display:inline-block;padding:6px 10px;border:1px solid {accent};border-radius:4px;color:{accent};background-color:#FFFFFF;white-space:nowrap;">
+                  <td style="padding:14px 12px;border:1px solid {border};font-family:{font};font-size:13px;vertical-align:middle;background-color:{card_bg};" align="center">
+                    <span style="display:inline-block;padding:6px 10px;border:1px solid {accent};border-radius:999px;color:{accent};background-color:#FFFFFF;white-space:nowrap;">
                       {emoji} {label}
                     </span>
                   </td>
@@ -315,6 +413,7 @@ def _client_email_html(
                     font=font,
                     muted=muted,
                     accent=accent,
+                    card_bg=card_bg,
                     product=escape(sub.product.name),
                     subscription_id=escape(sub.subscription_list_id),
                     bill_type=escape(_subscription_bill_type(sub)),
@@ -331,7 +430,8 @@ def _client_email_html(
   <tr>
     <td style="padding:16px 18px 10px 18px;font-family:{font};">
       <p style="margin:0;font-size:15px;line-height:1.4;color:{blue};">
-        <strong>🏢 Company Name:</strong> {client_name}
+        <strong style="color:{muted};">🏢 Company Name:</strong>
+        <strong style="color:{blue};">{client_name}</strong>
       </p>
     </td>
   </tr>
@@ -340,10 +440,10 @@ def _client_email_html(
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
         <thead>
           <tr>
-            <th align="left" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Product Description</th>
-            <th align="center" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Qty</th>
-            <th align="left" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">End Date</th>
-            <th align="center" style="padding:12px;background-color:{header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Days Left</th>
+            <th align="left" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Product Description</th>
+            <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Qty</th>
+            <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">End Date</th>
+            <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Days Left</th>
           </tr>
         </thead>
         <tbody>
@@ -358,8 +458,8 @@ def _client_email_html(
                 border=border,
                 font=font,
                 blue=blue,
-                header_bg=header_bg,
                 muted=muted,
+                table_header_bg=table_header_bg,
                 client_name=escape(client_name),
                 rows="\n".join(rows),
             ).strip()
@@ -373,25 +473,39 @@ def _client_email_html(
             + "<br>\n              ".join(escape(bit) for bit in contact_bits)
         )
 
-    reply_to = (company.outgoing_email or company.email or "").strip()
     cta_html = ""
-    if reply_to:
+    if renewal_url:
         cta_html = """
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;">
                 <tr>
-                  <td align="center" bgcolor="{blue}" style="background-color:{blue};border-radius:4px;">
-                    <a href="mailto:{reply_to}?subject={subject}"
+                  <td align="center" bgcolor="{header_bg}" style="background-color:{header_bg};border-radius:4px;">
+                    <a href="{renewal_url}"
                        style="display:inline-block;padding:12px 22px;font-family:{font};font-size:14px;font-weight:600;color:#FFFFFF;text-decoration:none;">
-                      ✉️ Confirm renewal
+                      Confirm renewal
                     </a>
                   </td>
                 </tr>
               </table>
 """.format(
-            blue=blue,
+            header_bg=header_bg,
             font=font,
-            reply_to=escape(reply_to),
-            subject=escape("Subscription renewal confirmation"),
+            renewal_url=escape(renewal_url),
+        )
+
+    company_name = escape(company.company_name)
+    if logo_cid:
+        logo_html = (
+            f'<img src="cid:{escape(logo_cid)}" alt="{company_name}" width="120" '
+            'style="display:block;max-width:140px;max-height:48px;width:auto;height:auto;'
+            'object-fit:contain;background-color:#FFFFFF;border-radius:4px;padding:2px;">'
+        )
+    else:
+        initial = escape((company.company_name or "C")[:1].upper())
+        logo_html = (
+            '<div style="width:44px;height:44px;border-radius:4px;background-color:#FFFFFF;'
+            f'color:{header_bg};font-family:{font};font-size:18px;font-weight:700;'
+            'line-height:44px;text-align:center;">'
+            f"{initial}</div>"
         )
 
     return """
@@ -399,6 +513,20 @@ def _client_email_html(
   <tr>
     <td align="center" style="padding:24px 12px;background-color:{page_bg};">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:{card_bg};border:1px solid {border};border-radius:8px;">
+        <tr>
+          <td bgcolor="{header_bg}" style="background-color:{header_bg};padding:14px 18px;border-radius:8px 8px 0 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="left" valign="middle">
+                  {logo_html}
+                </td>
+                <td align="right" valign="middle" style="font-family:{font};font-size:18px;font-weight:700;color:#FFFFFF;padding-left:12px;">
+                  {company_name}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
         <tr>
           <td style="padding:28px 28px 8px 28px;font-family:{font};">
             <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">
@@ -456,12 +584,15 @@ def _client_email_html(
         blue=blue,
         text=text,
         muted=muted,
+        header_bg=header_bg,
+        logo_html=logo_html,
+        company_name=company_name,
         threshold_days=escape(str(threshold_days)),
         sections="\n".join(section_blocks),
         cta_html=cta_html,
-        company_name=escape(company.company_name),
         contact_html=contact_html,
     )
+
 
 def _team_digest_body(
     company: CompanyProfile, subs, today, *, max_days: int, attachment_name: str
@@ -621,19 +752,40 @@ def send_client_expiry_emails(
         ]
         body_items = [item for _, client_items in sections for item in client_items]
         subject = _client_reminder_subject(body_items)
-        body = _client_email_body(company, sections)
-        html_body = _client_email_html(company, sections)
-
-        ok, err = send_company_outbound(
+        invite = _create_renewal_invite(company, client_email, items)
+        renewal_url = renewal_invite_absolute_url(invite)
+        body = _client_email_body(company, sections, renewal_url=renewal_url)
+        logo_inline = _company_logo_inline(company)
+        html_body = _client_email_html(
             company,
+            sections,
+            renewal_url=renewal_url,
+            logo_cid=logo_inline[0] if logo_inline else "",
+        )
+        inline_images = [logo_inline] if logo_inline else None
+
+        ok, err, internet_message_id = send_renewal_email(
+            company,
+            invite,
             [client_email],
             subject,
             body,
-            html_body=html_body,
+            html_body,
             cc_addresses=cc_recipients,
+            inline_images=inline_images,
         )
         if ok:
             sent_count += 1
+            invite.email_subject = subject
+            invite.email_sent_at = timezone.now()
+            invite.internet_message_id = internet_message_id or ""
+            invite.save(
+                update_fields=[
+                    "email_subject",
+                    "email_sent_at",
+                    "internet_message_id",
+                ]
+            )
             for sub, notice_threshold, days_remaining, send_number in items:
                 SubscriptionExpiryDispatch.objects.get_or_create(
                     subscription=sub,
@@ -655,6 +807,7 @@ def send_client_expiry_emails(
                 f"({len(items)} subscription(s)){cadence_note}."
             )
         else:
+            invite.delete()
             logs.append(
                 f"{company.company_name}: failed to send client reminder to {client_email}."
             )
@@ -662,6 +815,7 @@ def send_client_expiry_emails(
                 logs.append(err)
 
     return sent_count, logs
+
 
 def send_team_expiry_digest(
     company: CompanyProfile,

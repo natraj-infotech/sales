@@ -174,6 +174,67 @@ class SubscriptionExpiryNotice(models.Model):
         return f"{self.subscription_id} @ {self.days_before} days"
 
 
+class SubscriptionRenewalInvite(models.Model):
+    """One-time link emailed to clients to confirm subscription renewals."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="renewal_invites",
+    )
+    client_email = models.EmailField()
+    email_subject = models.CharField(max_length=255, blank=True)
+    internet_message_id = models.CharField(max_length=998, blank=True)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    read_source = models.CharField(max_length=32, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    zoho_quote_id = models.CharField(max_length=64, blank=True)
+    zoho_quote_number = models.CharField(max_length=128, blank=True)
+    zoho_quote_url = models.URLField(blank=True)
+    quotation_sent_at = models.DateTimeField(null=True, blank=True)
+    quotation_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-email_sent_at", "-created_at"]
+
+    def __str__(self):
+        return f"Renewal invite {self.id} → {self.client_email}"
+
+    @property
+    def is_submitted(self) -> bool:
+        return self.submitted_at is not None
+
+    @property
+    def response_received(self) -> bool:
+        return self.is_submitted
+
+
+class SubscriptionRenewalInviteLine(models.Model):
+    invite = models.ForeignKey(
+        SubscriptionRenewalInvite,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    subscription = models.ForeignKey(
+        ClientSubscription,
+        on_delete=models.CASCADE,
+        related_name="renewal_invite_lines",
+    )
+    company_name = models.CharField(max_length=255)
+    product_name = models.CharField(max_length=255)
+    current_quantity = models.PositiveIntegerField()
+    renewal_count = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.company_name} — {self.product_name}"
+
+
 class SubscriptionExpiryDispatch(models.Model):
     """Tracks each expiry reminder dispatch so daily quotas can be enforced."""
 

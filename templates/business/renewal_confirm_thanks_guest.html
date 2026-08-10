@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Thank you{% endblock %}
+
+{% block content_guest %}
+<div class="card">
+  <h2 style="margin-top:0;">Thank you</h2>
+  <p class="muted">Your renewal confirmation was submitted successfully. You can close this page.</p>
+  <div class="table-wrap" style="margin-top:1rem;">
+    <table class="renewal-confirm-table" style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Company name</th>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Product</th>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Current quantity</th>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Renewal count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ line.company_name }}</td>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ line.product_name }}</td>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ line.current_quantity }}</td>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ line.renewal_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

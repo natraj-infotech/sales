@@ -4,6 +4,16 @@ from . import views
 
 urlpatterns = [
     path(
+        "renewal/track/<uuid:invite_id>/open.gif",
+        views.renewal_track_open,
+        name="renewal_track_open",
+    ),
+    path(
+        "renewal/confirm/<uuid:invite_id>/",
+        views.renewal_confirm_public,
+        name="renewal_confirm_public",
+    ),
+    path(
         "caselock/fill/<uuid:invite_id>/",
         views.caselock_public_form,
         name="caselock_public_form",
@@ -26,6 +36,22 @@ urlpatterns = [
         name="caselock_submission_status_update",
     ),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("client-renewals/", views.client_renewal_list, name="client_renewal_list"),
+    path(
+        "client-renewals/live/",
+        views.client_renewal_live,
+        name="client_renewal_live",
+    ),
+    path(
+        "client-renewals/<uuid:pk>/",
+        views.client_renewal_detail,
+        name="client_renewal_detail",
+    ),
+    path(
+        "client-renewals/<uuid:pk>/send-quotation/",
+        views.client_renewal_send_quotation,
+        name="client_renewal_send_quotation",
+    ),
     path("vendors/", views.vendor_list, name="vendor_list"),
     path("vendors/bulk-delete/", views.vendor_bulk_delete, name="vendor_bulk_delete"),
     path("vendors/export/", views.vendor_export, name="vendor_export"),

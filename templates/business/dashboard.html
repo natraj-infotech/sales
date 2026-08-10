@@ -119,6 +119,7 @@
       <tr>
         <th>Client</th>
         <th>Product</th>
+        <th>Qty</th>
         <th>Status</th>
         <th>End date</th>
         <th>Days left</th>
@@ -130,6 +131,7 @@
       <tr>
         <td>{{ s.client.name }}</td>
         <td>{{ s.product.name }}</td>
+        <td>{{ s.quantity }}</td>
         <td>{{ s.get_status_display }}</td>
         <td>{{ s.end_date }}</td>
         <td>{{ s.days_until_expiry }}</td>
@@ -161,6 +163,7 @@
       <tr>
         <th>Client</th>
         <th>Product</th>
+        <th>Qty</th>
         <th>Status</th>
         <th>Start</th>
       </tr>
@@ -170,6 +173,7 @@
       <tr>
         <td>{{ s.client.name }}</td>
         <td>{{ s.product.name }}</td>
+        <td>{{ s.quantity }}</td>
         <td>{{ s.get_status_display }}</td>
         <td>{{ s.start_date }}</td>
       </tr>

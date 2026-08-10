@@ -1,0 +1,133 @@
+<style>
+  .renewal-confirm-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1rem 0 1.25rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .renewal-confirm-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  .renewal-confirm-table th,
+  .renewal-confirm-table td {
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    padding: 0.65rem 0.75rem;
+    text-align: left;
+    vertical-align: middle;
+  }
+  .renewal-confirm-table thead th {
+    background: #f8fafc;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted, #64748b);
+    white-space: nowrap;
+  }
+  .renewal-confirm-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .renewal-confirm-table .col-company {
+    max-width: 220px;
+    word-break: break-word;
+  }
+  .renewal-confirm-table .col-product {
+    max-width: 260px;
+    word-break: break-word;
+  }
+  .renewal-confirm-table .col-qty,
+  .renewal-confirm-table .col-renewal {
+    width: 120px;
+    min-width: 120px;
+    white-space: nowrap;
+  }
+  .renewal-confirm-table .col-renewal {
+    width: 150px;
+    min-width: 150px;
+    background: #f0f9ff;
+  }
+  .renewal-confirm-table thead .col-renewal {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .renewal-confirm-table input[type="number"] {
+    display: block;
+    width: 100%;
+    min-width: 6rem;
+    padding: 0.55rem 0.65rem;
+    border: 2px solid #2563eb;
+    border-radius: 6px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    background: #fff;
+    color: var(--text, #1a1d21);
+  }
+  .renewal-confirm-table input[type="number"]:focus {
+    outline: none;
+    border-color: #1d4ed8;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+  .renewal-confirm-readonly {
+    color: var(--text, #1a1d21);
+    font-weight: 500;
+  }
+  .renewal-qty-hint {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: #2563eb;
+    font-weight: 600;
+  }
+</style>
+<h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>
+  Confirm subscription renewal
+</h2>
+<p class="muted">
+  Please review your subscriptions below and enter the renewal quantity for each product.
+</p>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}
+  <div class="tracker-mock-form-errors">{{ formset.non_form_errors }}</div>
+  {% endif %}
+
+  <div class="renewal-confirm-scroll">
+    <table class="renewal-confirm-table">
+      <thead>
+        <tr>
+          <th class="col-company">Company name</th>
+          <th class="col-product">Product</th>
+          <th class="col-qty">Current quantity</th>
+          <th class="col-renewal">Renewal count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for form, line in rows %}
+        <tr>
+          <td class="renewal-confirm-readonly col-company">{{ line.company_name }}</td>
+          <td class="renewal-confirm-readonly col-product">{{ line.product_name }}</td>
+          <td class="renewal-confirm-readonly col-qty">{{ line.current_quantity }}</td>
+          <td class="col-renewal">
+            {{ form.line_id }}
+            {{ form.renewal_count }}
+            <span class="renewal-qty-hint">Enter quantity here</span>
+            {% if form.renewal_count.errors %}
+            <div class="field-error" style="color:#dc2626;font-size:0.8125rem;margin-top:0.25rem;">
+              {{ form.renewal_count.errors }}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Submit renewal confirmation</button>
+</form>

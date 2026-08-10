@@ -26,6 +26,7 @@ class CompanyProfileForm(forms.ModelForm):
         model = CompanyProfile
         fields = (
             "company_name",
+            "company_logo",
             "phone",
             "email",
             "address",
@@ -41,6 +42,9 @@ class CompanyProfileForm(forms.ModelForm):
         )
         widgets = {
             "address": forms.Textarea(attrs={"rows": 4}),
+            "company_logo": forms.FileInput(
+                attrs={"accept": "image/png,image/jpeg,image/webp,image/gif"}
+            ),
             "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
@@ -57,6 +61,11 @@ class CompanyProfileForm(forms.ModelForm):
         )
         self._original_outgoing_email_app_password = (
             self.instance.outgoing_email_app_password if self.instance.pk else ""
+        )
+        self.fields["company_logo"].label = "Company logo"
+        self.fields["company_logo"].help_text = (
+            "Used in the header of client subscription expiry emails "
+            "(PNG, JPG, WEBP, or GIF)."
         )
         self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
         self.fields["expiry_client_emails_enabled"].help_text = (

@@ -117,6 +117,8 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -217,6 +219,15 @@ if CELERY_BROKER_URL.startswith("filesystem://"):
 # Public links in outbound Case lock emails (set in production, e.g. https://your-domain.com)
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip()
 
+# Zoho CRM (OAuth for Quotes / Accounts). DC: in | com | eu | com.au | jp
+ZOHO_CLIENT_ID = os.environ.get("ZOHO_CLIENT_ID", "").strip()
+ZOHO_CLIENT_SECRET = os.environ.get("ZOHO_CLIENT_SECRET", "").strip()
+ZOHO_DC = (os.environ.get("ZOHO_DC", "in") or "in").strip().lower()
+ZOHO_REDIRECT_URI = os.environ.get(
+    "ZOHO_REDIRECT_URI",
+    "",
+).strip()
+
 CELERY_BEAT_SCHEDULE = {
     "fetch-support-inbox-every-10-seconds": {
         "task": "business.tasks.fetch_support_inbox_task",
@@ -233,5 +244,9 @@ CELERY_BEAT_SCHEDULE = {
     "send-expiry-notifications-evening": {
         "task": "business.tasks.send_expiry_notifications_task",
         "schedule": crontab(hour=18, minute=0),
+    },
+    "poll-renewal-read-receipts-every-2-minutes": {
+        "task": "business.tasks.poll_renewal_read_receipts_task",
+        "schedule": 120.0,
     },
 }

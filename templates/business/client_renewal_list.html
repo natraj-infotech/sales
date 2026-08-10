@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}Client renewals{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Client renewals</h1>
+      <p class="tracker-page-subtitle">
+        Renewal reminder emails and Outlook read / response status
+        <span id="cr-live-meta" class="cr-live-meta">Live polling…</span>
+      </p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cr-refresh-btn">
+      Refresh now
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .cr-status {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .cr-status--yes { background: #d1fae5; color: #065f46; }
+  .cr-status--no { background: #f1f5f9; color: #64748b; }
+  .cr-status--pending { background: #fef3c7; color: #92400e; }
+  tr.cr-row--clickable {
+    cursor: pointer;
+  }
+  tr.cr-row--clickable:hover td {
+    background: #f0f9ff;
+  }
+  .cr-meta {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+    margin-top: 0.15rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .cr-live-meta {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .cr-live-meta.is-error {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+  .cr-flash td {
+    animation: crFlash 1.2s ease;
+  }
+  @keyframes crFlash {
+    from { background: #dbeafe; }
+    to { background: transparent; }
+  }
+</style>
+
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide" id="cr-table">
+      <thead>
+        <tr>
+          <th>Client email</th>
+          <th>Email sent</th>
+          <th>Email read</th>
+          <th>Response received</th>
+          <th>Quotation</th>
+          <th>Items</th>
+        </tr>
+      </thead>
+      <tbody id="cr-tbody">
+        {% for invite in object_list %}
+        <tr
+          data-id="{{ invite.pk }}"
+          {% if invite.submitted_at %}
+          class="cr-row--clickable"
+          data-href="{% url 'client_renewal_detail' invite.pk %}"
+          role="link"
+          tabindex="0"
+          {% endif %}
+        >
+          <td>{{ invite.client_email }}</td>
+          <td>
+            {% if invite.email_sent_at %}
+            <span class="cr-status cr-status--yes">Sent</span>
+            <span class="cr-meta">{{ invite.email_sent_at|date:"d M Y, H:i:s" }}</span>
+            {% else %}
+            <span class="cr-status cr-status--no">—</span>
+            {% endif %}
+          </td>
+          <td data-col="read">
+            {% if invite.read_at %}
+            <span class="cr-status cr-status--yes">Read</span>
+            <span class="cr-meta">{{ invite.read_at|date:"d M Y, H:i:s" }}</span>
+            {% if invite.read_source == "outlook_receipt" %}
+            <span class="cr-meta">Outlook read receipt</span>
+            {% elif invite.read_source == "outlook_open" %}
+            <span class="cr-meta">Opened in Outlook</span>
+            {% endif %}
+            {% else %}
+            <span class="cr-status cr-status--pending">Not read</span>
+            {% endif %}
+          </td>
+          <td data-col="response">
+            {% if invite.submitted_at %}
+            <span class="cr-status cr-status--yes">Received</span>
+            <span class="cr-meta">{{ invite.submitted_at|date:"d M Y, H:i:s" }}</span>
+            {% else %}
+            <span class="cr-status cr-status--pending">Pending</span>
+            {% endif %}
+          </td>
+          <td data-col="quote">
+            {% if invite.quotation_sent_at %}
+            <span class="cr-status cr-status--yes">Zoho</span>
+            <span class="cr-meta">{{ invite.quotation_sent_at|date:"d M Y, H:i:s" }}</span>
+            {% elif invite.submitted_at %}
+            <span class="cr-status cr-status--pending">Not sent</span>
+            {% else %}
+            <span class="cr-status cr-status--no">—</span>
+            {% endif %}
+          </td>
+          <td data-col="items">{{ invite.line_count }}</td>
+        </tr>
+        {% empty %}
+        <tr id="cr-empty-row">
+          <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">
+            No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  var LIVE_URL = "{% url 'client_renewal_live' %}";
+  var POLL_MS = 15000;
+  var tbody = document.getElementById("cr-tbody");
+  var meta = document.getElementById("cr-live-meta");
+  var refreshBtn = document.getElementById("cr-refresh-btn");
+  var timer = null;
+  var inFlight = false;
+
+  function bindRow(row) {
+    if (!row || !row.classList.contains("cr-row--clickable")) return;
+    if (row.dataset.bound === "1") return;
+    row.dataset.bound = "1";
+    function go() {
+      var href = row.getAttribute("data-href");
+      if (href) window.location.href = href;
+    }
+    row.addEventListener("click", go);
+    row.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        go();
+      }
+    });
+  }
+
+  document.querySelectorAll("tr.cr-row--clickable").forEach(bindRow);
+
+  function escapeHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function readHtml(row) {
+    if (row.read_at) {
+      var source = "";
+      if (row.read_source === "outlook_receipt") {
+        source = '<span class="cr-meta">Outlook read receipt</span>';
+      } else if (row.read_source === "outlook_open") {
+        source = '<span class="cr-meta">Opened in Outlook</span>';
+      }
+      return (
+        '<span class="cr-status cr-status--yes">Read</span>' +
+        '<span class="cr-meta">' + escapeHtml(row.read_at) + "</span>" +
+        source
+      );
+    }
+    return '<span class="cr-status cr-status--pending">Not read</span>';
+  }
+
+  function responseHtml(row) {
+    if (row.submitted_at) {
+      return (
+        '<span class="cr-status cr-status--yes">Received</span>' +
+        '<span class="cr-meta">' + escapeHtml(row.submitted_at) + "</span>"
+      );
+    }
+    return '<span class="cr-status cr-status--pending">Pending</span>';
+  }
+
+  function quoteHtml(row) {
+    if (row.quotation_sent_at) {
+      return (
+        '<span class="cr-status cr-status--yes">Zoho</span>' +
+        '<span class="cr-meta">' + escapeHtml(row.quotation_sent_at) + "</span>"
+      );
+    }
+    if (row.submitted_at) {
+      return '<span class="cr-status cr-status--pending">Not sent</span>';
+    }
+    return '<span class="cr-status cr-status--no">—</span>';
+  }
+
+  function sentHtml(row) {
+    if (row.email_sent_at) {
+      return (
+        '<span class="cr-status cr-status--yes">Sent</span>' +
+        '<span class="cr-meta">' + escapeHtml(row.email_sent_at) + "</span>"
+      );
+    }
+    return '<span class="cr-status cr-status--no">—</span>';
+  }
+
+  function createRow(row) {
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-id", row.id);
+    if (row.detail_url) {
+      tr.className = "cr-row--clickable";
+      tr.setAttribute("data-href", row.detail_url);
+      tr.setAttribute("role", "link");
+      tr.setAttribute("tabindex", "0");
+    }
+    tr.innerHTML =
+      "<td>" + escapeHtml(row.client_email) + "</td>" +
+      "<td>" + sentHtml(row) + "</td>" +
+      '<td data-col="read">' + readHtml(row) + "</td>" +
+      '<td data-col="response">' + responseHtml(row) + "</td>" +
+      '<td data-col="quote">' + quoteHtml(row) + "</td>" +
+      '<td data-col="items">' + escapeHtml(row.line_count) + "</td>";
+    bindRow(tr);
+    return tr;
+  }
+
+  function applyRows(rows) {
+    var empty = document.getElementById("cr-empty-row");
+    if (!rows.length) {
+      if (!empty) {
+        tbody.innerHTML =
+          '<tr id="cr-empty-row"><td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">' +
+          "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
+          "</td></tr>";
+      }
+      return;
+    }
+    if (empty) empty.remove();
+
+    var existing = {};
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr[data-id]"), function (tr) {
+      existing[tr.getAttribute("data-id")] = tr;
+    });
+
+    var seen = {};
+    rows.forEach(function (row, index) {
+      seen[row.id] = true;
+      var tr = existing[row.id];
+      if (!tr) {
+        tr = createRow(row);
+        if (tbody.children[index]) {
+          tbody.insertBefore(tr, tbody.children[index]);
+        } else {
+          tbody.appendChild(tr);
+        }
+        tr.classList.add("cr-flash");
+        return;
+      }
+
+      var nextRead = readHtml(row);
+      var nextResponse = responseHtml(row);
+      var nextQuote = quoteHtml(row);
+      var nextItems = String(row.line_count);
+      var readCell = tr.querySelector('[data-col="read"]');
+      var responseCell = tr.querySelector('[data-col="response"]');
+      var quoteCell = tr.querySelector('[data-col="quote"]');
+      var itemsCell = tr.querySelector('[data-col="items"]');
+      var changed = false;
+
+      if (readCell && readCell.innerHTML !== nextRead) {
+        readCell.innerHTML = nextRead;
+        changed = true;
+      }
+      if (responseCell && responseCell.innerHTML !== nextResponse) {
+        responseCell.innerHTML = nextResponse;
+        changed = true;
+      }
+      if (quoteCell && quoteCell.innerHTML !== nextQuote) {
+        quoteCell.innerHTML = nextQuote;
+        changed = true;
+      }
+      if (itemsCell && itemsCell.textContent !== nextItems) {
+        itemsCell.textContent = nextItems;
+        changed = true;
+      }
+
+      if (row.detail_url) {
+        tr.classList.add("cr-row--clickable");
+        tr.setAttribute("data-href", row.detail_url);
+        tr.setAttribute("role", "link");
+        tr.setAttribute("tabindex", "0");
+        bindRow(tr);
+      }
+
+      if (changed) {
+        tr.classList.remove("cr-flash");
+        void tr.offsetWidth;
+        tr.classList.add("cr-flash");
+      }
+
+      if (tbody.children[index] !== tr) {
+        tbody.insertBefore(tr, tbody.children[index] || null);
+      }
+    });
+
+    Object.keys(existing).forEach(function (id) {
+      if (!seen[id]) existing[id].remove();
+    });
+  }
+
+  function setMeta(text, isError) {
+    if (!meta) return;
+    meta.textContent = text;
+    meta.classList.toggle("is-error", !!isError);
+  }
+
+  function poll() {
+    if (inFlight) return;
+    inFlight = true;
+    setMeta("Polling Outlook…", false);
+    fetch(LIVE_URL, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        applyRows(data.rows || []);
+        var suffix = data.updated ? " · " + data.updated + " updated" : "";
+        setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+        if (data.logs && data.logs.length) {
+          var fail = data.logs.filter(function (m) {
+            return String(m).toLowerCase().indexOf("failed") !== -1;
+          });
+          if (fail.length) setMeta(fail[0], true);
+        }
+      })
+      .catch(function (err) {
+        setMeta("Live poll failed — retrying", true);
+        console.error(err);
+      })
+      .finally(function () {
+        inFlight = false;
+      });
+  }
+
+  function start() {
+    poll();
+    timer = window.setInterval(poll, POLL_MS);
+  }
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", function () {
+      poll();
+    });
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) poll();
+  });
+
+  start();
+})();
+</script>
+{% endblock %}

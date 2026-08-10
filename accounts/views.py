@@ -52,11 +52,14 @@ def company_setup(request):
     profile = CompanyProfile.objects.filter(user=request.user).first()
 
     if request.method == "POST":
-        form = CompanyProfileForm(request.POST, instance=profile)
+        form = CompanyProfileForm(
+            request.POST, request.FILES, instance=profile
+        )
         if form.is_valid():
             obj = form.save(commit=False)
             obj.user = request.user
             obj.save()
+            form.save_m2m()
             CompanyMember.objects.update_or_create(
                 company=obj,
                 user=request.user,
@@ -73,8 +76,108 @@ def company_setup(request):
     return render(
         request,
         "accounts/company_setup.html",
-        {"form": form, "editing": profile is not None, "company": profile},
+        {
+            "form": form,
+            "editing": profile is not None,
+            "company": profile,
+            "zoho_configured": _zoho_app_configured(),
+        },
     )
+
+
+def _zoho_app_configured() -> bool:
+    from business.zoho_crm import zoho_configured
+
+    return zoho_configured()
+
+
+@login_required
+@require_http_methods(["GET"])
+def zoho_connect(request):
+    company = get_company_for_user(request.user)
+    if company is None or not user_is_owner(request.user, company):
+        messages.error(request, "Only the company owner can connect Zoho CRM.")
+        return redirect("company_setup")
+
+    from business.zoho_crm import build_authorize_url, new_oauth_state, zoho_configured
+
+    if not zoho_configured():
+        messages.error(
+            request,
+            "Zoho app credentials are not configured. Add ZOHO_CLIENT_ID and "
+            "ZOHO_CLIENT_SECRET to the server .env file.",
+        )
+        return redirect("company_setup")
+
+    state = new_oauth_state()
+    request.session["zoho_oauth_state"] = state
+    request.session["zoho_oauth_company_id"] = company.pk
+    return redirect(build_authorize_url(state=state))
+
+
+@login_required
+@require_http_methods(["GET"])
+def zoho_callback(request):
+    company = get_company_for_user(request.user)
+    if company is None or not user_is_owner(request.user, company):
+        messages.error(request, "Only the company owner can connect Zoho CRM.")
+        return redirect("company_setup")
+
+    error = (request.GET.get("error") or "").strip()
+    if error:
+        messages.error(request, f"Zoho authorization failed: {error}")
+        return redirect("company_setup")
+
+    state = (request.GET.get("state") or "").strip()
+    expected = (request.session.pop("zoho_oauth_state", None) or "").strip()
+    if not state or state != expected:
+        messages.error(request, "Zoho authorization state mismatch. Try connecting again.")
+        return redirect("company_setup")
+
+    code = (request.GET.get("code") or "").strip()
+    if not code:
+        messages.error(request, "Zoho did not return an authorization code.")
+        return redirect("company_setup")
+
+    from business.zoho_crm import (
+        exchange_code_for_tokens,
+        fetch_connected_user_email,
+        save_oauth_tokens,
+    )
+
+    try:
+        payload = exchange_code_for_tokens(code)
+        if not payload.get("refresh_token") and not company.zoho_refresh_token:
+            messages.error(
+                request,
+                "Zoho did not return a refresh token. Disconnect the app in Zoho "
+                "API Console and reconnect with consent.",
+            )
+            return redirect("company_setup")
+        save_oauth_tokens(company, payload)
+        email = fetch_connected_user_email(company)
+        if email:
+            company.zoho_connected_email = email
+            company.save(update_fields=["zoho_connected_email", "updated_at"])
+        messages.success(request, "Zoho CRM connected successfully.")
+    except Exception as exc:
+        messages.error(request, f"Could not connect Zoho CRM: {exc}")
+    return redirect("company_setup")
+
+
+@login_required
+@require_http_methods(["POST"])
+def zoho_disconnect(request):
+    company = get_company_for_user(request.user)
+    if company is None or not user_is_owner(request.user, company):
+        messages.error(request, "Only the company owner can disconnect Zoho CRM.")
+        return redirect("company_setup")
+
+    from business.zoho_crm import disconnect_zoho
+
+    disconnect_zoho(company)
+    messages.success(request, "Zoho CRM disconnected.")
+    return redirect("company_setup")
 
 
 @login_required
@@ -85,7 +188,7 @@ def company_send_expiry_notifications(request):
         messages.error(request, "Only the company owner can send expiry notifications.")
         return redirect("company_setup")
 
-    form = CompanyProfileForm(request.POST, instance=company)
+    form = CompanyProfileForm(request.POST, request.FILES, instance=company)
     if not form.is_valid():
         messages.error(
             request,
@@ -94,12 +197,18 @@ def company_send_expiry_notifications(request):
         return render(
             request,
             "accounts/company_setup.html",
-            {"form": form, "editing": True, "company": company},
+            {
+                "form": form,
+                "editing": True,
+                "company": company,
+                "zoho_configured": _zoho_app_configured(),
+            },
         )
 
     company = form.save(commit=False)
     company.user = request.user
     company.save()
+    form.save_m2m()
 
     action = request.POST.get("action", "").strip()
     from business.expiry_notifications import (

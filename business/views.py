@@ -5,10 +5,11 @@ from io import StringIO
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.formats import date_format
 from django.views.decorators.http import require_http_methods
 from openpyxl import Workbook
 
@@ -25,6 +26,7 @@ from .forms import (
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
+    RenewalConfirmLineFormSet,
     SubscriptionRenewForm,
     ProductForm,
     SupportTicketCommentForm,
@@ -38,6 +40,8 @@ from .models import (
     Client,
     ClientSubscription,
     Product,
+    SubscriptionRenewalInvite,
+    SubscriptionRenewalInviteLine,
     SupportTicket,
     Vendor,
 )
@@ -209,6 +213,165 @@ def dashboard(request):
         ),
     }
     return render(request, "business/dashboard.html", ctx)
+
+
+@sales_module_required
+def client_renewal_list(request):
+    company = _company(request)
+    from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
+
+    _, poll_logs = poll_outlook_read_receipts_for_company(company)
+    for message in poll_logs:
+        if "failed" in message.lower():
+            messages.warning(request, message)
+    qs = (
+        SubscriptionRenewalInvite.objects.filter(
+            company=company,
+            email_sent_at__isnull=False,
+        )
+        .annotate(line_count=Count("lines"))
+        .order_by("-email_sent_at", "-created_at")
+    )
+    return render(
+        request,
+        "business/client_renewal_list.html",
+        {"company": company, "object_list": qs},
+    )
+
+
+def _format_dt(value):
+    if not value:
+        return ""
+    return date_format(timezone.localtime(value), "d M Y, H:i:s")
+
+
+@sales_module_required
+def client_renewal_live(request):
+    """Poll Outlook and return current renewal invite statuses as JSON."""
+    company = _company(request)
+    from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
+
+    updated, poll_logs = poll_outlook_read_receipts_for_company(company)
+    qs = (
+        SubscriptionRenewalInvite.objects.filter(
+            company=company,
+            email_sent_at__isnull=False,
+        )
+        .annotate(line_count=Count("lines"))
+        .order_by("-email_sent_at", "-created_at")
+    )
+    rows = []
+    for invite in qs:
+        detail_url = ""
+        if invite.submitted_at:
+            detail_url = reverse("client_renewal_detail", kwargs={"pk": invite.pk})
+        rows.append(
+            {
+                "id": str(invite.pk),
+                "client_email": invite.client_email,
+                "email_sent_at": _format_dt(invite.email_sent_at),
+                "read_at": _format_dt(invite.read_at),
+                "read_source": invite.read_source or "",
+                "submitted_at": _format_dt(invite.submitted_at),
+                "quotation_sent_at": _format_dt(invite.quotation_sent_at),
+                "line_count": invite.line_count,
+                "detail_url": detail_url,
+            }
+        )
+    return JsonResponse(
+        {
+            "ok": True,
+            "updated": updated,
+            "polled_at": _format_dt(timezone.now()),
+            "logs": poll_logs,
+            "rows": rows,
+        }
+    )
+
+
+@sales_module_required
+def client_renewal_detail(request, pk):
+    company = _company(request)
+    invite = get_object_or_404(
+        SubscriptionRenewalInvite.objects.prefetch_related(
+            "lines",
+            "lines__subscription",
+        ),
+        pk=pk,
+        company=company,
+        submitted_at__isnull=False,
+    )
+    from business.zoho_crm import zoho_configured
+
+    return render(
+        request,
+        "business/client_renewal_detail.html",
+        {
+            "company": company,
+            "invite": invite,
+            "lines": invite.lines.order_by("id"),
+            "zoho_configured": zoho_configured(),
+            "zoho_connected": company.zoho_connected,
+            "quoteable_count": invite.lines.filter(renewal_count__gt=0).count(),
+        },
+    )
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def client_renewal_send_quotation(request, pk):
+    company = _company(request)
+    invite = get_object_or_404(
+        SubscriptionRenewalInvite.objects.prefetch_related(
+            "lines",
+            "lines__subscription",
+        ),
+        pk=pk,
+        company=company,
+        submitted_at__isnull=False,
+    )
+    from business.zoho_crm import create_quote_from_renewal_invite, zoho_configured
+
+    if not zoho_configured():
+        messages.error(
+            request,
+            "Zoho app credentials are not configured on the server (.env).",
+        )
+        return redirect("client_renewal_detail", pk=invite.pk)
+    if not company.zoho_connected:
+        messages.error(
+            request,
+            "Connect Zoho CRM in Company profile before sending a quotation.",
+        )
+        return redirect("client_renewal_detail", pk=invite.pk)
+
+    try:
+        quote_id, quote_number, quote_url = create_quote_from_renewal_invite(
+            company, invite
+        )
+        invite.zoho_quote_id = quote_id
+        invite.zoho_quote_number = quote_number
+        invite.zoho_quote_url = quote_url
+        invite.quotation_sent_at = timezone.now()
+        invite.quotation_error = ""
+        invite.save(
+            update_fields=[
+                "zoho_quote_id",
+                "zoho_quote_number",
+                "zoho_quote_url",
+                "quotation_sent_at",
+                "quotation_error",
+            ]
+        )
+        messages.success(
+            request,
+            f"Zoho quotation created ({quote_number}). Open it in Zoho to review and send.",
+        )
+    except Exception as exc:
+        invite.quotation_error = str(exc)[:2000]
+        invite.save(update_fields=["quotation_error"])
+        messages.error(request, f"Could not create Zoho quotation: {exc}")
+    return redirect("client_renewal_detail", pk=invite.pk)
 
 
 def _crud_list(request, model, template_name, search_fields):
@@ -1257,15 +1420,28 @@ def subscription_renew(request, pk):
         if form.is_valid():
             new_start = form.cleaned_data["start_date"]
             new_end = form.cleaned_data["end_date"]
+            new_qty = form.cleaned_data["quantity"]
+            new_price = form.cleaned_data["billing_amount"]
             obj.start_date = new_start
             obj.end_date = new_end
+            obj.quantity = new_qty
+            obj.billing_amount = new_price
             obj.status = ClientSubscription.Status.ACTIVE
-            obj.save(update_fields=["start_date", "end_date", "status"])
+            obj.save(
+                update_fields=[
+                    "start_date",
+                    "end_date",
+                    "quantity",
+                    "billing_amount",
+                    "status",
+                ]
+            )
             end_label = new_end.strftime("%d %b %Y") if new_end else "no end date"
             messages.success(
                 request,
                 f"Renewed {obj.client.name} — {obj.product.name}: "
-                f"{new_start.strftime('%d %b %Y')} to {end_label}.",
+                f"{new_start.strftime('%d %b %Y')} to {end_label} "
+                f"(qty {new_qty}, price {new_price}).",
             )
             return redirect(next_url)
     else:
@@ -1273,6 +1449,8 @@ def subscription_renew(request, pk):
             initial={
                 "start_date": suggested_start,
                 "end_date": suggested_end,
+                "quantity": obj.quantity,
+                "billing_amount": obj.billing_amount,
             }
         )
 
@@ -1486,6 +1664,70 @@ def support_ticket_detail(request, pk):
             "ticket": ticket,
             "comments": comments_qs,
             "comment_form": comment_form,
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def renewal_track_open(request, invite_id):
+    invite = get_object_or_404(SubscriptionRenewalInvite, pk=invite_id)
+    from business.renewal_read_tracking import (
+        READ_SOURCE_OPEN,
+        TRANSPARENT_GIF,
+        mark_renewal_invite_read,
+    )
+
+    mark_renewal_invite_read(invite, timezone.now(), source=READ_SOURCE_OPEN)
+    return HttpResponse(TRANSPARENT_GIF, content_type="image/gif")
+
+
+@require_http_methods(["GET", "POST"])
+def renewal_confirm_public(request, invite_id):
+    invite = get_object_or_404(
+        SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
+            "lines"
+        ),
+        pk=invite_id,
+    )
+    lines = list(invite.lines.order_by("id"))
+    if invite.is_submitted:
+        return render(
+            request,
+            "business/renewal_confirm_done_guest.html",
+            {"invite": invite, "lines": lines, "public_page": True},
+        )
+    if request.method == "POST":
+        formset = RenewalConfirmLineFormSet(request.POST)
+        if formset.is_valid():
+            line_map = {line.pk: line for line in lines}
+            for form in formset.forms:
+                line = line_map.get(form.cleaned_data["line_id"])
+                if line is None:
+                    continue
+                line.renewal_count = form.cleaned_data["renewal_count"]
+                line.save(update_fields=["renewal_count"])
+            invite.submitted_at = timezone.now()
+            invite.save(update_fields=["submitted_at"])
+            return render(
+                request,
+                "business/renewal_confirm_thanks_guest.html",
+                {"invite": invite, "lines": lines, "public_page": True},
+            )
+        rows = list(zip(formset.forms, lines))
+    else:
+        formset = RenewalConfirmLineFormSet(
+            initial=[{"line_id": line.pk} for line in lines]
+        )
+        rows = list(zip(formset.forms, lines))
+    return render(
+        request,
+        "business/renewal_confirm_form_guest.html",
+        {
+            "invite": invite,
+            "lines": lines,
+            "formset": formset,
+            "rows": rows,
+            "public_page": True,
         },
     )
 

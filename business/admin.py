@@ -8,6 +8,8 @@ from .models import (
     CaseLockSubmission,
     Product,
     ClientSubscription,
+    SubscriptionRenewalInvite,
+    SubscriptionRenewalInviteLine,
     SupportTicket,
     SupportTicketComment,
 )
@@ -82,6 +84,37 @@ class ClientSubscriptionAdmin(admin.ModelAdmin):
         "invoice_number",
         "notes",
     )
+
+
+@admin.register(SubscriptionRenewalInvite)
+class SubscriptionRenewalInviteAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "company",
+        "client_email",
+        "email_subject",
+        "email_sent_at",
+        "read_at",
+        "read_source",
+        "submitted_at",
+        "quotation_sent_at",
+        "zoho_quote_number",
+        "created_at",
+    )
+    list_filter = ("company",)
+    search_fields = ("client_email",)
+
+
+@admin.register(SubscriptionRenewalInviteLine)
+class SubscriptionRenewalInviteLineAdmin(admin.ModelAdmin):
+    list_display = (
+        "company_name",
+        "product_name",
+        "current_quantity",
+        "renewal_count",
+        "invite",
+    )
+    search_fields = ("company_name", "product_name")
 
 
 @admin.register(SupportTicket)
