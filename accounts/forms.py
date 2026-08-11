@@ -1,7 +1,14 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from business.expiry_notifications import VALID_NOTIFY_DAYS, parse_notify_days
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+
+from business.expiry_notifications import (
+    VALID_NOTIFY_DAYS,
+    parse_extra_emails,
+    parse_notify_days,
+)
 
 from .models import CompanyMember, CompanyProfile
 
@@ -36,6 +43,8 @@ class CompanyProfileForm(forms.ModelForm):
             "support_email_app_password",
             "outgoing_email",
             "outgoing_email_app_password",
+            "regards_email",
+            "regards_contact",
             "expiry_client_emails_enabled",
             "expiry_team_digest_enabled",
             "expiry_team_extra_emails",
@@ -44,6 +53,9 @@ class CompanyProfileForm(forms.ModelForm):
             "address": forms.Textarea(attrs={"rows": 4}),
             "company_logo": forms.FileInput(
                 attrs={"accept": "image/png,image/jpeg,image/webp,image/gif"}
+            ),
+            "regards_email": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "one@example.com\ntwo@example.com"}
             ),
             "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
             "support_email_app_password": forms.PasswordInput(
@@ -66,6 +78,15 @@ class CompanyProfileForm(forms.ModelForm):
         self.fields["company_logo"].help_text = (
             "Used in the header of client subscription expiry emails "
             "(PNG, JPG, WEBP, or GIF)."
+        )
+        self.fields["regards_email"].label = "Regards emails"
+        self.fields["regards_email"].help_text = (
+            "Shown under Best Regards in client expiry emails. "
+            "Add multiple addresses, one per line or comma-separated."
+        )
+        self.fields["regards_contact"].label = "Regards contact details"
+        self.fields["regards_contact"].help_text = (
+            "Phone or other contact shown under Best Regards. Leave blank to hide."
         )
         self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
         self.fields["expiry_client_emails_enabled"].help_text = (
@@ -90,6 +111,21 @@ class CompanyProfileForm(forms.ModelForm):
                 str(day) for day in parse_notify_days(self.instance.expiry_notify_at_days)
             ]
             self.fields["expiry_notify_day_choices"].initial = selected
+
+    def clean_regards_email(self):
+        raw = (self.cleaned_data.get("regards_email") or "").strip()
+        emails = parse_extra_emails(raw)
+        invalid = []
+        for addr in emails:
+            try:
+                validate_email(addr)
+            except DjangoValidationError:
+                invalid.append(addr)
+        if invalid:
+            raise forms.ValidationError(
+                "Invalid regards email: " + ", ".join(invalid)
+            )
+        return "\n".join(emails)
 
     def clean_expiry_notify_day_choices(self):
         selected = self.cleaned_data.get("expiry_notify_day_choices") or []

@@ -80,6 +80,18 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="App password for the outgoing mailbox.",
     )
+    regards_email = models.TextField(
+        "regards emails",
+        blank=True,
+        help_text="Emails shown under Best Regards in client renewal emails "
+        "(one per line, or comma-separated).",
+    )
+    regards_contact = models.CharField(
+        "regards contact details",
+        max_length=255,
+        blank=True,
+        help_text="Phone or other contact shown under Best Regards in client renewal emails.",
+    )
     expiry_client_emails_enabled = models.BooleanField(
         "email clients before subscription expiry",
         default=False,

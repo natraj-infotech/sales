@@ -143,27 +143,8 @@ def _team_recipients(company: CompanyProfile) -> list[str]:
 
 
 def _client_reminder_cc_recipients(company: CompanyProfile) -> list[str]:
-    recipients: list[str] = []
-
-    owner_email = (company.user.email or "").strip().lower()
-    if owner_email:
-        recipients.append(owner_email)
-
-    company_email = (company.email or "").strip().lower()
-    if company_email and company_email not in recipients:
-        recipients.append(company_email)
-
-    member_emails = (
-        CompanyMember.objects.filter(company=company)
-        .select_related("user")
-        .order_by("user__email")
-    )
-    for membership in member_emails:
-        email = (membership.user.email or "").strip().lower()
-        if email and email not in recipients:
-            recipients.append(email)
-
-    return recipients
+    """Client reminders go only to the client — no extra copies."""
+    return []
 
 
 def _active_expiring_on_day(company: CompanyProfile, days_before: int, today):
@@ -198,7 +179,7 @@ def _selected_threshold_window(days_remaining: int, thresholds: list[int]) -> in
 
 
 def _max_daily_sends(days_remaining: int) -> int:
-    return 2 if days_remaining <= DOUBLE_SEND_DAYS_REMAINING else 1
+    return 1
 
 
 def _format_subscription_line(sub: ClientSubscription) -> str:
@@ -223,15 +204,11 @@ def _subscription_bill_type(sub: ClientSubscription) -> str:
 
 
 def _client_contact_lines(company: CompanyProfile) -> list[str]:
-    contact_bits = [
-        bit
-        for bit in (
-            (company.phone or "").strip(),
-            (company.email or "").strip(),
-            (company.outgoing_email or "").strip(),
-        )
-        if bit
-    ]
+    contact_bits: list[str] = []
+    contact = (getattr(company, "regards_contact", "") or "").strip()
+    if contact:
+        contact_bits.append(contact)
+    contact_bits.extend(parse_extra_emails(getattr(company, "regards_email", "") or ""))
     return contact_bits
 
 

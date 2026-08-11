@@ -60,6 +60,8 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "support_email_app_password",
         "outgoing_email",
         "outgoing_email_app_password",
+        "regards_email",
+        "regards_contact",
         "expiry_client_emails_enabled",
         "expiry_team_digest_enabled",
         "expiry_notify_at_days",

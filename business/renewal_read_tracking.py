@@ -189,7 +189,7 @@ def _send_via_graph(
         "toRecipients": [
             {"emailAddress": {"address": addr}} for addr in to_addresses
         ],
-        "isReadReceiptRequested": True,
+        "isReadReceiptRequested": False,
     }
     cc_recipients = [addr.strip() for addr in (cc_addresses or ()) if addr.strip()]
     if cc_recipients:
@@ -296,10 +296,6 @@ def send_renewal_email(
             err,
         )
 
-    extra_headers = {
-        "Disposition-Notification-To": sender,
-        "Return-Receipt-To": sender,
-    }
     ok, err = send_smtp_outbound(
         sender,
         password,
@@ -309,7 +305,6 @@ def send_renewal_email(
         html_body=html_with_pixel,
         cc_addresses=cc_addresses,
         inline_images=inline_images,
-        extra_headers=extra_headers,
     )
     return ok, err, None
 
