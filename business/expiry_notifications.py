@@ -143,8 +143,24 @@ def _team_recipients(company: CompanyProfile) -> list[str]:
 
 
 def _client_reminder_cc_recipients(company: CompanyProfile) -> list[str]:
-    """Client reminders go only to the client — no extra copies."""
-    return []
+    """CC company owner and sales team on client renewal reminders."""
+    recipients: list[str] = []
+
+    owner_email = (company.user.email or "").strip().lower()
+    if owner_email:
+        recipients.append(owner_email)
+
+    member_emails = (
+        CompanyMember.objects.filter(company=company, sales_access=True)
+        .select_related("user")
+        .order_by("user__email")
+    )
+    for membership in member_emails:
+        email = (membership.user.email or "").strip().lower()
+        if email and email not in recipients:
+            recipients.append(email)
+
+    return recipients
 
 
 def _active_expiring_on_day(company: CompanyProfile, days_before: int, today):
@@ -741,6 +757,9 @@ def send_client_expiry_emails(
         )
         inline_images = [logo_inline] if logo_inline else None
 
+        client_to = client_email.strip().lower()
+        cc_for_send = [addr for addr in cc_recipients if addr != client_to]
+
         ok, err, internet_message_id = send_renewal_email(
             company,
             invite,
@@ -748,7 +767,7 @@ def send_client_expiry_emails(
             subject,
             body,
             html_body,
-            cc_addresses=cc_recipients,
+            cc_addresses=cc_for_send,
             inline_images=inline_images,
         )
         if ok:
