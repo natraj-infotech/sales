@@ -1,151 +1,470 @@
 {% extends "base.html" %}
 {% block title %}Support tickets{% endblock %}
 
-{% block page_header %}{% endblock %}
-
-{% block content %}
-<div class="ticket360-banner">
-  <div class="ticket360-banner-title">Unlimited Support Tickets Enabled!</div>
-  <div class="ticket360-banner-subtitle">Since transactions are disabled, you can create unlimited support tickets.</div>
-</div>
-
-<div class="ticket360-header">
-  <div class="ticket360-header-main">
-    <svg aria-hidden="true"><use href="#i-ticket"/></svg>
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-ticket"/></svg>
     <div>
-      <h1>Support Tickets</h1>
-      <p>Manage and track all your support tickets in one place.</p>
+      <div class="ticket360-title-row ticket360-title-row--banner">
+        <h1 class="tracker-page-title">Support Tickets</h1>
+        <span id="st-live-meta" class="ticket360-live ticket360-live--banner">Live · auto-updating</span>
+      </div>
+      <p class="tracker-page-subtitle">Manage and track all support tickets in one place.</p>
     </div>
   </div>
-  <div class="ticket360-actions">
-    <a class="ticket360-btn" href="{% url 'support_ticket_add' %}">Create Ticket</a>
-    <a class="ticket360-btn" href="{% url 'support_ticket_add' %}">Create Offline Ticket</a>
-    <a class="ticket360-btn" href="{% url 'support_ticket_list' %}">Support Team</a>
-    <a class="ticket360-btn" href="{% url 'support_ticket_list' %}">Email Diary</a>
-    <span class="ticket360-chip">{{ counts.total }} Support Tickets</span>
-    <span class="ticket360-chip ticket360-chip--light">UNLIMITED</span>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_sla_settings' %}">SLA &amp; priority</a>
+    <a class="btn-tracker-header btn-tracker-on-blue" href="{% url 'support_ticket_add' %}">+ Create Ticket</a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_add' %}">+ Create Offline Ticket</a>
   </div>
 </div>
+{% endblock %}
 
-<div class="ticket360-tabs">
-  <a class="ticket360-tab {% if source_filter == 'internal' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=internal">Internal <span>{{ internal_count }}</span></a>
-  <a class="ticket360-tab {% if source_filter == 'external' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=external">External <span>{{ external_count }}</span></a>
-  <a class="ticket360-tab {% if source_filter == 'all' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=all">All <span>{{ internal_count|add:external_count }}</span></a>
-</div>
+{% block content %}
+<div class="ticket360-page">
+  <div class="ticket360-stats">
+    <div class="ticket360-stat is-active">
+      <div class="num" id="st-count-total">{{ counts.total }}</div>
+      <div class="lbl">All</div>
+    </div>
+    <div class="ticket360-stat">
+      <div class="num" id="st-count-closed">{{ counts.closed }}</div>
+      <div class="lbl">Closed</div>
+    </div>
+    <div class="ticket360-stat">
+      <div class="num" id="st-count-pending">{{ counts.pending }}</div>
+      <div class="lbl">Pending</div>
+    </div>
+    <div class="ticket360-stat">
+      <div class="num" id="st-count-observation">{{ counts.under_observation }}</div>
+      <div class="lbl">Observation</div>
+    </div>
+    <div class="ticket360-stat {% if counts.sla_breached %}is-warn{% endif %}" id="st-stat-breached">
+      <div class="num" id="st-count-breached">{{ counts.sla_breached }}</div>
+      <div class="lbl">SLA breached</div>
+    </div>
+  </div>
 
-<div class="ticket360-stats">
-  <div class="ticket360-stat">
-    <div class="num">{{ counts.total }}</div>
-    <div class="lbl">All</div>
-  </div>
-  <div class="ticket360-stat">
-    <div class="num">{{ counts.closed }}</div>
-    <div class="lbl">Closed</div>
-  </div>
-  <div class="ticket360-stat">
-    <div class="num">{{ counts.pending }}</div>
-    <div class="lbl">Pending</div>
-  </div>
-  <div class="ticket360-stat">
-    <div class="num">{{ counts.under_observation }}</div>
-    <div class="lbl">Under observation</div>
-  </div>
-</div>
-
-<div class="tracker-card tracker-card--flush-bottom ticket360-card">
-  <div class="toolbar toolbar--in-card">
-    <form method="get">
-      <input type="hidden" name="source" value="{{ source_filter }}">
-      <label class="muted" for="ticket-status" style="font-size:0.8125rem;margin-right:0.35rem;">Status</label>
-      <select class="select-inline" id="ticket-status" name="status" style="max-width:12rem;">
-        <option value="">All</option>
+  <div class="ticket360-filters">
+    <form method="get" id="st-filter-form">
+      <div class="ticket360-search">
+        <svg class="ticket360-search-icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <input type="search" id="st-search" name="q" value="{{ request.GET.q }}" placeholder="Search by ID, subject, or email" autocomplete="off">
+      </div>
+      <label for="ticket-status">Status</label>
+      <select class="select-inline" id="ticket-status" name="status">
+        <option value="">All statuses</option>
         {% for val, label in status_choices %}
         <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-ghost">Apply</button>
+      <button type="submit" class="ticket360-filter-apply">Apply</button>
     </form>
   </div>
-  <div class="tracker-table-scroll">
-    <table class="tracker-table-pro tracker-table-pro--wide">
-      <thead>
-        <tr>
-          <th>Ticket ID</th>
-          <th>Created At</th>
-          <th>Subject</th>
-          <th>Email</th>
-          <th>Dept</th>
-          <th>Status</th>
-          <th>Assign to</th>
-          <th>Comp. Date</th>
-          <th>Comp. Time</th>
-          <th>Remarks</th>
-          <th class="col-actions">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in object_list %}
-        <tr>
-          <td><span class="ticket-ref">{{ t.reference }}</span></td>
-          <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
-          <td>{{ t.subject }}</td>
-          <td>{{ t.source_sender|default:t.created_by.email }}</td>
-          <td>{{ t.get_department_display }}</td>
-          <td>
-            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
-              {% csrf_token %}
-              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-              <select name="status" class="ticket360-row-select ticket360-row-select--status">
-                {% for value, label in status_choices %}
-                <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit" class="ticket360-mini-btn">Set</button>
-            </form>
-          </td>
-          <td>
-            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
-              {% csrf_token %}
-              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-              <select name="assignee" class="ticket360-row-select">
-                <option value="">Unassigned</option>
-                {% for u in assignees %}
-                <option value="{{ u.pk }}" {% if t.assignee_id == u.pk %}selected{% endif %}>{{ u.email }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit" class="ticket360-mini-btn">Set</button>
-            </form>
-          </td>
-          <td>{% if t.status == "resolved" or t.status == "closed" %}{{ t.updated_at|date:"d/m/Y" }}{% else %}-{% endif %}</td>
-          <td>{% if t.status == "resolved" or t.status == "closed" %}{{ t.updated_at|date:"H:i" }}{% else %}-{% endif %}</td>
-          <td>
-            <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
-              {% csrf_token %}
-              <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-              <input type="text" name="remarks" class="ticket360-row-input" value="{{ t.remarks }}" placeholder="Remarks">
-              <button type="submit" class="ticket360-mini-btn">Set</button>
-            </form>
-          </td>
-          <td class="col-actions">
-              <a class="btn-table-edit" href="{% url 'support_ticket_detail' t.pk %}">View</a>
-              {% if t.status != "closed" %}
-              <form method="post" action="{% url 'support_ticket_detail' t.pk %}" style="display:inline;">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="close">
-                <button type="submit" class="ticket360-view-link">Close</button>
-              </form>
+
+  <div class="tracker-card tracker-card--flush-bottom ticket360-card">
+    <div class="ticket360-table-wrap tracker-table-scroll">
+      <table class="tracker-table-pro tracker-table-pro--wide" id="st-table">
+        <thead>
+          <tr>
+            <th>Ticket ID</th>
+            <th>Created</th>
+            <th>Subject</th>
+            <th>Email</th>
+            <th>Dept</th>
+            <th>Priority</th>
+            {% if sla_settings.tracks_response %}<th>Response due</th>{% endif %}
+            {% if sla_settings.tracks_resolve %}<th>Resolve due</th>{% endif %}
+            <th>SLA</th>
+            <th>Status</th>
+            <th>Assign to</th>
+            <th>Completed</th>
+            <th>Remarks</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="st-tbody">
+          {% for t in object_list %}
+          <tr data-ticket-id="{{ t.pk }}" data-search="{{ t.reference }} {{ t.subject }} {{ t.source_sender|default:t.created_by.email }} {{ t.get_priority_display }}">
+            <td><span class="ticket-ref">{{ t.reference }}</span></td>
+            <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ t.subject }}</td>
+            <td>{{ t.source_sender|default:t.created_by.email }}</td>
+            <td>{{ t.get_department_display }}</td>
+            <td><span class="prio-pill prio-pill--{{ t.priority }}">{{ t.get_priority_display }}</span></td>
+            {% if sla_settings.tracks_response %}
+            <td>
+              {% if t.sla.response_due %}{{ t.sla.response_due|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+              <div class="sla-badge sla-badge--{{ t.sla.response_status }}">{{ t.sla.response_label }}</div>
+            </td>
+            {% endif %}
+            {% if sla_settings.tracks_resolve %}
+            <td>
+              {% if t.sla.resolve_due %}{{ t.sla.resolve_due|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+              <div class="sla-badge sla-badge--{{ t.sla.resolve_status }}">{{ t.sla.resolve_label }}</div>
+            </td>
+            {% endif %}
+            <td>
+              {% if t.sla.any_breached %}
+              <span class="sla-badge sla-badge--breached">Breached</span>
+              {% elif t.sla.tracks_response or t.sla.tracks_resolve %}
+              <span class="sla-badge sla-badge--ok">On track</span>
+              {% else %}
+              —
               {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;">
-            No tickets yet. <a href="{% url 'support_ticket_add' %}">Create a support ticket</a>.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </td>
+            <td>
+              <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+                {% csrf_token %}
+                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                <select name="status" class="ticket360-row-select ticket360-row-select--status" title="{{ t.get_status_display }}">
+                  {% for value, label in status_choices %}
+                  <option value="{{ value }}" {% if t.status == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="ticket360-mini-btn" title="Save">✓</button>
+              </form>
+            </td>
+            <td>
+              <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+                {% csrf_token %}
+                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                <select name="assignee" class="ticket360-row-select">
+                  <option value="">Unassigned</option>
+                  {% for u in assignees %}
+                  <option value="{{ u.pk }}" {% if t.assignee_id == u.pk %}selected{% endif %}>{{ u.email }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="ticket360-mini-btn" title="Save">✓</button>
+              </form>
+            </td>
+            <td>{% if t.status == "resolved" or t.status == "closed" %}{{ t.updated_at|date:"d/m/Y H:i" }}{% else %}-{% endif %}</td>
+            <td>
+              <form method="post" action="{% url 'support_ticket_update' t.pk %}" class="ticket360-row-form">
+                {% csrf_token %}
+                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                <input type="text" name="remarks" class="ticket360-row-input" value="{{ t.remarks }}" placeholder="Remarks">
+                <button type="submit" class="ticket360-mini-btn" title="Save">✓</button>
+              </form>
+            </td>
+            <td class="col-actions">
+              <div class="ticket360-actions-cell">
+                <a class="ticket360-view-link" href="{% url 'support_ticket_detail' t.pk %}">View →</a>
+                {% if t.status != "closed" %}
+                <form method="post" action="{% url 'support_ticket_detail' t.pk %}" style="display:inline;margin:0;">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="close">
+                  <button type="submit" class="ticket360-close-btn">Close</button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="st-empty-row">
+            <td colspan="14" class="muted" style="padding:1.25rem;text-align:center;">
+              No tickets yet. <a href="{% url 'support_ticket_add' %}">Create a support ticket</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
+
+<script>
+(function () {
+  var LIVE_URL = "{% url 'support_ticket_live' %}";
+  var ADD_URL = "{% url 'support_ticket_add' %}";
+  var POLL_MS = 20000;
+  var CSRF = "{{ csrf_token }}";
+  var STATUS = "{{ status_filter|escapejs }}";
+  var TRACKS_RESPONSE = {% if sla_settings.tracks_response %}true{% else %}false{% endif %};
+  var TRACKS_RESOLVE = {% if sla_settings.tracks_resolve %}true{% else %}false{% endif %};
+  var tbody = document.getElementById("st-tbody");
+  var meta = document.getElementById("st-live-meta");
+  var searchInput = document.getElementById("st-search");
+  var timer = null;
+  var inFlight = false;
+  var lastSignature = "";
+
+  function qs() {
+    var params = new URLSearchParams();
+    if (STATUS) params.set("status", STATUS);
+    var q = params.toString();
+    return q ? ("?" + q) : "";
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function setMeta(text, isError) {
+    if (!meta) return;
+    meta.textContent = text;
+    if (isError) meta.classList.add("is-error");
+    else meta.classList.remove("is-error");
+  }
+
+  function tableBusy() {
+    var el = document.activeElement;
+    if (!el || !tbody) return false;
+    return tbody.contains(el) && (
+      el.tagName === "INPUT" ||
+      el.tagName === "SELECT" ||
+      el.tagName === "TEXTAREA" ||
+      el.tagName === "BUTTON"
+    );
+  }
+
+  function signature(data) {
+    return JSON.stringify({
+      created: data.created || 0,
+      counts: data.counts || {},
+      rows: (data.rows || []).map(function (r) {
+        return [
+          r.id,
+          r.status,
+          r.assignee_id,
+          r.remarks,
+          r.subject,
+          r.email,
+          r.department,
+          r.priority,
+          r.completed_at,
+          r.resolve_due,
+          r.response_due,
+          r.resolve_status,
+          r.response_status,
+          r.is_closed,
+        ];
+      }),
+    });
+  }
+
+  function optionHtml(choices, selected) {
+    return (choices || []).map(function (c) {
+      var sel = String(c.value) === String(selected) ? " selected" : "";
+      return '<option value="' + escapeHtml(c.value) + '"' + sel + ">" + escapeHtml(c.label) + "</option>";
+    }).join("");
+  }
+
+  function assigneeOptions(assignees, selected) {
+    var html = '<option value="">Unassigned</option>';
+    (assignees || []).forEach(function (u) {
+      var sel = String(u.id) === String(selected) ? " selected" : "";
+      html += '<option value="' + escapeHtml(u.id) + '"' + sel + ">" + escapeHtml(u.email) + "</option>";
+    });
+    return html;
+  }
+
+  function slaCell(due, label, status) {
+    return (
+      "<td>" +
+        escapeHtml(due || "—") +
+        '<div class="sla-badge sla-badge--' + escapeHtml(status || "off") + '">' +
+          escapeHtml(label || "—") +
+        "</div>" +
+      "</td>"
+    );
+  }
+
+  function priorityPill(priorityKey, priorityLabel) {
+    var key = String(priorityKey || "medium").toLowerCase();
+    var label = priorityLabel || priorityKey || "Medium";
+    return (
+      '<span class="prio-pill prio-pill--' + escapeHtml(key) + '">' +
+        escapeHtml(label) +
+      "</span>"
+    );
+  }
+
+  function overallSla(r) {
+    var breached = r.resolve_status === "breached" || r.response_status === "breached";
+    var tracking = r.tracks_resolve || r.tracks_response;
+    if (breached) return '<span class="sla-badge sla-badge--breached">Breached</span>';
+    if (tracking) return '<span class="sla-badge sla-badge--ok">On track</span>';
+    return "—";
+  }
+
+  function colCount() {
+    return 12 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
+  }
+
+  function rowHtml(r, data) {
+    var nextQs = escapeHtml(data.next_qs || "");
+    var searchBlob = escapeHtml([r.reference, r.subject, r.email, r.priority_label || r.priority].join(" "));
+    var closeBtn = r.is_closed
+      ? ""
+      : (
+        '<form method="post" action="' + escapeHtml(r.detail_url) + '" style="display:inline;margin:0;">' +
+          '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '">' +
+          '<input type="hidden" name="action" value="close">' +
+          '<button type="submit" class="ticket360-close-btn">Close</button>' +
+        "</form>"
+      );
+    var dueCols = "";
+    if (TRACKS_RESPONSE) dueCols += slaCell(r.response_due, r.response_label, r.response_status);
+    if (TRACKS_RESOLVE) dueCols += slaCell(r.resolve_due, r.resolve_label, r.resolve_status);
+    return (
+      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-search="' + searchBlob + '">' +
+        '<td><span class="ticket-ref">' + escapeHtml(r.reference) + "</span></td>" +
+        "<td>" + escapeHtml(r.created_at) + "</td>" +
+        "<td>" + escapeHtml(r.subject) + "</td>" +
+        "<td>" + escapeHtml(r.email) + "</td>" +
+        "<td>" + escapeHtml(r.department) + "</td>" +
+        "<td>" + priorityPill(r.priority, r.priority_label) + "</td>" +
+        dueCols +
+        "<td>" + overallSla(r) + "</td>" +
+        "<td>" +
+          '<form method="post" action="' + escapeHtml(r.update_url) + '" class="ticket360-row-form">' +
+            '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '">' +
+            '<input type="hidden" name="next_qs" value="' + nextQs + '">' +
+            '<select name="status" class="ticket360-row-select ticket360-row-select--status">' +
+              optionHtml(data.status_choices, r.status) +
+            "</select>" +
+            '<button type="submit" class="ticket360-mini-btn" title="Save">✓</button>' +
+          "</form>" +
+        "</td>" +
+        "<td>" +
+          '<form method="post" action="' + escapeHtml(r.update_url) + '" class="ticket360-row-form">' +
+            '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '">' +
+            '<input type="hidden" name="next_qs" value="' + nextQs + '">' +
+            '<select name="assignee" class="ticket360-row-select">' +
+              assigneeOptions(data.assignees, r.assignee_id) +
+            "</select>" +
+            '<button type="submit" class="ticket360-mini-btn" title="Save">✓</button>' +
+          "</form>" +
+        "</td>" +
+        "<td>" + escapeHtml(r.completed_at) + "</td>" +
+        "<td>" +
+          '<form method="post" action="' + escapeHtml(r.update_url) + '" class="ticket360-row-form">' +
+            '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '">' +
+            '<input type="hidden" name="next_qs" value="' + nextQs + '">' +
+            '<input type="text" name="remarks" class="ticket360-row-input" value="' + escapeHtml(r.remarks) + '" placeholder="Remarks">' +
+            '<button type="submit" class="ticket360-mini-btn" title="Save">✓</button>' +
+          "</form>" +
+        "</td>" +
+        '<td class="col-actions">' +
+          '<div class="ticket360-actions-cell">' +
+            '<a class="ticket360-view-link" href="' + escapeHtml(r.detail_url) + '">View →</a> ' +
+            closeBtn +
+          "</div>" +
+        "</td>" +
+      "</tr>"
+    );
+  }
+
+  function emptyHtml() {
+    return (
+      '<tr class="st-empty-row">' +
+        '<td colspan="' + colCount() + '" class="muted" style="padding:1.25rem;text-align:center;">' +
+          'No tickets yet. <a href="' + ADD_URL + '">Create a support ticket</a>.' +
+        "</td>" +
+      "</tr>"
+    );
+  }
+
+  function setText(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function applyCounts(data) {
+    var c = data.counts || {};
+    setText("st-count-total", c.total != null ? c.total : "0");
+    setText("st-count-closed", c.closed != null ? c.closed : "0");
+    setText("st-count-pending", c.pending != null ? c.pending : "0");
+    setText("st-count-observation", c.under_observation != null ? c.under_observation : "0");
+    setText("st-count-breached", c.sla_breached != null ? c.sla_breached : "0");
+    var breachedStat = document.getElementById("st-stat-breached");
+    if (breachedStat) {
+      if (c.sla_breached) breachedStat.classList.add("is-warn");
+      else breachedStat.classList.remove("is-warn");
+    }
+  }
+
+  function applySearchFilter() {
+    if (!tbody || !searchInput) return;
+    var q = (searchInput.value || "").trim().toLowerCase();
+    var rows = tbody.querySelectorAll("tr[data-ticket-id]");
+    rows.forEach(function (row) {
+      if (!q) {
+        row.style.display = "";
+        return;
+      }
+      var blob = (row.getAttribute("data-search") || row.textContent || "").toLowerCase();
+      row.style.display = blob.indexOf(q) >= 0 ? "" : "none";
+    });
+  }
+
+  function applyRows(data) {
+    var rows = data.rows || [];
+    if (!rows.length) {
+      tbody.innerHTML = emptyHtml();
+      return;
+    }
+    tbody.innerHTML = rows.map(function (r) {
+      return rowHtml(r, data);
+    }).join("");
+    applySearchFilter();
+  }
+
+  function poll() {
+    if (inFlight) return;
+    inFlight = true;
+    fetch(LIVE_URL + qs(), {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        var sig = signature(data);
+        var changed = sig !== lastSignature;
+        if (changed) {
+          applyCounts(data);
+          if (tableBusy()) {
+            setMeta("Live · waiting (editing…)", false);
+            return;
+          }
+          applyRows(data);
+          lastSignature = sig;
+        }
+        var suffix = data.created ? (" · +" + data.created + " new") : "";
+        setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+      })
+      .catch(function (err) {
+        setMeta("Live poll failed — retrying", true);
+        console.error(err);
+      })
+      .finally(function () {
+        inFlight = false;
+      });
+  }
+
+  function start() {
+    setMeta("Live · auto-updating", false);
+    timer = window.setInterval(poll, POLL_MS);
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener("input", applySearchFilter);
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) poll();
+  });
+
+  start();
+})();
+</script>
 {% endblock %}

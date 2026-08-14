@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}SLA & priority settings{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-ticket"/></svg>
+    <div>
+      <h1 class="tracker-page-title">SLA &amp; priority settings</h1>
+      <p class="tracker-page-subtitle">24×7 clock · customise response/resolve times and subject keywords</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}">Back to tickets</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="sla-settings-page">
+  <div class="sla-settings-card">
+    <form method="post" id="sla-settings-form">
+      {% csrf_token %}
+
+      <div class="sla-settings-section">
+        <h3>SLA mode</h3>
+        <p class="section-help">Choose which clocks to track. Times use calendar hours (24×7).</p>
+        <div class="sla-mode-cards">
+          {% for radio in form.sla_mode %}
+          <label class="radio-card">
+            {{ radio.tag }}
+            <span>{{ radio.choice_label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {{ form.sla_mode.errors }}
+      </div>
+
+      <div class="sla-settings-section">
+        <h3>Hours by priority</h3>
+        <p class="section-help">Response hours apply when mode is “First response” or “Both”. Resolve hours apply when mode is “Resolve” or “Both”.</p>
+        <div class="sla-table-wrap">
+          <table class="sla-hours-table">
+            <thead>
+              <tr>
+                <th scope="col">Priority</th>
+                <th scope="col">First response (hours)</th>
+                <th scope="col">Resolve (hours)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Urgent</strong></td>
+                <td>{{ form.urgent_response_hours }}{{ form.urgent_response_hours.errors }}</td>
+                <td>{{ form.urgent_resolve_hours }}{{ form.urgent_resolve_hours.errors }}</td>
+              </tr>
+              <tr>
+                <td><strong>High</strong></td>
+                <td>{{ form.high_response_hours }}{{ form.high_response_hours.errors }}</td>
+                <td>{{ form.high_resolve_hours }}{{ form.high_resolve_hours.errors }}</td>
+              </tr>
+              <tr>
+                <td><strong>Medium</strong></td>
+                <td>{{ form.medium_response_hours }}{{ form.medium_response_hours.errors }}</td>
+                <td>{{ form.medium_resolve_hours }}{{ form.medium_resolve_hours.errors }}</td>
+              </tr>
+              <tr>
+                <td><strong>Low</strong></td>
+                <td>{{ form.low_response_hours }}{{ form.low_response_hours.errors }}</td>
+                <td>{{ form.low_resolve_hours }}{{ form.low_resolve_hours.errors }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sla-settings-section">
+        <h3>Email auto-priority</h3>
+        <div class="sla-toggle-row">
+          <div class="toggle-copy">
+            <strong>{{ form.email_auto_priority.label }}</strong>
+            <p>When off, email tickets stay Medium unless you change priority manually. When on, subject keywords below set priority automatically.</p>
+          </div>
+          <label class="sla-switch" title="{{ form.email_auto_priority.label }}">
+            {{ form.email_auto_priority }}
+            <span class="slider"></span>
+          </label>
+        </div>
+        {{ form.email_auto_priority.errors }}
+      </div>
+
+      <div class="sla-settings-section">
+        <h3>Subject keyword rules</h3>
+        <p class="section-help">First matching rule wins (lower order number first). Used for email auto-priority and to suggest priority on the create form.</p>
+        {{ formset.management_form }}
+        <div class="sla-table-wrap">
+          <table class="sla-rules-table">
+            <thead>
+              <tr>
+                <th scope="col">Priority</th>
+                <th scope="col">Keywords</th>
+                <th scope="col" class="col-order">Order</th>
+                <th scope="col" class="col-delete">Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rule_form in formset %}
+              <tr>
+                <td>{{ rule_form.priority }}{{ rule_form.priority.errors }}</td>
+                <td>{{ rule_form.keywords }}{{ rule_form.keywords.errors }}</td>
+                <td class="col-order">{{ rule_form.sort_order }}{{ rule_form.sort_order.errors }}</td>
+                <td class="col-delete">
+                  {% if rule_form.DELETE %}
+                  <label class="sla-delete-check">{{ rule_form.DELETE }} Del</label>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if formset.non_form_errors %}
+        <div class="muted" style="color:#b42318;margin-top:0.5rem;">{{ formset.non_form_errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="sla-settings-actions">
+        <button type="submit" class="ticket360-btn">Save settings</button>
+        <a class="ticket360-btn ticket360-btn--ghost" href="{% url 'support_ticket_list' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

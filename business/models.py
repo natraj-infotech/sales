@@ -466,3 +466,157 @@ class SupportTicketComment(models.Model):
 
     def __str__(self):
         return f"{self.ticket.reference} comment by {self.user}"
+
+
+class SupportTicketMeta(models.Model):
+    """CRM extras for django-helpdesk Ticket rows (department, remarks, tenant flags)."""
+
+    class PrioritySource(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        RULE = "rule", "Keyword rule"
+        DEFAULT = "default", "Default"
+
+    ticket = models.OneToOneField(
+        "helpdesk.Ticket",
+        on_delete=models.CASCADE,
+        related_name="crm_meta",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="helpdesk_tickets_created",
+    )
+    department = models.CharField(
+        max_length=20,
+        choices=SupportTicket.Department.choices,
+        default=SupportTicket.Department.GENERAL,
+    )
+    remarks = models.CharField(max_length=255, blank=True)
+    is_internal = models.BooleanField(
+        default=True,
+        help_text="True for tickets created in Ticket360 UI; False for email/IMAP.",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    first_response_due_at = models.DateTimeField(null=True, blank=True)
+    resolve_due_at = models.DateTimeField(null=True, blank=True)
+    first_responded_at = models.DateTimeField(null=True, blank=True)
+    priority_source = models.CharField(
+        max_length=20,
+        choices=PrioritySource.choices,
+        default=PrioritySource.DEFAULT,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "support ticket meta"
+        verbose_name_plural = "support ticket meta"
+
+    def __str__(self):
+        return f"Meta for ticket {self.ticket_id}"
+
+
+class SupportSLASettings(models.Model):
+    """Per-company SLA mode, hours (24×7), and email auto-priority toggle."""
+
+    class SLAMode(models.TextChoices):
+        RESPONSE = "response", "First response only"
+        RESOLVE = "resolve", "Resolve only"
+        BOTH = "both", "First response + resolve"
+
+    company = models.OneToOneField(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="support_sla_settings",
+    )
+    sla_mode = models.CharField(
+        max_length=20,
+        choices=SLAMode.choices,
+        default=SLAMode.RESOLVE,
+    )
+    email_auto_priority = models.BooleanField(
+        default=False,
+        help_text="When on, inbound email tickets get priority from subject keywords.",
+    )
+    # Resolve hours (24×7 calendar hours)
+    urgent_resolve_hours = models.PositiveIntegerField(default=4)
+    high_resolve_hours = models.PositiveIntegerField(default=24)
+    medium_resolve_hours = models.PositiveIntegerField(default=72)
+    low_resolve_hours = models.PositiveIntegerField(default=168)
+    # First-response hours
+    urgent_response_hours = models.PositiveIntegerField(default=1)
+    high_response_hours = models.PositiveIntegerField(default=2)
+    medium_response_hours = models.PositiveIntegerField(default=8)
+    low_response_hours = models.PositiveIntegerField(default=24)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "support SLA settings"
+        verbose_name_plural = "support SLA settings"
+
+    def __str__(self):
+        return f"SLA settings for {self.company}"
+
+    def resolve_hours_for(self, priority: str) -> int:
+        mapping = {
+            "urgent": self.urgent_resolve_hours,
+            "high": self.high_resolve_hours,
+            "medium": self.medium_resolve_hours,
+            "low": self.low_resolve_hours,
+        }
+        return int(mapping.get(priority, self.medium_resolve_hours) or 0)
+
+    def response_hours_for(self, priority: str) -> int:
+        mapping = {
+            "urgent": self.urgent_response_hours,
+            "high": self.high_response_hours,
+            "medium": self.medium_response_hours,
+            "low": self.low_response_hours,
+        }
+        return int(mapping.get(priority, self.medium_response_hours) or 0)
+
+    def tracks_response(self) -> bool:
+        return self.sla_mode in (self.SLAMode.RESPONSE, self.SLAMode.BOTH)
+
+    def tracks_resolve(self) -> bool:
+        return self.sla_mode in (self.SLAMode.RESOLVE, self.SLAMode.BOTH)
+
+
+class TicketPriorityRule(models.Model):
+    """Customisable subject keywords → priority for a company."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="ticket_priority_rules",
+    )
+    priority = models.CharField(
+        max_length=10,
+        choices=SupportTicket.Priority.choices,
+    )
+    keywords = models.CharField(
+        max_length=500,
+        help_text="Comma-separated keywords matched against the ticket subject.",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "ticket priority rule"
+        verbose_name_plural = "ticket priority rules"
+
+    def __str__(self):
+        return f"{self.company_id}:{self.priority} ({self.keywords[:40]})"
+
+    def keyword_list(self) -> list[str]:
+        return [
+            part.strip().lower()
+            for part in (self.keywords or "").split(",")
+            if part.strip()
+        ]

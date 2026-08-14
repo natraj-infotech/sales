@@ -328,6 +328,17 @@
       color: #fff;
       text-decoration: none;
     }
+    .btn-tracker-on-blue {
+      background: #fff;
+      color: var(--header-blue);
+      border: 1px solid #fff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+    .btn-tracker-on-blue:hover {
+      background: #eff6ff;
+      color: var(--header-blue-deep);
+      text-decoration: none;
+    }
 
     /* White content card */
     .tracker-card {
@@ -1247,153 +1258,311 @@
       border-top: 1px solid var(--border);
     }
 
-    .ticket360-banner {
-      background: #d9f2e2;
-      border: 1px solid #afd8bf;
-      border-radius: var(--radius-sm);
-      color: #0b3d22;
-      padding: 0.65rem 0.9rem;
-      margin-bottom: 0.65rem;
+    /* Support tickets dashboard (Ticket360) — blue theme, pill UI */
+    .ticket360-page {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
     }
-    .ticket360-banner-title {
-      font-size: 0.88rem;
-      font-weight: 700;
-      margin-bottom: 0.15rem;
-    }
-    .ticket360-banner-subtitle {
-      font-size: 0.78rem;
-      color: #245a3e;
-    }
-    .ticket360-header {
-      background: linear-gradient(180deg, #0f7ce0 0%, #0667c0 100%);
-      border-radius: var(--radius-sm);
-      padding: 0.85rem 1rem 0.75rem;
-      color: #fff;
-      box-shadow: 0 2px 10px rgba(15, 124, 224, 0.28);
-      margin-bottom: 0.6rem;
-    }
-    .ticket360-header-main {
+    .ticket360-title-row {
       display: flex;
       align-items: center;
-      gap: 0.55rem;
-      margin-bottom: 0.6rem;
+      gap: 0.65rem;
+      flex-wrap: wrap;
     }
-    .ticket360-header-main svg {
-      width: 19px;
-      height: 19px;
-    }
-    .ticket360-header-main h1 {
+    .ticket360-title-row--banner .tracker-page-title {
       margin: 0;
+    }
+    .ticket360-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.28rem 0.75rem;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--header-blue-deep);
+      font-size: 0.72rem;
+      font-weight: 600;
+      border: 1px solid #bfdbfe;
+    }
+    .ticket360-live::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #16a34a;
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+    }
+    .ticket360-live--banner {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.45);
+    }
+    .ticket360-live--banner.is-error {
+      background: rgba(254, 226, 226, 0.95);
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+    .ticket360-live.is-error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+    .ticket360-live.is-error::before {
+      background: #dc2626;
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+    }
+    /* One-line stats — Dashboard-style blue accent */
+    .ticket360-stats {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.75rem;
+      margin: 0;
+      width: 100%;
+    }
+    .ticket360-stat {
+      flex: 1 1 0;
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 0.9rem;
+      box-shadow: var(--shadow-soft);
+      border-left: 4px solid var(--header-blue);
+      text-align: left;
+      position: relative;
+      overflow: hidden;
+    }
+    .ticket360-stat::before {
+      content: none;
+    }
+    .ticket360-stat.is-active {
+      background: #fff;
+      border-color: var(--border);
+      box-shadow: var(--shadow-soft);
+    }
+    .ticket360-stat.is-warn {
+      border-left-color: var(--header-blue-deep);
+      background: #fff;
+    }
+    .ticket360-stat .num {
       font-size: 1.5rem;
       line-height: 1.1;
-      color: #fff;
+      font-weight: 700;
+      color: var(--header-blue);
+      margin: 0 0 0.25rem;
+      font-variant-numeric: tabular-nums;
     }
-    .ticket360-header-main p {
-      margin: 0.12rem 0 0;
-      font-size: 0.78rem;
-      color: rgba(255, 255, 255, 0.9);
-    }
-    .ticket360-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.45rem;
-      align-items: center;
+    .ticket360-stat .lbl {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .ticket360-btn {
       display: inline-flex;
       align-items: center;
-      padding: 0.32rem 0.72rem;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.55rem 1.15rem;
       border-radius: 999px;
-      font-size: 0.72rem;
+      font-size: 0.8125rem;
       font-weight: 600;
       color: #fff !important;
       text-decoration: none !important;
-      background: rgba(2, 40, 90, 0.5);
-      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: var(--header-blue);
+      border: 1px solid transparent;
+      box-shadow: 0 1px 2px rgba(43, 111, 214, 0.22);
+      transition: background 0.15s ease, box-shadow 0.15s ease;
     }
     .ticket360-btn:hover {
-      background: rgba(2, 40, 90, 0.72);
+      background: var(--header-blue-deep);
+      text-decoration: none !important;
     }
-    .ticket360-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.3rem 0.72rem;
-      border-radius: 999px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      background: #0c9f42;
-      color: #fff;
+    .ticket360-btn--ghost {
+      background: #fff;
+      color: var(--header-blue) !important;
+      border-color: #bfdbfe;
+      box-shadow: none;
     }
-    .ticket360-chip--light {
-      background: #b6ff7a;
-      color: #195100;
+    .ticket360-btn--ghost:hover {
+      background: var(--accent-soft);
     }
-    .ticket360-tabs {
+    .ticket360-filters {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 0.65rem;
-      margin: 0.75rem 0 0.55rem;
-    }
-    .ticket360-tab {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      font-size: 0.78rem;
-      color: #38527a;
-      text-decoration: none !important;
-      padding: 0.18rem 0;
-      border-bottom: 2px solid transparent;
-    }
-    .ticket360-tab span {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 1.25rem;
-      padding: 0 0.28rem;
-      border-radius: 999px;
-      background: #e2e8f0;
-      color: #0f172a;
-      font-size: 0.68rem;
-      font-weight: 700;
-    }
-    .ticket360-tab.is-active {
-      color: #0f7ce0;
-      border-bottom-color: #0f7ce0;
-      font-weight: 700;
-    }
-    .ticket360-tab.is-active span {
-      background: #0f7ce0;
-      color: #fff;
-    }
-    .ticket360-stats {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
-    }
-    .ticket360-stat {
+      padding: 0.75rem 0.9rem;
       background: #fff;
-      border: 1px solid #d6dfeb;
-      border-radius: 8px;
-      padding: 0.7rem 0.9rem;
-      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow-soft);
     }
-    .ticket360-stat .num {
-      font-size: 1.9rem;
-      line-height: 1;
-      font-weight: 700;
-      color: #0f7ce0;
-      margin-bottom: 0.25rem;
+    .ticket360-filters form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem;
+      width: 100%;
+      margin: 0;
     }
-    .ticket360-stat .lbl {
-      font-size: 0.74rem;
-      color: #52627d;
-      text-transform: none;
-      letter-spacing: 0;
+    .ticket360-search {
+      flex: 1 1 14rem;
+      min-width: 12rem;
+      position: relative;
+    }
+    .ticket360-search input {
+      width: 100%;
+      height: 42px;
+      padding: 0.5rem 0.9rem 0.5rem 2.25rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      font-size: 0.8125rem;
+      background: #f8fafc;
+      color: var(--text);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .ticket360-search input:focus {
+      outline: none;
+      background: #fff;
+      border-color: var(--header-blue);
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.15);
+    }
+    .ticket360-search-icon {
+      position: absolute;
+      left: 0.85rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .ticket360-filters label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+      margin: 0;
+    }
+    .ticket360-filters .select-inline,
+    .ticket360-filters select {
+      min-width: 9rem;
+      max-width: 12rem;
+      height: 42px;
+      padding: 0.4rem 2rem 0.4rem 0.9rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      font-size: 0.8125rem;
+      background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 0.85rem center;
+      appearance: none;
+      -webkit-appearance: none;
+      color: var(--text);
+    }
+    .ticket360-filters select:focus {
+      outline: none;
+      background-color: #fff;
+      border-color: var(--header-blue);
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.15);
+    }
+    .ticket360-filter-apply {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      height: 42px;
+      padding: 0 1.15rem;
+      border: none;
+      border-radius: 999px;
+      background: var(--header-blue);
+      color: #fff;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .ticket360-filter-apply:hover {
+      background: var(--header-blue-deep);
+    }
+    .ticket360-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
     }
     .ticket360-card .toolbar--in-card {
-      background: #f8fbff;
+      display: none;
     }
+    .ticket360-table-wrap {
+      overflow-x: auto;
+    }
+    .ticket360-card .tracker-table-pro thead th {
+      background: #f8fafc;
+      color: var(--text-secondary);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .ticket360-card .tracker-table-pro tbody td {
+      font-size: 0.8125rem;
+      vertical-align: middle;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .ticket360-card .tracker-table-pro tbody tr:hover {
+      background: #f8fafc;
+    }
+    .ticket360-card .ticket-ref {
+      color: var(--header-blue);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .ticket360-status-pill {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .ticket360-status-pill--open { background: #dcfce7; color: #166534; }
+    .ticket360-status-pill--in_progress { background: #dbeafe; color: #1e40af; }
+    .ticket360-status-pill--resolved { background: #fef3c7; color: #92400e; }
+    .ticket360-status-pill--closed { background: #e5e7eb; color: #374151; }
+    .prio-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .prio-pill--low { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .prio-pill--medium { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+    .prio-pill--high { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+    .prio-pill--urgent { background: #ffe4e6; color: #be123c; border-color: #fecdd3; }
+    .sla-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 0.2rem;
+      padding: 0.12rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .sla-badge--ok,
+    .sla-badge--met { background: #eff6ff; color: var(--header-blue-deep); }
+    .sla-badge--breached { background: #fee2e2; color: #b91c1c; }
+    .sla-badge--off { background: #f1f5f9; color: #64748b; }
     .ticket360-row-form {
       display: inline-flex;
       align-items: center;
@@ -1403,49 +1572,425 @@
     .ticket360-row-select {
       max-width: 9.5rem;
       min-width: 7.2rem;
+      height: 34px;
       font-size: 0.72rem;
-      padding: 0.28rem 0.42rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      background: #fff;
+      padding: 0.2rem 1.6rem 0.2rem 0.55rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 0.55rem center;
+      appearance: none;
+      -webkit-appearance: none;
+      color: var(--text);
     }
     .ticket360-row-select--status {
-      max-width: 7rem;
+      max-width: 7.5rem;
       min-width: 6.25rem;
+    }
+    .ticket360-row-select:focus {
+      outline: none;
+      border-color: var(--header-blue);
+      background-color: #fff;
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.12);
     }
     .ticket360-row-input {
       width: 100%;
-      min-width: 9rem;
-      padding: 0.3rem 0.45rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
+      min-width: 8rem;
+      height: 34px;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
       font-size: 0.72rem;
+      background: #f8fafc;
+    }
+    .ticket360-row-input:focus {
+      outline: none;
+      border-color: var(--header-blue);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.12);
     }
     .ticket360-mini-btn {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border: 1px solid #bfdbfe;
-      background: #e0eeff;
-      color: #0f4ca8;
-      border-radius: 6px;
-      padding: 0.22rem 0.45rem;
-      font-size: 0.68rem;
-      font-weight: 600;
+      background: var(--accent-soft);
+      color: var(--header-blue-deep);
+      border-radius: 999px;
+      padding: 0;
+      font-size: 0.85rem;
+      font-weight: 700;
+      line-height: 1;
       cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ticket360-mini-btn:hover {
+      background: #dbeafe;
     }
     .ticket360-view-link {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      padding: 0.35rem 0.56rem;
-      border-radius: 6px;
-      border: 1px solid #d1d5db;
-      background: #f9fafb;
-      color: #334155;
-      font-size: 0.7rem;
+      gap: 0.15rem;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--header-blue);
+      font-size: 0.8125rem;
       font-weight: 600;
       text-decoration: none;
       cursor: pointer;
     }
-    .ticket360-view-link:hover { background: #f1f5f9; text-decoration: none; }
+    .ticket360-view-link:hover {
+      color: var(--header-blue-deep);
+      text-decoration: underline;
+      background: none;
+    }
+    .ticket360-actions-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      white-space: nowrap;
+    }
+    .ticket360-close-btn {
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .ticket360-close-btn:hover {
+      color: var(--danger);
+      text-decoration: underline;
+    }
+    /* SLA settings page */
+    .sla-settings-page {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .sla-settings-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow-soft);
+      padding: 1.25rem 1.35rem 1.5rem;
+    }
+    .sla-settings-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .sla-settings-card .section-help {
+      margin: 0 0 0.85rem;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+    .sla-settings-section + .sla-settings-section {
+      margin-top: 1.5rem;
+      padding-top: 1.35rem;
+      border-top: 1px solid #f1f5f9;
+    }
+    .sla-mode-cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .sla-mode-cards .radio-card {
+      position: relative;
+      display: block;
+      margin: 0;
+      cursor: pointer;
+    }
+    .sla-mode-cards .radio-card input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .sla-mode-cards .radio-card span {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-height: 3.25rem;
+      padding: 0.75rem 0.9rem;
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      background: #f8fafc;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text);
+      transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .sla-mode-cards .radio-card span::before {
+      content: "";
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid #94a3b8;
+      flex-shrink: 0;
+      background: #fff;
+      box-shadow: inset 0 0 0 3px #fff;
+    }
+    .sla-mode-cards .radio-card input:checked + span {
+      border-color: var(--header-blue);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 1px rgba(43, 111, 214, 0.2);
+      color: var(--header-blue-deep);
+    }
+    .sla-mode-cards .radio-card input:checked + span::before {
+      border-color: var(--header-blue);
+      background: var(--header-blue);
+      box-shadow: inset 0 0 0 3px #fff;
+    }
+    .sla-hours-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      table-layout: fixed;
+    }
+    .sla-hours-table th,
+    .sla-hours-table td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      vertical-align: middle;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.8125rem;
+      box-sizing: border-box;
+    }
+    .sla-hours-table th:first-child,
+    .sla-hours-table td:first-child {
+      width: 22%;
+      padding-left: 1.15rem;
+    }
+    .sla-hours-table th:last-child,
+    .sla-hours-table td:last-child {
+      padding-right: 1.15rem;
+    }
+    .sla-hours-table th {
+      background: var(--accent-soft);
+      color: var(--header-blue-deep);
+      font-size: 0.75rem;
+      line-height: 1.35;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .sla-hours-table tr:last-child td {
+      border-bottom: none;
+    }
+    .sla-hours-table input[type="number"] {
+      width: 5.5rem;
+      max-width: 100%;
+      height: 38px;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      background: #f8fafc;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-align: center;
+    }
+    .sla-hours-table input[type="number"]:focus {
+      outline: none;
+      border-color: var(--header-blue);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.12);
+    }
+    .sla-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.95rem 1.05rem;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #f8fafc;
+    }
+    .sla-toggle-row .toggle-copy {
+      flex: 1;
+      min-width: 0;
+    }
+    .sla-toggle-row .toggle-copy strong {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--text);
+      margin-bottom: 0.2rem;
+    }
+    .sla-toggle-row .toggle-copy p {
+      margin: 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .sla-switch {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+    .sla-switch input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .sla-switch .slider {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: #cbd5e1;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .sla-switch .slider::before {
+      content: "";
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      left: 3px;
+      top: 3px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+      transition: transform 0.15s ease;
+    }
+    .sla-switch input:checked + .slider {
+      background: var(--header-blue);
+    }
+    .sla-switch input:checked + .slider::before {
+      transform: translateX(20px);
+    }
+    .sla-rules-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      table-layout: fixed;
+    }
+    .sla-rules-table th,
+    .sla-rules-table td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+      font-size: 0.8125rem;
+      box-sizing: border-box;
+    }
+    .sla-rules-table th:first-child,
+    .sla-rules-table td:first-child {
+      width: 18%;
+      padding-left: 1.15rem;
+    }
+    .sla-rules-table th:last-child,
+    .sla-rules-table td:last-child {
+      padding-right: 1.15rem;
+    }
+    .sla-rules-table th {
+      background: var(--accent-soft);
+      color: var(--header-blue-deep);
+      font-size: 0.75rem;
+      line-height: 1.35;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .sla-rules-table tr:last-child td {
+      border-bottom: none;
+    }
+    .sla-rules-table select,
+    .sla-rules-table input[type="text"],
+    .sla-rules-table input[type="number"] {
+      width: 100%;
+      max-width: 100%;
+      height: 38px;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      background: #f8fafc;
+      font-size: 0.8125rem;
+      box-sizing: border-box;
+    }
+    .sla-rules-table select {
+      padding-right: 1.8rem;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.7rem center;
+    }
+    .sla-rules-table input:focus,
+    .sla-rules-table select:focus {
+      outline: none;
+      border-color: var(--header-blue);
+      background-color: #fff;
+      box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.12);
+    }
+    .sla-rules-table .col-order {
+      width: 5.5rem;
+    }
+    .sla-rules-table .col-delete {
+      width: 5rem;
+      text-align: center;
+    }
+    .sla-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      margin: 0;
+      border-radius: 14px;
+    }
+    .sla-delete-check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .sla-delete-check input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--header-blue);
+      border-radius: 4px;
+    }
+    .sla-settings-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 1.35rem;
+      padding-top: 1.1rem;
+      border-top: 1px solid #f1f5f9;
+    }
+    .sla-settings-actions .btn,
+    .sla-settings-actions .ticket360-btn {
+      border-radius: 999px;
+      padding: 0.6rem 1.25rem;
+    }
+    @media (max-width: 900px) {
+      .ticket360-stats {
+        flex-wrap: wrap;
+      }
+      .ticket360-stat {
+        flex: 1 1 calc(33.33% - 0.55rem);
+      }
+      .sla-mode-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 560px) {
+      .ticket360-stat {
+        flex: 1 1 calc(50% - 0.55rem);
+      }
+    }
     .ticket-comments {
       display: flex;
       flex-direction: column;

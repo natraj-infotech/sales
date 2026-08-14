@@ -17,6 +17,7 @@ from django.db import IntegrityError
 from django.utils.html import strip_tags
 
 from accounts.models import CompanyProfile
+from business.email_body_clean import clean_inbound_email_body
 from business.models import SupportTicket
 
 logger = logging.getLogger(__name__)
@@ -62,16 +63,18 @@ def extract_plain_body(msg) -> str:
                 html_chunks.append(_decode_part_payload(part))
         text = "\n\n".join(t for t in plain_chunks if t.strip())
         if text.strip():
-            return text.strip()
+            return clean_inbound_email_body(text, empty_fallback="")
         if html_chunks:
             raw = "\n\n".join(html_chunks)
-            return strip_tags(raw).replace("\xa0", " ").strip()
+            return clean_inbound_email_body(strip_tags(raw), empty_fallback="")
         return ""
     ctype = msg.get_content_type()
     if ctype == "text/plain":
-        return _decode_part_payload(msg).strip()
+        return clean_inbound_email_body(_decode_part_payload(msg), empty_fallback="")
     if ctype == "text/html":
-        return strip_tags(_decode_part_payload(msg)).replace("\xa0", " ").strip()
+        return clean_inbound_email_body(
+            strip_tags(_decode_part_payload(msg)), empty_fallback=""
+        )
     return ""
 
 
@@ -100,11 +103,24 @@ def _is_microsoft_host(host: str) -> bool:
 
 
 def _graph_access_token() -> str:
+    """
+    OAuth client-credentials token for Microsoft Graph.
+
+    Cached in Django cache so assign/close mail does not re-auth on every send.
+    """
+    from django.core.cache import cache
+
     tenant = getattr(settings, "MICROSOFT_GRAPH_TENANT", "organizations")
     client_id = getattr(settings, "MICROSOFT_GRAPH_CLIENT_ID", "")
     client_secret = getattr(settings, "MICROSOFT_GRAPH_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         raise RuntimeError("Microsoft Graph client credentials are not configured.")
+
+    cache_key = f"ms_graph_token:{tenant}:{client_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
     token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
     resp = requests.post(
         token_url,
@@ -114,13 +130,16 @@ def _graph_access_token() -> str:
             "client_secret": client_secret,
             "scope": "https://graph.microsoft.com/.default",
         },
-        timeout=30,
+        timeout=15,
     )
     resp.raise_for_status()
     payload = resp.json()
     token = payload.get("access_token", "")
     if not token:
         raise RuntimeError("Microsoft Graph token response had no access_token.")
+    expires_in = int(payload.get("expires_in") or 3600)
+    # Refresh a bit before Azure expires the token.
+    cache.set(cache_key, token, timeout=max(60, expires_in - 120))
     return token
 
 
@@ -195,13 +214,12 @@ def _fetch_via_graph(company: CompanyProfile, mark_seen: bool) -> tuple[int, lis
         content = (body_obj.get("content") or "").strip()
         if content:
             if (body_obj.get("contentType") or "").lower() == "html":
-                body = strip_tags(content).replace("\xa0", " ").strip()
+                body = strip_tags(content)
             else:
                 body = content
         if not body:
             body = (item.get("bodyPreview") or "").strip()
-        if not body:
-            body = "(empty body)"
+        body = clean_inbound_email_body(body)
 
         try:
             SupportTicket.objects.create(

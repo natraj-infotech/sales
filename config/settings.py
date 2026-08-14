@@ -6,10 +6,12 @@ import os
 from pathlib import Path
 
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+# interpolate=False so passwords with $ (e.g. $Nat$7508) are not rewritten.
+load_dotenv(BASE_DIR / ".env", interpolate=False)
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY", "django-insecure-dev-only-change-in-production"
@@ -30,13 +32,17 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
+    "django.contrib.humanize",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "allauth.socialaccount.providers.microsoft",
+    "rest_framework",
+    "django_cleanup.apps.CleanupConfig",
     "accounts",
-    "business",
+    "business.apps.BusinessConfig",
+    "helpdesk",
 ]
 
 MIDDLEWARE = [
@@ -72,29 +78,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# PostgreSQL when POSTGRES_DB is set; otherwise SQLite. Set USE_SQLITE=1 to force SQLite.
-_use_sqlite = os.environ.get("USE_SQLITE", "").lower() in ("1", "true", "yes")
+# PostgreSQL only (SQLite fallback removed — set POSTGRES_* in .env).
 _postgres_db = os.environ.get("POSTGRES_DB", "").strip()
+if not _postgres_db:
+    raise ImproperlyConfigured(
+        "POSTGRES_DB is required. Configure PostgreSQL in .env "
+        "(POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT)."
+    )
 
-if _use_sqlite or not _postgres_db:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": _postgres_db,
+        "USER": os.environ.get("POSTGRES_USER", "postgres"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": int(os.environ.get("POSTGRES_CONN_MAX_AGE", "0")),
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": _postgres_db,
-            "USER": os.environ.get("POSTGRES_USER", "postgres"),
-            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
-            "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-            "PORT": os.environ.get("POSTGRES_PORT", "5432"),
-            "CONN_MAX_AGE": int(os.environ.get("POSTGRES_CONN_MAX_AGE", "0")),
-        }
-    }
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -171,7 +173,8 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = "business.helpdesk_smtp_backend.CompanySMTPEmailBackend"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@localhost").strip()
 
 # Outbound SMTP override (optional — auto-detected from mailbox domain/MX when unset)
 OUTBOUND_SMTP_HOST = os.environ.get("OUTBOUND_SMTP_HOST", "").strip()
@@ -229,9 +232,9 @@ ZOHO_REDIRECT_URI = os.environ.get(
 ).strip()
 
 CELERY_BEAT_SCHEDULE = {
-    "fetch-support-inbox-every-10-seconds": {
-        "task": "business.tasks.fetch_support_inbox_task",
-        "schedule": 10.0,
+    "fetch-helpdesk-email-every-60-seconds": {
+        "task": "business.tasks.fetch_helpdesk_email_task",
+        "schedule": 60.0,
     },
     "fetch-caselock-inbox-every-15-seconds": {
         "task": "business.tasks.fetch_caselock_inbox_task",
@@ -250,3 +253,46 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 120.0,
     },
 }
+
+# ---------------------------------------------------------------------------
+# django-helpdesk — Ticket360 UI stays primary; helpdesk is the ticket engine
+# ---------------------------------------------------------------------------
+HELPDESK_TEAMS_MODE_ENABLED = False
+HELPDESK_ALLOW_NON_STAFF_TICKET_UPDATE = True
+HELPDESK_CREATE_TICKET_HIDE_ASSIGNED_TO = True
+HELPDESK_PRIVATE_FOLLOWUP_MEANS_NO_EMAILS = True
+
+# Keep UI status labels: Open / In progress / Resolved / Closed
+HELPDESK_TICKET_OPEN_STATUS = 1
+HELPDESK_TICKET_REOPENED_STATUS = 2  # shown as "In progress"
+HELPDESK_TICKET_RESOLVED_STATUS = 3
+HELPDESK_TICKET_CLOSED_STATUS = 4
+HELPDESK_TICKET_DUPLICATE_STATUS = 5
+HELPDESK_TICKET_STATUS_CHOICES = (
+    (1, "Open"),
+    (2, "In progress"),
+    (3, "Resolved"),
+    (4, "Closed"),
+)
+HELPDESK_TICKET_OPEN_STATUSES = (1, 2)
+HELPDESK_TICKET_STATUS_CHOICES_FLOW = {
+    1: (1, 2, 3, 4),
+    2: (1, 2, 3, 4),
+    3: (1, 2, 3, 4),
+    4: (1, 2, 4),
+}
+
+
+def _redirect_helpdesk_builtin_ui(request):
+    """Hide helpdesk's built-in screens; keep Ticket360 URLs only."""
+    from django.shortcuts import redirect
+    import re
+
+    match = re.search(r"/tickets/(\d+)/", request.path or "")
+    if match:
+        return redirect("support_ticket_detail", pk=int(match.group(1)))
+    return redirect("support_ticket_list")
+
+
+HELPDESK_STAFF_VIEW_PROTECTOR = _redirect_helpdesk_builtin_ui
+HELPDESK_PUBLIC_VIEW_PROTECTOR = _redirect_helpdesk_builtin_ui

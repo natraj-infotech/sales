@@ -28,6 +28,13 @@ from business.renewal_read_tracking import send_renewal_email
 logger = logging.getLogger(__name__)
 
 DEFAULT_NOTIFY_DAYS = (30, 15, 7)
+DEFAULT_EXPIRY_INITIAL_PARAGRAPH = (
+    "Kindly renew it to ensure there is no interruption to your services."
+)
+DEFAULT_EXPIRY_END_PARAGRAPH = (
+    "We request you to share your confirmation at the earliest so that we can "
+    "initiate the renewal process and ensure uninterrupted service."
+)
 VALID_NOTIFY_DAYS = {7, 15, 30, 45, 90}
 DIGEST_EXPORT_HEADERS: tuple[str, ...] = (
     "Subscription ID",
@@ -198,17 +205,6 @@ def _max_daily_sends(days_remaining: int) -> int:
     return 1
 
 
-def _format_subscription_line(sub: ClientSubscription) -> str:
-    days = sub.days_until_expiry
-    days_text = f"{days} day(s)" if days is not None else "—"
-    vendor = sub.vendor.name if sub.vendor_id else "—"
-    return (
-        f"- {sub.client.name} | {sub.product.name} | ends {sub.end_date} "
-        f"({days_text} remaining) | vendor: {vendor} | "
-        f"subscription #{sub.subscription_list_id}"
-    )
-
-
 def _subscription_bill_type(sub: ClientSubscription) -> str:
     if sub.start_date and sub.end_date:
         term_days = (sub.end_date - sub.start_date).days
@@ -240,6 +236,17 @@ def _client_reminder_subject(items: list[tuple[ClientSubscription, int, int | No
         "Subscription Renewal Reminder - "
         f"Services expiring within {max_threshold} days"
     )
+
+
+def _expiry_email_paragraph(company: CompanyProfile, attr: str, default: str) -> str:
+    custom = (getattr(company, attr, None) or "").strip()
+    return custom or default
+
+
+def _expiry_email_paragraph_html(text: str) -> str:
+    return escape(text).replace("\n", "<br>\n              ")
+
+
 def _days_left_badge(days_remaining: int | None) -> tuple[str, str, str]:
     """Return (label, emoji, accent_hex) for days-left status."""
     if days_remaining is None:
@@ -259,12 +266,18 @@ def _client_email_body(
     contact_bits = _client_contact_lines(company)
     all_items = [item for _, items in sections for item in items]
     threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
+    initial_paragraph = _expiry_email_paragraph(
+        company, "expiry_email_initial_paragraph", DEFAULT_EXPIRY_INITIAL_PARAGRAPH
+    )
+    end_paragraph = _expiry_email_paragraph(
+        company, "expiry_email_end_paragraph", DEFAULT_EXPIRY_END_PARAGRAPH
+    )
     lines = [
         "Dear Sir/Madam,",
         "",
         f"Your subscription is expiring within the next {threshold_days} days.",
         "",
-        "Kindly renew it to ensure there is no interruption to your services.",
+        initial_paragraph,
         "",
     ]
     for client_name, items in sections:
@@ -290,8 +303,7 @@ def _client_email_body(
         lines.append("")
     lines.extend(
         [
-            "We request you to share your confirmation at the earliest so that we can "
-            "initiate the renewal process and ensure uninterrupted service.",
+            end_paragraph,
             "",
         ]
     )
@@ -535,7 +547,7 @@ def _client_email_html(
               Your subscription is expiring within the next <strong style="color:{blue};">{threshold_days} days</strong>.
             </p>
             <p style="margin:0 0 22px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
-              Kindly renew it to ensure there is no interruption to your services.
+              {initial_paragraph}
             </p>
           </td>
         </tr>
@@ -547,7 +559,7 @@ def _client_email_html(
         <tr>
           <td style="padding:8px 28px 28px 28px;font-family:{font};">
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
-              We request you to share your confirmation at the earliest so that we can initiate the renewal process and ensure uninterrupted service.
+              {end_paragraph}
             </p>
             {cta_html}
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
@@ -581,10 +593,32 @@ def _client_email_html(
         logo_html=logo_html,
         company_name=company_name,
         threshold_days=escape(str(threshold_days)),
+        initial_paragraph=_expiry_email_paragraph_html(
+            _expiry_email_paragraph(
+                company,
+                "expiry_email_initial_paragraph",
+                DEFAULT_EXPIRY_INITIAL_PARAGRAPH,
+            )
+        ),
+        end_paragraph=_expiry_email_paragraph_html(
+            _expiry_email_paragraph(
+                company,
+                "expiry_email_end_paragraph",
+                DEFAULT_EXPIRY_END_PARAGRAPH,
+            )
+        ),
         sections="\n".join(section_blocks),
         cta_html=cta_html,
         contact_html=contact_html,
     )
+
+
+def _digest_display_date(value) -> str:
+    if not value:
+        return "—"
+    if hasattr(value, "strftime"):
+        return value.strftime("%d-%m-%Y")
+    return str(value)
 
 
 def _team_digest_body(
@@ -592,24 +626,215 @@ def _team_digest_body(
 ) -> str:
     lines = [
         f"Daily expiring subscriptions digest for {company.company_name}",
-        f"Date: {today.isoformat()}",
+        f"Date: {_digest_display_date(today)}",
         "",
         f"{len(subs)} active subscription(s) expiring within the next {max_days} day(s).",
         f"See the attached Excel file ({attachment_name}) for the full list.",
         "",
-        "Summary:",
-        "",
+        "+---------------------------+---------------------------+------+------------+-----------+----------------+",
+        "| Client                    | Product Description       | Qty  | End Date   | Days Left | Vendor         |",
+        "+---------------------------+---------------------------+------+------------+-----------+----------------+",
     ]
-    lines.extend(_format_subscription_line(sub) for sub in subs[:10])
-    if len(subs) > 10:
-        lines.append(f"... and {len(subs) - 10} more in the attached spreadsheet.")
+    for sub in subs:
+        client = (sub.client.name or "—")[:25]
+        product = (sub.product.name or "—")[:25]
+        qty = str(sub.quantity)
+        end_date = _digest_display_date(sub.end_date)
+        days = "—" if sub.days_until_expiry is None else str(sub.days_until_expiry)
+        vendor = ((sub.vendor.name if sub.vendor_id else "—") or "—")[:14]
+        sub_id = (sub.subscription_list_id or "—")[:21]
+        bill_type = _subscription_bill_type(sub)[:19]
+        lines.extend(
+            [
+                f"| {client:<25} | {product:<25} | {qty:<4} | {end_date:<10} | {days:<9} | {vendor:<14} |",
+                f"| ID: {sub_id:<21} | Bill: {bill_type:<19} |      |            |           |                |",
+                "+---------------------------+---------------------------+------+------------+-----------+----------------+",
+            ]
+        )
     lines.extend(
         [
             "",
             "Manage subscriptions in Tracker365.",
+            "Green >15 days | Orange 8-15 days | Red <=7 days",
         ]
     )
     return "\n".join(lines)
+
+
+def _team_digest_html(
+    company: CompanyProfile,
+    subs,
+    today,
+    *,
+    max_days: int,
+    attachment_name: str,
+    logo_cid: str = "",
+) -> str:
+    font = "'Segoe UI', Arial, Helvetica, sans-serif"
+    text = "#374151"
+    muted = "#6B7280"
+    blue = "#2563EB"
+    header_bg = "#3B5998"
+    table_header_bg = header_bg
+    border = "#E5E7EB"
+    page_bg = "#F3F4F6"
+    card_bg = "#FFFFFF"
+
+    th = (
+        "padding:10px 8px;background-color:{bg};border:1px solid {border};"
+        "color:#FFFFFF;font-family:{font};font-size:11px;font-weight:600;"
+        "text-transform:uppercase;letter-spacing:0.3px;"
+    ).format(bg=table_header_bg, border=border, font=font)
+    td = (
+        "padding:12px 8px;border:1px solid {border};color:{text};"
+        "font-family:{font};font-size:13px;line-height:1.4;"
+        "vertical-align:top;background-color:{card_bg};"
+    ).format(border=border, text=text, font=font, card_bg=card_bg)
+
+    rows: list[str] = []
+    for sub in subs:
+        label, emoji, accent = _days_left_badge(sub.days_until_expiry)
+        vendor = sub.vendor.name if sub.vendor_id else "—"
+        rows.append(
+            """
+            <tr>
+              <td style="{td}">{client}</td>
+              <td style="{td}">
+                <strong style="color:{text};">{product}</strong><br>
+                <span style="color:{muted};font-size:11px;">Subscription ID: {subscription_id}</span><br>
+                <span style="color:{muted};font-size:11px;">Bill Type: {bill_type}</span>
+              </td>
+              <td style="{td}" align="center">{quantity}</td>
+              <td style="{td}" align="center">{end_date}</td>
+              <td style="{td}" align="center">
+                <span style="display:inline-block;padding:5px 8px;border:1px solid {accent};border-radius:999px;color:{accent};background-color:#FFFFFF;white-space:nowrap;font-size:12px;">
+                  {emoji} {label}
+                </span>
+              </td>
+              <td style="{td}">{vendor}</td>
+            </tr>
+            """.format(
+                td=td,
+                text=text,
+                muted=muted,
+                accent=accent,
+                client=escape(sub.client.name or "—"),
+                product=escape(sub.product.name or "—"),
+                subscription_id=escape(sub.subscription_list_id or "—"),
+                bill_type=escape(_subscription_bill_type(sub)),
+                quantity=escape(str(sub.quantity)),
+                end_date=escape(_digest_display_date(sub.end_date)),
+                emoji=emoji,
+                label=escape(label),
+                vendor=escape(vendor),
+            ).strip()
+        )
+
+    company_name = escape(company.company_name)
+    if logo_cid:
+        logo_html = (
+            f'<img src="cid:{escape(logo_cid)}" alt="{company_name}" width="120" '
+            'style="display:block;max-width:140px;max-height:48px;width:auto;height:auto;'
+            'object-fit:contain;background-color:#FFFFFF;border-radius:4px;padding:2px;">'
+        )
+    else:
+        initial = escape((company.company_name or "C")[:1].upper())
+        logo_html = (
+            '<div style="width:44px;height:44px;border-radius:4px;background-color:#FFFFFF;'
+            f'color:{header_bg};font-family:{font};font-size:18px;font-weight:700;'
+            'line-height:44px;text-align:center;">'
+            f"{initial}</div>"
+        )
+
+    return """
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:0;background-color:{page_bg};">
+  <tr>
+    <td align="center" style="padding:24px 12px;background-color:{page_bg};">
+      <table role="presentation" width="720" cellpadding="0" cellspacing="0" border="0" style="width:720px;max-width:720px;background-color:{card_bg};border:1px solid {border};border-radius:8px;">
+        <tr>
+          <td bgcolor="{header_bg}" style="background-color:{header_bg};padding:14px 18px;border-radius:8px 8px 0 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="left" valign="middle">
+                  {logo_html}
+                </td>
+                <td align="right" valign="middle" style="font-family:{font};font-size:18px;font-weight:700;color:#FFFFFF;padding-left:12px;">
+                  {company_name}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 24px 8px 24px;font-family:{font};">
+            <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">
+              Team digest
+            </p>
+            <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:{blue};font-weight:700;font-family:{font};">
+              Daily expiring subscriptions digest
+            </h1>
+            <p style="margin:0 0 8px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              Date: <strong>{today}</strong>
+            </p>
+            <p style="margin:0 0 8px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              <strong style="color:{blue};">{count}</strong> active subscription(s) expiring within the next <strong style="color:{blue};">{max_days} day(s)</strong>.
+            </p>
+            <p style="margin:0 0 22px 0;font-size:14px;line-height:1.55;color:{muted};font-family:{font};">
+              See the attached Excel file ({attachment_name}) for the full list.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 24px 8px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
+              <thead>
+                <tr>
+                  <th align="left" style="{th}">Client</th>
+                  <th align="left" style="{th}">Product Description</th>
+                  <th align="center" style="{th}">Qty</th>
+                  <th align="center" style="{th}">End Date</th>
+                  <th align="center" style="{th}">Days Left</th>
+                  <th align="left" style="{th}">Vendor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px 28px 24px;font-family:{font};">
+            <p style="margin:0 0 4px 0;font-size:14px;line-height:1.55;color:{text};">
+              Manage subscriptions in Tracker365.
+            </p>
+            <p style="margin:16px 0 0 0;padding-top:16px;border-top:1px solid {border};font-size:12px;line-height:1.5;color:{muted};">
+              🟢 &gt;15 days &nbsp;&nbsp; 🟠 8–15 days &nbsp;&nbsp; 🔴 ≤7 days
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+""".strip().format(
+        page_bg=page_bg,
+        card_bg=card_bg,
+        border=border,
+        font=font,
+        blue=blue,
+        text=text,
+        muted=muted,
+        header_bg=header_bg,
+        logo_html=logo_html,
+        company_name=company_name,
+        today=escape(_digest_display_date(today)),
+        count=escape(str(len(subs))),
+        max_days=escape(str(max_days)),
+        attachment_name=escape(attachment_name),
+        th=th,
+        rows="\n".join(rows),
+    )
 
 
 def _digest_attachment_filename(company: CompanyProfile, today) -> str:
@@ -858,12 +1083,23 @@ def send_team_expiry_digest(
         max_days=max_days,
         attachment_name=attachment_name,
     )
+    logo_inline = _company_logo_inline(company)
+    html_body = _team_digest_html(
+        company,
+        subs,
+        today,
+        max_days=max_days,
+        attachment_name=attachment_name,
+        logo_cid=logo_inline[0] if logo_inline else "",
+    )
     ok, err = send_company_outbound(
         company,
         recipients,
         subject,
         body,
+        html_body=html_body,
         attachments=[(attachment_name, excel_bytes, XLSX_MIME)],
+        inline_images=[logo_inline] if logo_inline else None,
     )
     if ok:
         company.expiry_team_digest_last_sent = today

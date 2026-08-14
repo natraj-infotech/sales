@@ -243,9 +243,11 @@
 
     <h3 class="tracker-card-section-title">Support email</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
-      Used as the IMAP login to auto-create support tickets. On the server, schedule
-      <code style="font-size:0.78em;">python manage.py fetch_support_inbox</code>
-      (e.g. every 5 minutes). Set <code style="font-size:0.78em;">SUPPORT_IMAP_HOST</code> in <code style="font-size:0.78em;">.env</code> for your provider (Gmail: <code style="font-size:0.78em;">imap.gmail.com</code>).
+      Used as the support mailbox for auto-creating tickets.
+      Microsoft 365 uses Graph; other providers use IMAP.
+      With only <code style="font-size:0.78em;">runserver</code>, open/refresh
+      <strong>Support Tickets</strong> to import new emails (throttled ~20s).
+      Outbound replies/assign use support or outgoing email + app password.
     </p>
     <div class="tracker-form-grid">
       {% include "includes/form_field_tracker.html" with field=form.support_email icon="mail" %}
@@ -268,6 +270,15 @@
     <div class="tracker-form-grid">
       {% include "includes/form_field_tracker.html" with field=form.regards_email icon="mail" full_width=True %}
       {% include "includes/form_field_tracker.html" with field=form.regards_contact icon="phone" %}
+    </div>
+
+    <h3 class="tracker-card-section-title">Expiry email paragraphs</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Custom lines for the client subscription expiry notice. Leave blank to keep the default text.
+    </p>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.expiry_email_initial_paragraph icon="doc" full_width=True %}
+      {% include "includes/form_field_tracker.html" with field=form.expiry_email_end_paragraph icon="doc" full_width=True %}
     </div>
 
     <h3 class="tracker-card-section-title">Subscription expiry notifications</h3>

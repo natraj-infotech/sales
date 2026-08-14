@@ -26,8 +26,54 @@
       {% include "includes/form_field_tracker.html" with field=form.subject icon="doc" full_width=True %}
       {% include "includes/form_field_tracker.html" with field=form.description icon="pin" full_width=True %}
     </div>
+    <p id="priority-hint" class="muted" style="margin-top:0.25rem;"></p>
     <button type="submit" class="btn btn-primary">Submit ticket</button>
     <a class="btn btn-ghost" href="{% url 'support_ticket_list' %}" style="margin-left:0.5rem;">Cancel</a>
   </form>
 </div>
+<script>
+(function () {
+  var rules = {{ priority_rules_json|safe }};
+  var subjectInput = document.getElementById("id_subject");
+  var prioritySelect = document.getElementById("id_priority");
+  var hint = document.getElementById("priority-hint");
+  if (!subjectInput || !prioritySelect) return;
+
+  var userTouchedPriority = false;
+  prioritySelect.addEventListener("change", function () {
+    userTouchedPriority = true;
+    if (hint) hint.textContent = "";
+  });
+
+  function suggest() {
+    var text = (subjectInput.value || "").toLowerCase();
+    var matched = null;
+    for (var i = 0; i < rules.length; i++) {
+      var kws = rules[i].keywords || [];
+      for (var j = 0; j < kws.length; j++) {
+        if (kws[j] && text.indexOf(kws[j]) !== -1) {
+          matched = rules[i].priority;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) {
+      if (hint && !userTouchedPriority) hint.textContent = "";
+      return;
+    }
+    if (!userTouchedPriority) {
+      prioritySelect.value = matched;
+      if (hint) {
+        hint.textContent = "Suggested from subject keywords: " + matched + " (you can change it).";
+      }
+    } else if (hint) {
+      hint.textContent = "Subject suggests " + matched + "; keeping your manual choice.";
+    }
+  }
+
+  subjectInput.addEventListener("input", suggest);
+  subjectInput.addEventListener("blur", suggest);
+})();
+</script>
 {% endblock %}

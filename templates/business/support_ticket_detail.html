@@ -17,11 +17,31 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  .sla-badge { font-size: 0.8rem; font-weight: 600; }
+  .sla-badge--ok, .sla-badge--met { color: #027a48; }
+  .sla-badge--breached { color: #b42318; }
+</style>
 <div class="tracker-card ticket-detail-card">
   <dl class="ticket-detail-meta">
     <div><dt>Status</dt><dd><span class="ticket-status ticket-status--{{ ticket.status }}">{{ ticket.get_status_display }}</span></dd></div>
     <div><dt>Department</dt><dd>{{ ticket.get_department_display }}</dd></div>
-    <div><dt>Priority</dt><dd>{{ ticket.get_priority_display }}</dd></div>
+    <div>
+      <dt>Priority</dt>
+      <dd>
+        <form method="post" style="display:flex;gap:0.5rem;align-items:center;margin:0;">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="priority">
+          <select name="priority">
+            {% for value, label in priority_choices.items %}
+            <option value="{{ value }}" {% if ticket.priority == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-ghost" style="padding:0.25rem 0.6rem;">Update</button>
+        </form>
+        <span class="muted" style="font-size:0.8rem;">Changing priority recalculates SLA due times.</span>
+      </dd>
+    </div>
     <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
     {% if ticket.source_sender %}
     <div><dt>From (email)</dt><dd>{{ ticket.source_sender }}</dd></div>
@@ -30,6 +50,27 @@
     <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>
     <div><dt>Updated</dt><dd>{{ ticket.updated_at|date:"d M Y, H:i" }}</dd></div>
     <div><dt>Completed</dt><dd>{% if ticket.completed_at %}{{ ticket.completed_at|date:"d M Y, H:i" }}{% else %}-{% endif %}</dd></div>
+    {% if ticket.sla.tracks_response %}
+    <div>
+      <dt>First response due</dt>
+      <dd>
+        {% if ticket.sla.response_due %}{{ ticket.sla.response_due|date:"d M Y, H:i" }}{% else %}—{% endif %}
+        <span class="sla-badge sla-badge--{{ ticket.sla.response_status }}">{{ ticket.sla.response_label }}</span>
+        {% if ticket.first_responded_at %}
+        <div class="muted">Responded {{ ticket.first_responded_at|date:"d M Y, H:i" }}</div>
+        {% endif %}
+      </dd>
+    </div>
+    {% endif %}
+    {% if ticket.sla.tracks_resolve %}
+    <div>
+      <dt>Resolve due</dt>
+      <dd>
+        {% if ticket.sla.resolve_due %}{{ ticket.sla.resolve_due|date:"d M Y, H:i" }}{% else %}—{% endif %}
+        <span class="sla-badge sla-badge--{{ ticket.sla.resolve_status }}">{{ ticket.sla.resolve_label }}</span>
+      </dd>
+    </div>
+    {% endif %}
   </dl>
   <h3 class="tracker-mock-section-title" style="margin-top:1.25rem;">Description</h3>
   <div class="ticket-detail-body">{{ ticket.description|linebreaks }}</div>

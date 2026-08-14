@@ -11,32 +11,107 @@ from .models import (
     ClientSubscription,
     Product,
     SupportTicket,
-    SupportTicketComment,
+    SupportSLASettings,
+    TicketPriorityRule,
 )
 
 
-class SupportTicketForm(forms.ModelForm):
-    class Meta:
-        model = SupportTicket
-        fields = ("subject", "description", "department", "priority")
+class SupportTicketForm(forms.Form):
+    department = forms.ChoiceField(
+        choices=SupportTicket.Department.choices,
+        initial=SupportTicket.Department.GENERAL,
+    )
+    priority = forms.ChoiceField(
+        choices=SupportTicket.Priority.choices,
+        initial=SupportTicket.Priority.MEDIUM,
+    )
+    subject = forms.CharField(max_length=255)
+    description = forms.CharField(widget=forms.Textarea)
 
 
-class SupportTicketUpdateForm(forms.ModelForm):
-    class Meta:
-        model = SupportTicket
-        fields = ("status", "assignee", "remarks")
+class SupportTicketUpdateForm(forms.Form):
+    status = forms.ChoiceField(choices=SupportTicket.Status.choices, required=False)
+    assignee = forms.ModelChoiceField(queryset=None, required=False)
+    remarks = forms.CharField(max_length=255, required=False)
 
     def __init__(self, *args, assignee_queryset=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if assignee_queryset is not None:
-            self.fields["assignee"].queryset = assignee_queryset
-        self.fields["assignee"].required = False
+        self.fields["assignee"].queryset = assignee_queryset or SupportTicket._meta.get_field(
+            "assignee"
+        ).related_model.objects.none()
 
 
-class SupportTicketCommentForm(forms.ModelForm):
+class SupportTicketCommentForm(forms.Form):
+    body = forms.CharField(widget=forms.Textarea, label="Comment")
+    internal_note = forms.BooleanField(
+        required=False,
+        label="Internal note",
+        help_text="Internal notes are not emailed to the submitter.",
+    )
+
+
+class SupportSLASettingsForm(forms.ModelForm):
     class Meta:
-        model = SupportTicketComment
-        fields = ("body", "internal_note")
+        model = SupportSLASettings
+        fields = (
+            "sla_mode",
+            "email_auto_priority",
+            "urgent_response_hours",
+            "high_response_hours",
+            "medium_response_hours",
+            "low_response_hours",
+            "urgent_resolve_hours",
+            "high_resolve_hours",
+            "medium_resolve_hours",
+            "low_resolve_hours",
+        )
+        labels = {
+            "sla_mode": "SLA mode",
+            "email_auto_priority": "Auto-set priority from email subject keywords",
+            "urgent_response_hours": "Urgent — first response (hours)",
+            "high_response_hours": "High — first response (hours)",
+            "medium_response_hours": "Medium — first response (hours)",
+            "low_response_hours": "Low — first response (hours)",
+            "urgent_resolve_hours": "Urgent — resolve (hours)",
+            "high_resolve_hours": "High — resolve (hours)",
+            "medium_resolve_hours": "Medium — resolve (hours)",
+            "low_resolve_hours": "Low — resolve (hours)",
+        }
+        widgets = {
+            "sla_mode": forms.RadioSelect,
+        }
+
+
+class TicketPriorityRuleForm(forms.ModelForm):
+    priority = forms.ChoiceField(
+        choices=SupportTicket.Priority.choices,
+        required=False,
+        label="Priority",
+    )
+    keywords = forms.CharField(
+        required=False,
+        label="Keywords (comma-separated)",
+        widget=forms.TextInput(
+            attrs={"placeholder": "urgent, outage, down", "style": "min-width:16rem;"}
+        ),
+    )
+    sort_order = forms.IntegerField(
+        required=False,
+        initial=0,
+        label="Order",
+        widget=forms.NumberInput(attrs={"style": "width:4.5rem;"}),
+    )
+
+    class Meta:
+        model = TicketPriorityRule
+        fields = ("priority", "keywords", "sort_order")
+
+
+TicketPriorityRuleFormSet = formset_factory(
+    TicketPriorityRuleForm,
+    extra=1,
+    can_delete=True,
+)
 
 
 class VendorForm(forms.ModelForm):

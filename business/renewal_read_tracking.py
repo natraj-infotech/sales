@@ -14,7 +14,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from business.models import SubscriptionRenewalInvite
-from business.outbound_mail import _smtp_for_address, send_smtp_outbound
+from business.outbound_mail import (
+    _smtp_for_address,
+    send_smtp_outbound,
+    send_via_microsoft_graph,
+)
 from business.support_inbox import (
     _detect_imap_host,
     _graph_access_token,
@@ -181,82 +185,17 @@ def _send_via_graph(
     cc_addresses: Sequence[str] | None = None,
     inline_images: Sequence[tuple[str, str, bytes, str]] | None = None,
 ) -> tuple[bool, str | None, str | None]:
-    access_token = _graph_access_token()
-    mailbox = mailbox_email.strip()
-    payload = {
-        "subject": subject,
-        "body": {"contentType": "HTML", "content": html_body},
-        "toRecipients": [
-            {"emailAddress": {"address": addr}} for addr in to_addresses
-        ],
-        "isReadReceiptRequested": False,
-    }
-    cc_recipients = [addr.strip() for addr in (cc_addresses or ()) if addr.strip()]
-    if cc_recipients:
-        payload["ccRecipients"] = [
-            {"emailAddress": {"address": addr}} for addr in cc_recipients
-        ]
-
-    create_url = f"https://graph.microsoft.com/v1.0/users/{quote(mailbox)}/messages"
-    resp = requests.post(
-        create_url,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=30,
+    # `body` kept for call-site compatibility; Graph sends HTML only.
+    del body
+    return send_via_microsoft_graph(
+        mailbox_email,
+        to_addresses,
+        subject,
+        html_body,
+        cc_addresses=cc_addresses,
+        inline_images=inline_images,
+        read_receipt=True,
     )
-    if not resp.ok:
-        return False, f"Microsoft Graph create message failed: {resp.text[:300]}", None
-
-    message = resp.json()
-    message_id = (message.get("id") or "").strip()
-    internet_message_id = (message.get("internetMessageId") or "").strip()
-    if not message_id:
-        return False, "Microsoft Graph did not return a message id.", None
-
-    for content_id, filename, content, mimetype in inline_images or ():
-        attach_url = (
-            f"https://graph.microsoft.com/v1.0/users/{quote(mailbox)}"
-            f"/messages/{quote(message_id)}/attachments"
-        )
-        attach_payload = {
-            "@odata.type": "#microsoft.graph.fileAttachment",
-            "name": filename or "logo.png",
-            "contentType": mimetype or "image/png",
-            "contentBytes": base64.b64encode(content).decode("ascii"),
-            "contentId": content_id,
-            "isInline": True,
-        }
-        attach_resp = requests.post(
-            attach_url,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
-            json=attach_payload,
-            timeout=30,
-        )
-        if not attach_resp.ok:
-            return (
-                False,
-                f"Microsoft Graph inline attachment failed: {attach_resp.text[:300]}",
-                None,
-            )
-
-    send_url = (
-        f"https://graph.microsoft.com/v1.0/users/{quote(mailbox)}"
-        f"/messages/{quote(message_id)}/send"
-    )
-    send_resp = requests.post(
-        send_url,
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=30,
-    )
-    if not send_resp.ok:
-        return False, f"Microsoft Graph send failed: {send_resp.text[:300]}", None
-    return True, None, internet_message_id
 
 
 def send_renewal_email(

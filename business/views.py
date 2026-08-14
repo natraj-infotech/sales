@@ -29,10 +29,13 @@ from .forms import (
     RenewalConfirmLineFormSet,
     SubscriptionRenewForm,
     ProductForm,
+    SupportSLASettingsForm,
     SupportTicketCommentForm,
     SupportTicketForm,
+    TicketPriorityRuleFormSet,
     VendorForm,
 )
+from . import helpdesk_bridge
 from .models import (
     CaseLockInbox,
     CaseLockInvite,
@@ -42,7 +45,7 @@ from .models import (
     Product,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
-    SupportTicket,
+    TicketPriorityRule,
     Vendor,
 )
 from .caselock_inbox import send_caselock_decision_email
@@ -1501,57 +1504,154 @@ def subscription_edit(request, pk):
     )
 
 
+def _support_ticket_list_data(company, *, status_filter: str = ""):
+    """Shared ticket list payload for HTML page and live JSON poll."""
+    from business.sla import get_or_create_sla_settings
+
+    status_filter = (status_filter or "").strip()
+    sla_settings = get_or_create_sla_settings(company)
+
+    all_wrapped = helpdesk_bridge.wrap_tickets(
+        helpdesk_bridge.tickets_for_company(company),
+        sla_settings=sla_settings,
+    )
+    base = list(all_wrapped)
+
+    if status_filter in dict(helpdesk_bridge.STATUS_CHOICES):
+        qs = [t for t in base if t.status == status_filter]
+    else:
+        status_filter = ""
+        qs = base
+
+    counts = {
+        "total": len(base),
+        "closed": sum(1 for t in base if t.status == "closed"),
+        "pending": sum(1 for t in base if t.status in ("open", "in_progress")),
+        "under_observation": sum(1 for t in base if t.status == "resolved"),
+        "sla_breached": sum(1 for t in base if t.sla and t.sla.get("any_breached")),
+    }
+    return {
+        "object_list": qs,
+        "status_filter": status_filter,
+        "counts": counts,
+        "assignees": company_users(company),
+        "sla_settings": sla_settings,
+    }
+
+
+def _format_ticket_dt(value, fmt: str) -> str:
+    if not value:
+        return ""
+    return date_format(timezone.localtime(value), fmt)
+
+
 @company_owner_required
 def support_ticket_list(request):
     company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
 
-    status_filter = request.GET.get("status", "").strip()
-    source_filter = request.GET.get("source", "internal").strip()
+    # runserver-only: refresh page → poll mailbox → new tickets appear
+    if request.method == "GET":
+        from business.helpdesk_inbox import maybe_fetch_on_dashboard
 
-    base_qs = company.support_tickets.select_related("created_by", "assignee")
-    if source_filter == "external":
-        base_qs = base_qs.exclude(source_sender="")
-    elif source_filter == "all":
-        pass
-    else:
-        source_filter = "internal"
-        base_qs = base_qs.filter(source_sender="")
+        result = maybe_fetch_on_dashboard(company)
+        if result and int(result.get("created") or 0) > 0:
+            messages.success(
+                request,
+                f"Imported {result['created']} new support ticket(s) from email.",
+            )
 
-    qs = base_qs
-    if status_filter in dict(SupportTicket.Status.choices):
-        qs = qs.filter(status=status_filter)
-
-    all_tickets = company.support_tickets
-    counts = {
-        "total": base_qs.count(),
-        "closed": base_qs.filter(status=SupportTicket.Status.CLOSED).count(),
-        "pending": base_qs.filter(
-            status__in=[
-                SupportTicket.Status.OPEN,
-                SupportTicket.Status.IN_PROGRESS,
-            ]
-        ).count(),
-        "under_observation": base_qs.filter(
-            status=SupportTicket.Status.RESOLVED
-        ).count(),
-    }
-
-    assignees = company_users(company)
+    data = _support_ticket_list_data(
+        company,
+        status_filter=request.GET.get("status", ""),
+    )
 
     return render(
         request,
         "business/support_ticket_list.html",
         {
             "company": company,
-            "object_list": qs,
-            "status_filter": status_filter,
-            "source_filter": source_filter,
-            "status_choices": SupportTicket.Status.choices,
-            "counts": counts,
-            "internal_count": all_tickets.filter(source_sender="").count(),
-            "external_count": all_tickets.exclude(source_sender="").count(),
-            "assignees": assignees,
+            "object_list": data["object_list"],
+            "status_filter": data["status_filter"],
+            "status_choices": helpdesk_bridge.STATUS_CHOICES,
+            "counts": data["counts"],
+            "assignees": data["assignees"],
+            "sla_settings": data["sla_settings"],
         },
+    )
+
+
+@company_owner_required
+def support_ticket_live(request):
+    """Poll mailbox (throttled) and return current ticket list as JSON."""
+    company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
+
+    from business.helpdesk_inbox import maybe_fetch_on_dashboard
+
+    fetch_result = maybe_fetch_on_dashboard(company) or {}
+    created = int(fetch_result.get("created") or 0)
+
+    data = _support_ticket_list_data(
+        company,
+        status_filter=request.GET.get("status", ""),
+    )
+    next_qs = request.GET.urlencode()
+    status_choices = [
+        {"value": value, "label": label}
+        for value, label in helpdesk_bridge.STATUS_CHOICES
+    ]
+    assignees = [
+        {"id": u.pk, "email": u.email or ""}
+        for u in data["assignees"]
+    ]
+
+    rows = []
+    for t in data["object_list"]:
+        email = t.source_sender or getattr(t.created_by, "email", "") or ""
+        done = t.status in ("resolved", "closed")
+        sla = t.sla or {}
+        rows.append(
+            {
+                "id": t.pk,
+                "reference": t.reference,
+                "created_at": _format_ticket_dt(t.created_at, "d/m/Y H:i"),
+                "subject": t.subject or "",
+                "email": email,
+                "department": t.get_department_display(),
+                "priority": t.priority,
+                "priority_label": t.get_priority_display(),
+                "status": t.status,
+                "assignee_id": t.assignee_id or "",
+                "remarks": t.remarks or "",
+                "completed_at": _format_ticket_dt(t.updated_at, "d/m/Y H:i") if done else "-",
+                "resolve_due": _format_ticket_dt(sla.get("resolve_due"), "d/m/Y H:i") or "—",
+                "response_due": _format_ticket_dt(sla.get("response_due"), "d/m/Y H:i") or "—",
+                "resolve_label": sla.get("resolve_label") or "—",
+                "response_label": sla.get("response_label") or "—",
+                "resolve_status": sla.get("resolve_status") or "off",
+                "response_status": sla.get("response_status") or "off",
+                "tracks_resolve": bool(sla.get("tracks_resolve")),
+                "tracks_response": bool(sla.get("tracks_response")),
+                "detail_url": reverse("support_ticket_detail", kwargs={"pk": t.pk}),
+                "update_url": reverse("support_ticket_update", kwargs={"pk": t.pk}),
+                "is_closed": t.status == "closed",
+            }
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "polled_at": _format_dt(timezone.now()),
+            "status_filter": data["status_filter"],
+            "next_qs": next_qs,
+            "counts": data["counts"],
+            "status_choices": status_choices,
+            "assignees": assignees,
+            "sla_mode": data["sla_settings"].sla_mode,
+            "rows": rows,
+        }
     )
 
 
@@ -1559,39 +1659,61 @@ def support_ticket_list(request):
 @require_http_methods(["POST"])
 def support_ticket_update(request, pk):
     company = _company(request)
-    ticket = get_object_or_404(SupportTicket, pk=pk, company=company)
-    assignees = company_users(company)
-    updates = []
-    status = request.POST.get("status", "").strip()
-    if status and status in dict(SupportTicket.Status.choices):
-        ticket.status = status
-        updates.append("status")
+    try:
+        ticket = helpdesk_bridge.get_company_ticket(company, pk)
+    except helpdesk_bridge.Ticket.DoesNotExist:
+        from django.http import Http404
 
-    assignee_raw = request.POST.get("assignee", "").strip()
-    if assignee_raw:
-        assignee = assignees.filter(pk=assignee_raw).first()
-        ticket.assignee = assignee
-    elif "assignee" in request.POST:
-        ticket.assignee = None
+        raise Http404 from None
+
+    assignees = company_users(company)
+    status = request.POST.get("status", "").strip()
+    status_changed = False
+    if status and status in dict(helpdesk_bridge.STATUS_CHOICES):
+        status_changed = helpdesk_bridge.set_ticket_status(
+            ticket, status, user=request.user
+        )
+        ticket.refresh_from_db()
+
     if "assignee" in request.POST:
-        updates.append("assignee")
+        assignee_raw = request.POST.get("assignee", "").strip()
+        assignee = assignees.filter(pk=assignee_raw).first() if assignee_raw else None
+        changed = helpdesk_bridge.set_ticket_assignee(
+            ticket, assignee, user=request.user
+        )
+        if changed:
+            from business.helpdesk_assign_mail import queue_assignment_emails
+
+            ticket.refresh_from_db()
+            if assignee is None:
+                messages.success(request, "Ticket unassigned.")
+            else:
+                queue_assignment_emails(
+                    company=company,
+                    ticket=ticket,
+                    assignee=assignee,
+                    assigned_by=request.user,
+                )
+                messages.success(
+                    request,
+                    f"Ticket assigned to {assignee.email}. "
+                    "Notification email is being sent.",
+                )
+
+    if status_changed and status == "closed":
+        from business.helpdesk_assign_mail import queue_ticket_closed_email
+
+        ticket.refresh_from_db()
+        queue_ticket_closed_email(company=company, ticket=ticket)
+        messages.success(
+            request, "Ticket closed. Requester notification email is being sent."
+        )
 
     if "remarks" in request.POST:
-        ticket.remarks = request.POST.get("remarks", "").strip()
-        updates.append("remarks")
+        helpdesk_bridge.set_ticket_remarks(
+            ticket, request.POST.get("remarks", "").strip()
+        )
 
-    if "status" in updates:
-        if ticket.status in (
-            SupportTicket.Status.RESOLVED,
-            SupportTicket.Status.CLOSED,
-        ):
-            ticket.completed_at = ticket.completed_at or timezone.now()
-        elif ticket.status in (SupportTicket.Status.OPEN, SupportTicket.Status.IN_PROGRESS):
-            ticket.completed_at = None
-        updates.append("completed_at")
-
-    if updates:
-        ticket.save(update_fields=list(set(updates + ["updated_at"])))
     qs = request.POST.get("next_qs", "").strip()
     url = reverse("support_ticket_list")
     if qs:
@@ -1601,17 +1723,28 @@ def support_ticket_update(request, pk):
 
 @company_owner_required
 def support_ticket_add(request):
+    import json
+
+    from business.priority_rules import rules_payload_for_ui
+
     company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
+    priority_rules = rules_payload_for_ui(company)
     if request.method == "POST":
         form = SupportTicketForm(request.POST)
         if form.is_valid():
-            t = form.save(commit=False)
-            t.company = company
-            t.created_by = request.user
-            t.save()
+            t = helpdesk_bridge.create_internal_ticket(
+                company=company,
+                user=request.user,
+                subject=form.cleaned_data["subject"],
+                description=form.cleaned_data["description"],
+                department=form.cleaned_data["department"],
+                priority=form.cleaned_data["priority"],
+                priority_source="manual",
+            )
             messages.success(
                 request,
-                f"Support ticket {t.reference} was submitted.",
+                f"Support ticket TK-{t.pk:05d} was submitted.",
             )
             return redirect("support_ticket_detail", pk=t.pk)
     else:
@@ -1619,51 +1752,165 @@ def support_ticket_add(request):
     return render(
         request,
         "business/support_ticket_form.html",
-        {"company": company, "form": form},
+        {
+            "company": company,
+            "form": form,
+            "priority_rules_json": json.dumps(priority_rules),
+        },
     )
 
 
 @company_owner_required
 @require_http_methods(["GET", "POST"])
 def support_ticket_detail(request, pk):
+    from business.sla import get_or_create_sla_settings
+
     company = _company(request)
-    ticket = get_object_or_404(
-        SupportTicket.objects.select_related("created_by", "assignee"),
-        pk=pk,
-        company=company,
-    )
-    comments_qs = ticket.comments.select_related("user")
+    try:
+        raw = helpdesk_bridge.get_company_ticket(company, pk)
+    except helpdesk_bridge.Ticket.DoesNotExist:
+        from django.http import Http404
+
+        raise Http404 from None
+
+    sla_settings = get_or_create_sla_settings(company)
+    ticket = helpdesk_bridge.wrap_ticket(raw, sla_settings=sla_settings)
     comment_form = SupportTicketCommentForm()
     if request.method == "POST":
         action = request.POST.get("action", "").strip()
         if action == "comment":
             comment_form = SupportTicketCommentForm(request.POST)
             if comment_form.is_valid():
-                c = comment_form.save(commit=False)
-                c.ticket = ticket
-                c.user = request.user
-                c.save()
+                helpdesk_bridge.add_comment(
+                    ticket=raw,
+                    user=request.user,
+                    body=comment_form.cleaned_data["body"],
+                    internal_note=comment_form.cleaned_data.get("internal_note", False),
+                )
                 messages.success(request, "Comment added.")
-                return redirect("support_ticket_detail", pk=ticket.pk)
-        elif action == "close" and ticket.status != SupportTicket.Status.CLOSED:
-            ticket.status = SupportTicket.Status.CLOSED
-            ticket.completed_at = timezone.now()
-            ticket.save(update_fields=["status", "completed_at", "updated_at"])
-            messages.success(request, "Ticket marked as closed.")
-        elif action == "reopen" and ticket.status == SupportTicket.Status.CLOSED:
-            ticket.status = SupportTicket.Status.OPEN
-            ticket.completed_at = None
-            ticket.save(update_fields=["status", "completed_at", "updated_at"])
+                return redirect("support_ticket_detail", pk=raw.pk)
+        elif action == "priority":
+            new_priority = request.POST.get("priority", "").strip()
+            if new_priority in helpdesk_bridge.PRIORITY_UI_TO_HD:
+                changed = helpdesk_bridge.set_ticket_priority(
+                    company,
+                    raw,
+                    new_priority,
+                    user=request.user,
+                    priority_source="manual",
+                )
+                if changed:
+                    messages.success(
+                        request,
+                        "Priority updated; SLA due times recalculated.",
+                    )
+                else:
+                    messages.info(request, "Priority unchanged.")
+            return redirect("support_ticket_detail", pk=raw.pk)
+        elif action == "close" and ticket.status != "closed":
+            changed = helpdesk_bridge.set_ticket_status(
+                raw, "closed", user=request.user
+            )
+            if changed:
+                from business.helpdesk_assign_mail import queue_ticket_closed_email
+
+                raw.refresh_from_db()
+                queue_ticket_closed_email(company=company, ticket=raw)
+                messages.success(
+                    request,
+                    "Ticket marked as closed. Requester notification email is being sent.",
+                )
+            else:
+                messages.success(request, "Ticket marked as closed.")
+        elif action == "reopen" and ticket.status == "closed":
+            helpdesk_bridge.set_ticket_status(raw, "open", user=request.user)
             messages.success(request, "Ticket reopened.")
-        return redirect("support_ticket_detail", pk=ticket.pk)
+        return redirect("support_ticket_detail", pk=raw.pk)
     return render(
         request,
         "business/support_ticket_detail.html",
         {
             "company": company,
             "ticket": ticket,
-            "comments": comments_qs,
+            "comments": helpdesk_bridge.followups_as_comments(raw),
             "comment_form": comment_form,
+            "priority_choices": helpdesk_bridge.PRIORITY_LABELS,
+            "sla_settings": sla_settings,
+        },
+    )
+
+
+@company_owner_required
+@require_http_methods(["GET", "POST"])
+def support_sla_settings(request):
+    from business.priority_rules import ensure_default_priority_rules
+    from business.sla import get_or_create_sla_settings
+
+    company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
+    settings_obj = get_or_create_sla_settings(company)
+    ensure_default_priority_rules(company)
+
+    rules_qs = list(
+        TicketPriorityRule.objects.filter(company=company).order_by("sort_order", "id")
+    )
+    initial_rules = [
+        {
+            "priority": r.priority,
+            "keywords": r.keywords,
+            "sort_order": r.sort_order,
+        }
+        for r in rules_qs
+        if r.is_active
+    ]
+
+    if request.method == "POST":
+        form = SupportSLASettingsForm(request.POST, instance=settings_obj)
+        formset = TicketPriorityRuleFormSet(request.POST, prefix="rules")
+        if form.is_valid() and formset.is_valid():
+            form.save()
+            TicketPriorityRule.objects.filter(company=company).delete()
+            for rule_form in formset:
+                if not hasattr(rule_form, "cleaned_data") or not rule_form.cleaned_data:
+                    continue
+                if rule_form.cleaned_data.get("DELETE"):
+                    continue
+                keywords = (rule_form.cleaned_data.get("keywords") or "").strip()
+                priority = rule_form.cleaned_data.get("priority")
+                if not keywords or not priority:
+                    continue
+                TicketPriorityRule.objects.create(
+                    company=company,
+                    priority=priority,
+                    keywords=keywords,
+                    sort_order=rule_form.cleaned_data.get("sort_order") or 0,
+                    is_active=True,
+                )
+            # Refresh dues on open tickets so new hours/mode apply immediately.
+            from business.sla import apply_sla_to_ticket
+
+            open_statuses = (
+                helpdesk_bridge.Ticket.OPEN_STATUS,
+                helpdesk_bridge.Ticket.REOPENED_STATUS,
+            )
+            for ticket in helpdesk_bridge.tickets_for_company(company).filter(
+                status__in=open_statuses
+            ):
+                apply_sla_to_ticket(company, ticket)
+            messages.success(request, "SLA and priority settings saved.")
+            return redirect("support_sla_settings")
+    else:
+        form = SupportSLASettingsForm(instance=settings_obj)
+        formset = TicketPriorityRuleFormSet(initial=initial_rules, prefix="rules")
+
+    return render(
+        request,
+        "business/support_sla_settings.html",
+        {
+            "company": company,
+            "form": form,
+            "formset": formset,
+            "settings_obj": settings_obj,
         },
     )
 

@@ -69,6 +69,12 @@ def company_setup(request):
                     "can_grant_sales": True,
                 },
             )
+            try:
+                from business.helpdesk_bridge import sync_company_queue
+
+                sync_company_queue(obj)
+            except Exception:
+                pass
             return redirect("dashboard")
     else:
         form = CompanyProfileForm(instance=profile)
@@ -209,6 +215,12 @@ def company_send_expiry_notifications(request):
     company.user = request.user
     company.save()
     form.save_m2m()
+    try:
+        from business.helpdesk_bridge import sync_company_queue
+
+        sync_company_queue(company)
+    except Exception:
+        pass
 
     action = request.POST.get("action", "").strip()
     from business.expiry_notifications import (

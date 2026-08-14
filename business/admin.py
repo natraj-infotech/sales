@@ -12,6 +12,9 @@ from .models import (
     SubscriptionRenewalInviteLine,
     SupportTicket,
     SupportTicketComment,
+    SupportTicketMeta,
+    SupportSLASettings,
+    TicketPriorityRule,
 )
 
 
@@ -150,6 +153,49 @@ class SupportTicketCommentAdmin(admin.ModelAdmin):
     list_display = ("ticket", "user", "internal_note", "created_at")
     list_filter = ("internal_note", "created_at")
     search_fields = ("ticket__subject", "user__email", "body")
+
+
+@admin.register(SupportTicketMeta)
+class SupportTicketMetaAdmin(admin.ModelAdmin):
+    list_display = (
+        "ticket",
+        "department",
+        "is_internal",
+        "priority_source",
+        "first_response_due_at",
+        "resolve_due_at",
+        "first_responded_at",
+        "created_by",
+        "completed_at",
+        "updated_at",
+    )
+    list_filter = ("department", "is_internal", "priority_source")
+    search_fields = ("ticket__title", "remarks", "created_by__email")
+
+
+@admin.register(SupportSLASettings)
+class SupportSLASettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "company",
+        "sla_mode",
+        "email_auto_priority",
+        "updated_at",
+    )
+    list_filter = ("sla_mode", "email_auto_priority")
+
+
+@admin.register(TicketPriorityRule)
+class TicketPriorityRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        "company",
+        "priority",
+        "keywords",
+        "sort_order",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("company", "priority", "is_active")
+    search_fields = ("keywords",)
 
 
 @admin.register(CaseLockInbox)

@@ -112,7 +112,17 @@ urlpatterns = [
         name="subscription_renew",
     ),
     path("support/tickets/", views.support_ticket_list, name="support_ticket_list"),
+    path(
+        "support/tickets/live/",
+        views.support_ticket_live,
+        name="support_ticket_live",
+    ),
     path("support/tickets/add/", views.support_ticket_add, name="support_ticket_add"),
+    path(
+        "support/settings/",
+        views.support_sla_settings,
+        name="support_sla_settings",
+    ),
     path(
         "support/tickets/<int:pk>/",
         views.support_ticket_detail,

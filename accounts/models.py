@@ -92,6 +92,18 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="Phone or other contact shown under Best Regards in client renewal emails.",
     )
+    expiry_email_initial_paragraph = models.TextField(
+        "expiry email initial paragraph",
+        blank=True,
+        help_text="Shown above the product table in client subscription expiry emails. "
+        "Leave blank to use the default text.",
+    )
+    expiry_email_end_paragraph = models.TextField(
+        "expiry email end paragraph",
+        blank=True,
+        help_text="Shown below the product table in client subscription expiry emails. "
+        "Leave blank to use the default text.",
+    )
     expiry_client_emails_enabled = models.BooleanField(
         "email clients before subscription expiry",
         default=False,

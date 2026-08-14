@@ -45,6 +45,8 @@ class CompanyProfileForm(forms.ModelForm):
             "outgoing_email_app_password",
             "regards_email",
             "regards_contact",
+            "expiry_email_initial_paragraph",
+            "expiry_email_end_paragraph",
             "expiry_client_emails_enabled",
             "expiry_team_digest_enabled",
             "expiry_team_extra_emails",
@@ -57,6 +59,8 @@ class CompanyProfileForm(forms.ModelForm):
             "regards_email": forms.Textarea(
                 attrs={"rows": 3, "placeholder": "one@example.com\ntwo@example.com"}
             ),
+            "expiry_email_initial_paragraph": forms.Textarea(attrs={"rows": 3}),
+            "expiry_email_end_paragraph": forms.Textarea(attrs={"rows": 3}),
             "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
@@ -87,6 +91,23 @@ class CompanyProfileForm(forms.ModelForm):
         self.fields["regards_contact"].label = "Regards contact details"
         self.fields["regards_contact"].help_text = (
             "Phone or other contact shown under Best Regards. Leave blank to hide."
+        )
+        self.fields["expiry_email_initial_paragraph"].label = "Initial paragraph"
+        self.fields["expiry_email_initial_paragraph"].help_text = (
+            "Shown above the product table in client expiry emails. "
+            "Leave blank to keep the default line."
+        )
+        self.fields["expiry_email_initial_paragraph"].widget.attrs["placeholder"] = (
+            "Kindly renew it to ensure there is no interruption to your services."
+        )
+        self.fields["expiry_email_end_paragraph"].label = "End paragraph"
+        self.fields["expiry_email_end_paragraph"].help_text = (
+            "Shown below the product table in client expiry emails. "
+            "Leave blank to keep the default line."
+        )
+        self.fields["expiry_email_end_paragraph"].widget.attrs["placeholder"] = (
+            "We request you to share your confirmation at the earliest so that we can "
+            "initiate the renewal process and ensure uninterrupted service."
         )
         self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
         self.fields["expiry_client_emails_enabled"].help_text = (
