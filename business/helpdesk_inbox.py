@@ -21,6 +21,7 @@ from business.helpdesk_bridge import (
 from business.support_inbox import (
     _detect_imap_host,
     _graph_access_token,
+    _graph_list_unread_inbox,
     _graph_mark_read,
     _is_microsoft_host,
 )
@@ -105,34 +106,32 @@ def _fetch_microsoft_via_graph(company: CompanyProfile) -> tuple[int, list[str]]
     Microsoft 365 basic IMAP auth is often blocked; use Graph, but write
     django-helpdesk Ticket rows (not legacy SupportTicket).
     """
-    from urllib.parse import quote
-
-    import requests
-
     created = 0
     log: list[str] = []
     mailbox = company.support_email
     mark_seen = settings.SUPPORT_IMAP_MARK_SEEN
     access_token = _graph_access_token()
-
-    url = (
-        "https://graph.microsoft.com/v1.0/users/"
-        f"{quote(mailbox)}/mailFolders/Inbox/messages"
+    recent = _graph_list_unread_inbox(
+        access_token,
+        mailbox,
+        select="id,subject,from,internetMessageId,bodyPreview,body,receivedDateTime",
+        unread_only=False,
     )
-    params = {
-        "$filter": "isRead eq false",
-        "$top": "25",
-        "$select": "id,subject,from,internetMessageId,bodyPreview,body",
-        "$orderby": "receivedDateTime asc",
-    }
-    resp = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {access_token}"},
-        params=params,
-        timeout=30,
+    unread = _graph_list_unread_inbox(
+        access_token,
+        mailbox,
+        select="id,subject,from,internetMessageId,bodyPreview,body,receivedDateTime",
+        unread_only=True,
     )
-    resp.raise_for_status()
-    items = (resp.json().get("value") or [])
+    seen_ids: set[str] = set()
+    items: list[dict] = []
+    for item in list(unread) + list(recent):
+        gid = (item.get("id") or "").strip()
+        key = gid or (item.get("internetMessageId") or "").strip()
+        if not key or key in seen_ids:
+            continue
+        seen_ids.add(key)
+        items.append(item)
 
     for item in items:
         mid = (item.get("internetMessageId") or "").strip()
@@ -188,9 +187,31 @@ def _fetch_microsoft_via_graph(company: CompanyProfile) -> tuple[int, list[str]]
 
     log.append(
         f"[{company.company_name}] Graph->helpdesk imported {created} ticket(s) "
-        f"from {len(items)} unread message(s)."
+        f"from {len(items)} recent Inbox message(s)."
     )
     return created, log
+
+
+def inbox_error_logs(result: dict | None) -> list[str]:
+    """Log lines that should be shown to the user as mailbox-sync failures."""
+    if not result:
+        return []
+    errors: list[str] = []
+    for line in result.get("logs") or []:
+        low = (line or "").lower()
+        if any(
+            token in low
+            for token in (
+                "error",
+                "failed",
+                "needs graph",
+                "not set",
+                "skipped",
+                "app password",
+            )
+        ):
+            errors.append(line)
+    return errors
 
 
 def fetch_helpdesk_mail_for_company(company: CompanyProfile) -> dict:
@@ -201,6 +222,9 @@ def fetch_helpdesk_mail_for_company(company: CompanyProfile) -> dict:
     support = (company.support_email or "").strip()
     password = (company.support_email_app_password or "").strip()
     if not support:
+        logs.append(
+            f"[{company.company_name}] Support email is not set in Company profile."
+        )
         return {"created": 0, "logs": logs, "mode": "skipped"}
 
     host = _detect_imap_host(support)
@@ -228,9 +252,19 @@ def fetch_helpdesk_mail_for_company(company: CompanyProfile) -> dict:
 
     # Non-M365: let helpdesk poll this queue via IMAP.
     if not queue.allow_email_submission:
+        logs.append(
+            f"[{company.company_name}] IMAP skipped: set the support email "
+            "app password in Company profile."
+        )
         return {"created": 0, "logs": logs, "mode": "imap"}
     try:
+        before = Ticket.objects.filter(queue=queue).count()
         process_queue(queue, logger=logger)
+        created = max(0, Ticket.objects.filter(queue=queue).count() - before)
+        if created:
+            logs.append(
+                f"[{company.company_name}] IMAP imported {created} new ticket(s)."
+            )
     except Exception as exc:
         logs.append(f"[{company.company_name}] IMAP sync error: {exc}")
         logger.exception("IMAP helpdesk sync failed for company %s", company.pk)

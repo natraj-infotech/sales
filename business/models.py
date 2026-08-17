@@ -37,8 +37,12 @@ class Client(models.Model):
     )
     name = models.CharField(max_length=255)
     gst_number = models.CharField("GST number", max_length=32, blank=True)
-    email = models.EmailField(blank=True)
-    phone = models.CharField("Contact", max_length=64, blank=True)
+    email = models.EmailField("Email 1", blank=True)
+    email_2 = models.EmailField("Email 2", blank=True)
+    email_3 = models.EmailField("Email 3", blank=True)
+    phone = models.CharField("Contact 1", max_length=64, blank=True)
+    phone_2 = models.CharField("Contact 2", max_length=64, blank=True)
+    phone_3 = models.CharField("Contact 3", max_length=64, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -47,6 +51,17 @@ class Client(models.Model):
 
     def __str__(self):
         return self.name
+
+    def contact_emails(self) -> list[str]:
+        emails: list[str] = []
+        seen: set[str] = set()
+        for raw in (self.email, self.email_2, self.email_3):
+            addr = (raw or "").strip()
+            key = addr.lower()
+            if addr and key not in seen:
+                seen.add(key)
+                emails.append(addr)
+        return emails
 
 
 class Product(models.Model):

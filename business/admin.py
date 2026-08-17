@@ -34,9 +34,29 @@ class VendorAdmin(admin.ModelAdmin):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "company", "gst_number", "email", "phone", "created_at")
+    list_display = (
+        "name",
+        "company",
+        "gst_number",
+        "email",
+        "email_2",
+        "email_3",
+        "phone",
+        "phone_2",
+        "phone_3",
+        "created_at",
+    )
     list_filter = ("company",)
-    search_fields = ("name", "email", "gst_number", "phone")
+    search_fields = (
+        "name",
+        "email",
+        "email_2",
+        "email_3",
+        "gst_number",
+        "phone",
+        "phone_2",
+        "phone_3",
+    )
 
 
 @admin.register(Product)

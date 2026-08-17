@@ -440,7 +440,12 @@
           lastSignature = sig;
         }
         var suffix = data.created ? (" · +" + data.created + " new") : "";
-        setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+        var errors = data.inbox_errors || [];
+        if (errors.length) {
+          setMeta(errors[0], true);
+        } else {
+          setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+        }
       })
       .catch(function (err) {
         setMeta("Live poll failed — retrying", true);

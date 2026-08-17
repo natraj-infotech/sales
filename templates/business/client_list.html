@@ -48,8 +48,12 @@
             </th>
             <th>Name</th>
             <th>GST number</th>
-            <th>Email</th>
-            <th>Contact</th>
+            <th>Email 1</th>
+            <th>Email 2</th>
+            <th>Email 3</th>
+            <th>Contact 1</th>
+            <th>Contact 2</th>
+            <th>Contact 3</th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
@@ -62,7 +66,11 @@
             <td>{{ c.name }}</td>
             <td>{{ c.gst_number|default:"—" }}</td>
             <td>{{ c.email|default:"—" }}</td>
+            <td>{{ c.email_2|default:"—" }}</td>
+            <td>{{ c.email_3|default:"—" }}</td>
             <td>{{ c.phone|default:"—" }}</td>
+            <td>{{ c.phone_2|default:"—" }}</td>
+            <td>{{ c.phone_3|default:"—" }}</td>
             <td class="col-actions">
               <a class="btn-table-edit" href="{% url 'client_edit' c.pk %}">Edit</a>
               <button type="submit"
@@ -77,7 +85,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+            <td colspan="10" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
               No clients. <a href="{% url 'client_add' %}">Add one</a>.
             </td>
           </tr>

@@ -1091,8 +1091,12 @@
       grid-template-columns: 1fr 1fr;
       gap: 1rem 1.5rem;
     }
+    .tracker-mock-grid--three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     @media (max-width: 640px) {
-      .tracker-mock-grid { grid-template-columns: 1fr; }
+      .tracker-mock-grid,
+      .tracker-mock-grid--three { grid-template-columns: 1fr; }
       .tracker-mock-field--qty { max-width: none !important; }
     }
     .tracker-mock-field--qty {

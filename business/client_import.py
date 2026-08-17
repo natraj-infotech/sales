@@ -18,8 +18,12 @@ EXPORT_HEADERS: tuple[str, ...] = (
     "Client ID",
     "Name",
     "GST Number",
-    "Email",
-    "Contact",
+    "Email 1",
+    "Email 2",
+    "Email 3",
+    "Contact 1",
+    "Contact 2",
+    "Contact 3",
     "Notes",
 )
 
@@ -32,12 +36,31 @@ HEADER_ALIASES: dict[str, str] = {
     "gst": "gst_number",
     "gst_no": "gst_number",
     "email": "email",
+    "email_1": "email",
+    "email1": "email",
+    "email_2": "email_2",
+    "email2": "email_2",
+    "email_3": "email_3",
+    "email3": "email_3",
     "contact": "phone",
+    "contact_1": "phone",
+    "contact1": "phone",
     "phone": "phone",
+    "phone_1": "phone",
+    "phone1": "phone",
+    "contact_2": "phone_2",
+    "contact2": "phone_2",
+    "phone_2": "phone_2",
+    "phone2": "phone_2",
+    "contact_3": "phone_3",
+    "contact3": "phone_3",
+    "phone_3": "phone_3",
+    "phone3": "phone_3",
     "notes": "notes",
 }
 
 HINT_WORDS = frozenset({"client", "name", "gst", "email", "contact", "phone", "notes"})
+_UNSET = object()
 
 
 def build_client_export_bytes(company: CompanyProfile) -> bytes:
@@ -52,7 +75,11 @@ def build_client_export_bytes(company: CompanyProfile) -> bytes:
                 client.name,
                 client.gst_number,
                 client.email,
+                client.email_2,
+                client.email_3,
                 client.phone,
+                client.phone_2,
+                client.phone_3,
                 client.notes,
             ]
         )
@@ -100,19 +127,40 @@ def _parse_email(raw: Any) -> tuple[str | None, str | None]:
     return email, None
 
 
+def _mapped_email(get, col_map: dict[str, int], field: str) -> tuple[Any, str | None]:
+    if field not in col_map:
+        return _UNSET, None
+    return _parse_email(get(field))
+
+
+def _mapped_text(get, col_map: dict[str, int], field: str, maxlen: int) -> Any:
+    if field not in col_map:
+        return _UNSET
+    return cell_str(get(field))[:maxlen]
+
+
 def _upsert_client(
     company: CompanyProfile,
     get,
     clients_by_id: dict[int, Client],
     clients_by_name: dict[str, Client],
+    col_map: dict[str, int],
 ) -> tuple[Client | None, str | None, bool]:
     client_id = _parse_client_id(get("client_id"))
     name = cell_str(get("name"))
     gst_number = cell_str(get("gst_number"))[:32]
-    email, email_err = _parse_email(get("email"))
+    email, email_err = _mapped_email(get, col_map, "email")
     if email_err:
         return None, email_err, False
-    phone = cell_str(get("phone"))[:64]
+    email_2, email_2_err = _mapped_email(get, col_map, "email_2")
+    if email_2_err:
+        return None, email_2_err, False
+    email_3, email_3_err = _mapped_email(get, col_map, "email_3")
+    if email_3_err:
+        return None, email_3_err, False
+    phone = _mapped_text(get, col_map, "phone", 64)
+    phone_2 = _mapped_text(get, col_map, "phone_2", 64)
+    phone_3 = _mapped_text(get, col_map, "phone_3", 64)
     notes = cell_str(get("notes"))
 
     existing: Client | None = None
@@ -131,8 +179,12 @@ def _upsert_client(
             company=company,
             name=name,
             gst_number=gst_number,
-            email=email or "",
-            phone=phone,
+            email="" if email is _UNSET else (email or ""),
+            email_2="" if email_2 is _UNSET else (email_2 or ""),
+            email_3="" if email_3 is _UNSET else (email_3 or ""),
+            phone="" if phone is _UNSET else phone,
+            phone_2="" if phone_2 is _UNSET else phone_2,
+            phone_3="" if phone_3 is _UNSET else phone_3,
             notes=notes,
         )
         clients_by_id[client.pk] = client
@@ -142,8 +194,18 @@ def _upsert_client(
     if name:
         existing.name = name
     existing.gst_number = gst_number
-    existing.email = email or ""
-    existing.phone = phone
+    if email is not _UNSET:
+        existing.email = email or ""
+    if email_2 is not _UNSET:
+        existing.email_2 = email_2 or ""
+    if email_3 is not _UNSET:
+        existing.email_3 = email_3 or ""
+    if phone is not _UNSET:
+        existing.phone = phone
+    if phone_2 is not _UNSET:
+        existing.phone_2 = phone_2
+    if phone_3 is not _UNSET:
+        existing.phone_3 = phone_3
     existing.notes = notes
     existing.save()
     clients_by_id[existing.pk] = existing
@@ -208,7 +270,7 @@ def _import_client_rows(
             continue
 
         _client, err, was_created = _upsert_client(
-            company, get, clients_by_id, clients_by_name
+            company, get, clients_by_id, clients_by_name, col_map
         )
         if err:
             errors.append((row_num, err))

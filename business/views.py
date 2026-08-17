@@ -549,7 +549,19 @@ def vendor_edit(request, pk):
 @sales_module_required
 def client_list(request):
     return _crud_list(
-        request, Client, "business/client_list.html", ("name", "email", "phone", "gst_number")
+        request,
+        Client,
+        "business/client_list.html",
+        (
+            "name",
+            "email",
+            "email_2",
+            "email_3",
+            "phone",
+            "phone_2",
+            "phone_3",
+            "gst_number",
+        ),
     )
 
 
@@ -1552,7 +1564,7 @@ def support_ticket_list(request):
 
     # runserver-only: refresh page → poll mailbox → new tickets appear
     if request.method == "GET":
-        from business.helpdesk_inbox import maybe_fetch_on_dashboard
+        from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
 
         result = maybe_fetch_on_dashboard(company)
         if result and int(result.get("created") or 0) > 0:
@@ -1560,6 +1572,8 @@ def support_ticket_list(request):
                 request,
                 f"Imported {result['created']} new support ticket(s) from email.",
             )
+        for line in inbox_error_logs(result):
+            messages.error(request, line)
 
     data = _support_ticket_list_data(
         company,
@@ -1587,10 +1601,11 @@ def support_ticket_live(request):
     company = _company(request)
     helpdesk_bridge.sync_company_queue(company)
 
-    from business.helpdesk_inbox import maybe_fetch_on_dashboard
+    from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
 
     fetch_result = maybe_fetch_on_dashboard(company) or {}
     created = int(fetch_result.get("created") or 0)
+    inbox_errors = inbox_error_logs(fetch_result)
 
     data = _support_ticket_list_data(
         company,
@@ -1643,6 +1658,7 @@ def support_ticket_live(request):
         {
             "ok": True,
             "created": created,
+            "inbox_errors": inbox_errors,
             "polled_at": _format_dt(timezone.now()),
             "status_filter": data["status_filter"],
             "next_qs": next_qs,
@@ -1955,6 +1971,9 @@ def renewal_confirm_public(request, invite_id):
                 line.save(update_fields=["renewal_count"])
             invite.submitted_at = timezone.now()
             invite.save(update_fields=["submitted_at"])
+            from business.expiry_notifications import send_renewal_confirmation_email
+
+            send_renewal_confirmation_email(invite, lines)
             return render(
                 request,
                 "business/renewal_confirm_thanks_guest.html",

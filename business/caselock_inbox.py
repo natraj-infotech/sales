@@ -21,6 +21,7 @@ from business.support_inbox import (
     _detect_imap_host,
     _fetch_rfc822_bytes,
     _graph_access_token,
+    _graph_list_unread_inbox,
     _graph_mark_read,
     _is_microsoft_host,
     parse_rfc5322_addr,
@@ -175,24 +176,12 @@ def _fetch_caselock_via_graph(inbox: CaseLockInbox, mark_seen: bool) -> tuple[in
     created = 0
     mailbox = inbox.mailbox_email.strip()
     access_token = _graph_access_token()
-    url = (
-        "https://graph.microsoft.com/v1.0/users/"
-        f"{quote(mailbox)}/mailFolders/Inbox/messages"
+    items = _graph_list_unread_inbox(
+        access_token,
+        mailbox,
+        select="id,subject,from,internetMessageId,bodyPreview,receivedDateTime",
+        unread_only=True,
     )
-    params = {
-        "$filter": "isRead eq false",
-        "$top": "25",
-        "$select": "id,subject,from,internetMessageId,bodyPreview",
-        "$orderby": "receivedDateTime asc",
-    }
-    resp = requests.get(
-        url,
-        headers={"Authorization": f"Bearer {access_token}"},
-        params=params,
-        timeout=30,
-    )
-    resp.raise_for_status()
-    items = resp.json().get("value") or []
 
     for item in items:
         mid = (item.get("internetMessageId") or "").strip()

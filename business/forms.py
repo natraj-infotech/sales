@@ -134,8 +134,31 @@ class VendorForm(forms.ModelForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = Client
-        fields = ("name", "gst_number", "email", "phone", "notes")
+        fields = (
+            "name",
+            "gst_number",
+            "email",
+            "email_2",
+            "email_3",
+            "phone",
+            "phone_2",
+            "phone_3",
+            "notes",
+        )
         widgets = {"notes": forms.HiddenInput()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in (
+            "gst_number",
+            "email",
+            "email_2",
+            "email_3",
+            "phone",
+            "phone_2",
+            "phone_3",
+        ):
+            self.fields[name].required = False
 
 
 class ProductForm(forms.ModelForm):

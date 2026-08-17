@@ -170,6 +170,19 @@ def _client_reminder_cc_recipients(company: CompanyProfile) -> list[str]:
     return recipients
 
 
+def _merge_cc_addresses(to_email: str, *groups: list[str]) -> list[str]:
+    seen = {(to_email or "").strip().lower()}
+    seen.discard("")
+    merged: list[str] = []
+    for group in groups:
+        for addr in group:
+            key = (addr or "").strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                merged.append(key)
+    return merged
+
+
 def _active_expiring_on_day(company: CompanyProfile, days_before: int, today):
     target_end = today + timedelta(days=days_before)
     return (
@@ -310,13 +323,13 @@ def _client_email_body(
     if renewal_url:
         lines.extend(
             [
-                f"Confirm renewal online: {renewal_url}",
+                f"CONFIRM SUBSCRIPTIONS QTY: {renewal_url}",
                 "",
             ]
         )
     lines.extend(
         [
-            "Please feel free to contact us if you require any further information.",
+            "So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.",
             "",
             "Thank you.",
             "",
@@ -486,7 +499,7 @@ def _client_email_html(
                   <td align="center" bgcolor="{header_bg}" style="background-color:{header_bg};border-radius:4px;">
                     <a href="{renewal_url}"
                        style="display:inline-block;padding:12px 22px;font-family:{font};font-size:14px;font-weight:600;color:#FFFFFF;text-decoration:none;">
-                      Confirm renewal
+                      CONFIRM SUBSCRIPTIONS QTY
                     </a>
                   </td>
                 </tr>
@@ -563,7 +576,7 @@ def _client_email_html(
             </p>
             {cta_html}
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
-              Please feel free to contact us if you require any further information.
+              So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.
             </p>
             <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
               Thank you.
@@ -611,6 +624,273 @@ def _client_email_html(
         cta_html=cta_html,
         contact_html=contact_html,
     )
+
+
+RENEWAL_CONFIRMATION_SUBJECT = "Subscription Renewal Confirmation"
+RENEWAL_CONFIRMATION_OFFER_LINE = (
+    "We will shortly submit you the best and competitive commercial offer for the same."
+)
+
+
+def _renewal_confirmation_cc_recipients(
+    invite: SubscriptionRenewalInvite, to_email: str
+) -> list[str]:
+    seen = {(to_email or "").strip().lower()}
+    seen.discard("")
+    extra: list[str] = []
+    lines = invite.lines.select_related("subscription__client").all()
+    for line in lines:
+        client = getattr(line.subscription, "client", None)
+        if client is None:
+            continue
+        for addr in client.contact_emails():
+            key = (addr or "").strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                extra.append(addr.strip())
+    return extra
+
+
+def _renewal_confirmation_body(company: CompanyProfile, lines) -> str:
+    contact_bits = _client_contact_lines(company)
+    rows = [
+        "Dear Sir/Madam,",
+        "",
+        RENEWAL_CONFIRMATION_OFFER_LINE,
+        "",
+        "+--------------------------------+------------------------------+----------+----------+",
+        "| Company name                   | Product                      | Current  | Renewal  |",
+        "+--------------------------------+------------------------------+----------+----------+",
+    ]
+    for line in lines:
+        company_name = (line.company_name or "")[:30]
+        product_name = (line.product_name or "")[:28]
+        current_qty = str(line.current_quantity)
+        renewal_qty = "—" if line.renewal_count is None else str(line.renewal_count)
+        rows.append(
+            f"| {company_name:<30} | {product_name:<28} | {current_qty:<8} | {renewal_qty:<8} |"
+        )
+    rows.extend(
+        [
+            "+--------------------------------+------------------------------+----------+----------+",
+            "",
+            "Thank you.",
+            "",
+            "Best Regards,",
+            company.company_name,
+        ]
+    )
+    rows.extend(contact_bits)
+    return "\n".join(rows)
+
+
+def _renewal_confirmation_html(
+    company: CompanyProfile,
+    lines,
+    *,
+    logo_cid: str = "",
+) -> str:
+    font = "'Segoe UI', Arial, Helvetica, sans-serif"
+    text = "#374151"
+    muted = "#6B7280"
+    blue = "#2563EB"
+    header_bg = "#3B5998"
+    table_header_bg = header_bg
+    border = "#E5E7EB"
+    page_bg = "#F3F4F6"
+    card_bg = "#FFFFFF"
+
+    table_rows: list[str] = []
+    for line in lines:
+        renewal_qty = "—" if line.renewal_count is None else str(line.renewal_count)
+        table_rows.append(
+            """
+                <tr>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:top;background-color:{card_bg};">
+                    {company_name}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:top;background-color:{card_bg};">
+                    {product_name}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:middle;background-color:{card_bg};" align="center">
+                    {current_qty}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;font-weight:600;vertical-align:middle;background-color:{card_bg};" align="center">
+                    {renewal_qty}
+                  </td>
+                </tr>
+            """.format(
+                border=border,
+                text=text,
+                font=font,
+                card_bg=card_bg,
+                company_name=escape(line.company_name or ""),
+                product_name=escape(line.product_name or ""),
+                current_qty=escape(str(line.current_quantity)),
+                renewal_qty=escape(renewal_qty),
+            ).strip()
+        )
+
+    contact_bits = _client_contact_lines(company)
+    contact_html = ""
+    if contact_bits:
+        contact_html = (
+            "<br>\n              "
+            + "<br>\n              ".join(escape(bit) for bit in contact_bits)
+        )
+
+    company_name = escape(company.company_name)
+    if logo_cid:
+        logo_html = (
+            f'<img src="cid:{escape(logo_cid)}" alt="{company_name}" width="120" '
+            'style="display:block;max-width:140px;max-height:48px;width:auto;height:auto;'
+            'object-fit:contain;background-color:#FFFFFF;border-radius:4px;padding:2px;">'
+        )
+    else:
+        initial = escape((company.company_name or "C")[:1].upper())
+        logo_html = (
+            '<div style="width:44px;height:44px;border-radius:4px;background-color:#FFFFFF;'
+            f'color:{header_bg};font-family:{font};font-size:18px;font-weight:700;'
+            'line-height:44px;text-align:center;">'
+            f"{initial}</div>"
+        )
+
+    return """
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:0;background-color:{page_bg};">
+  <tr>
+    <td align="center" style="padding:24px 12px;background-color:{page_bg};">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:{card_bg};border:1px solid {border};border-radius:8px;">
+        <tr>
+          <td bgcolor="{header_bg}" style="background-color:{header_bg};padding:14px 18px;border-radius:8px 8px 0 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="left" valign="middle">
+                  {logo_html}
+                </td>
+                <td align="right" valign="middle" style="font-family:{font};font-size:18px;font-weight:700;color:#FFFFFF;padding-left:12px;">
+                  {company_name}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 28px 8px 28px;font-family:{font};">
+            <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">
+              Renewal confirmation
+            </p>
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              Dear Sir/Madam,
+            </p>
+            <p style="margin:0 0 22px 0;font-size:15px;line-height:1.55;color:{text};font-family:{font};">
+              {offer_line}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 28px 8px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;margin:0 0 12px 0;">
+              <thead>
+                <tr>
+                  <th align="left" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Company name</th>
+                  <th align="left" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Product</th>
+                  <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Current qty</th>
+                  <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Renewal qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {table_rows}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 28px 28px 28px;font-family:{font};">
+            <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
+              Thank you.
+            </p>
+            <p style="margin:16px 0 0 0;font-size:15px;line-height:1.55;color:{text};">
+              Best Regards,<br>
+              <strong style="color:{blue};">{company_name}</strong>{contact_html}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+""".strip().format(
+        page_bg=page_bg,
+        card_bg=card_bg,
+        border=border,
+        font=font,
+        blue=blue,
+        text=text,
+        header_bg=header_bg,
+        table_header_bg=table_header_bg,
+        logo_html=logo_html,
+        company_name=company_name,
+        offer_line=escape(RENEWAL_CONFIRMATION_OFFER_LINE),
+        table_rows="\n".join(table_rows),
+        contact_html=contact_html,
+    )
+
+
+def send_renewal_confirmation_email(invite: SubscriptionRenewalInvite, lines=None) -> bool:
+    """Email the client a copy of the quantities they just confirmed."""
+    try:
+        company = invite.company
+        to_email = (invite.client_email or "").strip()
+        if not to_email:
+            logger.warning(
+                "Skipped renewal confirmation email for invite %s: missing client email.",
+                invite.pk,
+            )
+            return False
+        if not _company_can_send_mail(company):
+            logger.warning(
+                "Skipped renewal confirmation email for invite %s: outgoing mail not configured.",
+                invite.pk,
+            )
+            return False
+
+        if lines is None:
+            lines = list(invite.lines.order_by("id"))
+
+        body = _renewal_confirmation_body(company, lines)
+        logo_inline = _company_logo_inline(company)
+        html_body = _renewal_confirmation_html(
+            company,
+            lines,
+            logo_cid=logo_inline[0] if logo_inline else "",
+        )
+        cc_addresses = _renewal_confirmation_cc_recipients(invite, to_email)
+        ok, err, _internet_message_id = send_renewal_email(
+            company,
+            invite,
+            [to_email],
+            RENEWAL_CONFIRMATION_SUBJECT,
+            body,
+            html_body,
+            cc_addresses=cc_addresses,
+            inline_images=[logo_inline] if logo_inline else None,
+        )
+    except Exception:
+        logger.exception(
+            "Failed sending renewal confirmation email for invite %s",
+            invite.pk,
+        )
+        return False
+
+    if not ok:
+        logger.warning(
+            "Renewal confirmation email failed for invite %s to %s: %s",
+            invite.pk,
+            to_email,
+            err or "unknown error",
+        )
+        return False
+    return True
 
 
 def _digest_display_date(value) -> str:
@@ -857,7 +1137,7 @@ def build_expiry_digest_excel_bytes(
             [
                 sub.subscription_list_id,
                 sub.client.name,
-                sub.client.email or "",
+                "; ".join(sub.client.contact_emails()),
                 sub.product.category or "",
                 sub.product.name,
                 sub.vendor.name if sub.vendor_id else "",
@@ -897,7 +1177,7 @@ def send_client_expiry_emails(
     thresholds = parse_notify_days(company.expiry_notify_at_days)
     cc_recipients = _client_reminder_cc_recipients(company)
     grouped: dict[
-        str, list[tuple[ClientSubscription, int, int | None, int]]
+        int, list[tuple[ClientSubscription, int, int | None, int]]
     ] = defaultdict(list)
 
     if force:
@@ -909,8 +1189,7 @@ def send_client_expiry_emails(
             notice_threshold = _selected_threshold_window(days_remaining, thresholds)
             if notice_threshold is None:
                 continue
-            client_email = (sub.client.email or "").strip()
-            if not client_email:
+            if not sub.client.contact_emails():
                 logs.append(
                     f"{company.company_name}: skipped subscription #{sub.pk} "
                     f"({days_remaining} days remaining) — client has no email."
@@ -921,7 +1200,7 @@ def send_client_expiry_emails(
                 threshold_window=notice_threshold,
                 sent_on=today,
             ).count()
-            grouped[client_email].append(
+            grouped[sub.client_id].append(
                 (sub, notice_threshold, days_remaining, dispatch_count + 1)
             )
     else:
@@ -933,8 +1212,7 @@ def send_client_expiry_emails(
             notice_threshold = _selected_threshold_window(days_remaining, thresholds)
             if notice_threshold is None:
                 continue
-            client_email = (sub.client.email or "").strip()
-            if not client_email:
+            if not sub.client.contact_emails():
                 logs.append(
                     f"{company.company_name}: skipped subscription #{sub.pk} "
                     f"({days_remaining} days remaining) — client has no email."
@@ -947,26 +1225,23 @@ def send_client_expiry_emails(
             ).count()
             if dispatch_count >= _max_daily_sends(days_remaining):
                 continue
-            grouped[client_email].append(
+            grouped[sub.client_id].append(
                 (sub, notice_threshold, days_remaining, dispatch_count + 1)
             )
 
-    for client_email, items in grouped.items():
-        by_client: dict[int, list[tuple[ClientSubscription, int, int | None, int]]] = {}
-        for sub, notice_threshold, days_remaining, send_number in items:
-            by_client.setdefault(sub.client_id, []).append(
-                (sub, notice_threshold, days_remaining, send_number)
-            )
-
+    for _client_id, items in grouped.items():
+        client = items[0][0].client
+        contact_emails = client.contact_emails()
+        client_email = contact_emails[0]
+        extra_client_cc = contact_emails[1:]
         sections = [
             (
-                client_items[0][0].client.name,
+                client.name,
                 [
                     (sub, threshold, days_remaining)
-                    for sub, threshold, days_remaining, _ in client_items
+                    for sub, threshold, days_remaining, _ in items
                 ],
             )
-            for client_items in by_client.values()
         ]
         body_items = [item for _, client_items in sections for item in client_items]
         subject = _client_reminder_subject(body_items)
@@ -982,8 +1257,9 @@ def send_client_expiry_emails(
         )
         inline_images = [logo_inline] if logo_inline else None
 
-        client_to = client_email.strip().lower()
-        cc_for_send = [addr for addr in cc_recipients if addr != client_to]
+        cc_for_send = _merge_cc_addresses(
+            client_email, extra_client_cc, cc_recipients
+        )
 
         ok, err, internet_message_id = send_renewal_email(
             company,

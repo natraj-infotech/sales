@@ -159,32 +159,94 @@ def _graph_mark_read(access_token: str, mailbox_email: str, message_id: str) -> 
     ).raise_for_status()
 
 
-def _fetch_via_graph(company: CompanyProfile, mark_seen: bool) -> tuple[int, list[str]]:
-    created = 0
-    log: list[str] = []
-    mailbox = company.support_email
-    user = company.user
-    access_token = _graph_access_token()
+def _graph_error_detail(resp) -> str:
+    try:
+        err = (resp.json() or {}).get("error") or {}
+        code = (err.get("code") or "").strip()
+        msg = (err.get("message") or resp.text or "")[:400]
+        if code and msg:
+            return f"{code}: {msg}"
+        return msg or f"HTTP {resp.status_code}"
+    except Exception:
+        return (getattr(resp, "text", None) or f"HTTP {resp.status_code}")[:400]
+
+
+def _graph_list_unread_inbox(
+    access_token: str,
+    mailbox_email: str,
+    *,
+    select: str,
+    top: int = 50,
+    unread_only: bool = False,
+    since_days: int = 14,
+) -> list[dict]:
+    """
+    Inbox messages via Graph.
+
+    Unread-only uses $filter=isRead and must not combine it with $orderby
+    (Graph InefficientFilter). Recent-mail mode filters/sorts on receivedDateTime
+    so already-opened Outlook messages can still become tickets.
+    """
+    from datetime import datetime, timedelta, timezone as dt_timezone
 
     url = (
         "https://graph.microsoft.com/v1.0/users/"
-        f"{quote(mailbox)}/mailFolders/Inbox/messages"
+        f"{quote(mailbox_email)}/mailFolders/Inbox/messages"
     )
-    params = {
-        "$filter": "isRead eq false",
-        "$top": "25",
-        "$select": "id,subject,from,internetMessageId,bodyPreview,body",
-        "$orderby": "receivedDateTime asc",
-    }
+    select_fields = select
+    if "receivedDateTime" not in select_fields:
+        select_fields = f"{select_fields},receivedDateTime"
+    if unread_only:
+        params = {
+            "$filter": "isRead eq false",
+            "$top": str(top),
+            "$select": select_fields,
+        }
+    else:
+        cutoff = (
+            datetime.now(dt_timezone.utc) - timedelta(days=max(1, int(since_days)))
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        params = {
+            "$filter": f"receivedDateTime ge {cutoff}",
+            "$orderby": "receivedDateTime desc",
+            "$top": str(top),
+            "$select": select_fields,
+        }
     resp = requests.get(
         url,
         headers={"Authorization": f"Bearer {access_token}"},
         params=params,
         timeout=30,
     )
-    resp.raise_for_status()
-    payload = resp.json()
-    items = payload.get("value", []) or []
+    if not resp.ok:
+        hint = ""
+        if resp.status_code == 403:
+            hint = (
+                " Azure app needs Mail.Read (and Mail.ReadWrite to mark read) "
+                "application permission with admin consent."
+            )
+        elif resp.status_code == 401:
+            hint = (
+                " Check MICROSOFT_GRAPH_CLIENT_ID / SECRET and "
+                "MICROSOFT_GRAPH_TENANT (directory id, not 'organizations')."
+            )
+        raise RuntimeError(_graph_error_detail(resp) + hint)
+    items = list((resp.json() or {}).get("value") or [])
+    items.sort(key=lambda item: item.get("receivedDateTime") or "")
+    return items
+
+
+def _fetch_via_graph(company: CompanyProfile, mark_seen: bool) -> tuple[int, list[str]]:
+    created = 0
+    log: list[str] = []
+    mailbox = company.support_email
+    user = company.user
+    access_token = _graph_access_token()
+    items = _graph_list_unread_inbox(
+        access_token,
+        mailbox,
+        select="id,subject,from,internetMessageId,bodyPreview,body,receivedDateTime",
+    )
     if not items:
         return 0, log
 
