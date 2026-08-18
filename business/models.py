@@ -393,6 +393,10 @@ class SubscriptionRenewalInviteLine(models.Model):
 class SubscriptionExpiryDispatch(models.Model):
     """Tracks each expiry reminder dispatch so daily quotas can be enforced."""
 
+    class Source(models.TextChoices):
+        AUTOMATIC = "auto", "Automatic"
+        MANUAL = "manual", "Manual"
+
     subscription = models.ForeignKey(
         ClientSubscription,
         on_delete=models.CASCADE,
@@ -401,13 +405,26 @@ class SubscriptionExpiryDispatch(models.Model):
     threshold_window = models.IntegerField()
     sent_on = models.DateField()
     send_number = models.PositiveSmallIntegerField(default=1)
+    # Scheduled slots are counted per source, so a manual send never uses up an
+    # automatic slot for the day (and vice versa).
+    source = models.CharField(
+        max_length=10,
+        choices=Source.choices,
+        default=Source.AUTOMATIC,
+    )
     sent_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-sent_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["subscription", "threshold_window", "sent_on", "send_number"],
+                fields=[
+                    "subscription",
+                    "threshold_window",
+                    "sent_on",
+                    "send_number",
+                    "source",
+                ],
                 name="unique_expiry_dispatch_per_send_slot",
             ),
         ]
@@ -415,7 +432,7 @@ class SubscriptionExpiryDispatch(models.Model):
     def __str__(self):
         return (
             f"{self.subscription_id} @ {self.threshold_window} days "
-            f"on {self.sent_on} #{self.send_number}"
+            f"on {self.sent_on} #{self.send_number} ({self.source})"
         )
 
 

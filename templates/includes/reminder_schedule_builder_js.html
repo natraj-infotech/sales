@@ -1,12 +1,99 @@
 <script>
 (function () {
   var MODE_OPTIONS = [
-    ["weekly", "Weekly"],
-    ["alternate", "Alternate days"],
-    ["daily", "Daily — once"],
-    ["times_per_day", "Daily — multiple times"],
-    ["total_in_window", "Total mails in this window"]
+    ["weekly", "Once a week"],
+    ["alternate", "Every other day"],
+    ["daily", "Once every day"],
+    ["times_per_day", "Several times a day"],
+    ["total_in_window", "Only a few emails in this period"]
   ];
+
+  var KIND_OPTIONS = [
+    ["before", "Before expiry"],
+    ["expiry", "On expiry day"],
+    ["overdue", "After expiry (payment is late)"]
+  ];
+
+  // Automatic sending only runs between 08:00 and 18:45, so times outside that
+  // range would never fire. Any minute inside the range is allowed.
+  var MIN_TIME = "08:00";
+  var MAX_TIME = "18:00";
+
+  // Used only to fill in extra slots when someone asks for more emails a day.
+  var TIME_CHOICES = [
+    "08:00", "09:00", "10:00", "11:00", "12:00",
+    "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
+  ];
+
+  var MAX_TIMES_PER_DAY = 8;
+
+  // Sensible spread when someone asks for N emails a day.
+  var TIME_LADDER = {
+    1: ["09:00"],
+    2: ["09:00", "17:00"],
+    3: ["09:00", "12:00", "18:00"],
+    4: ["09:00", "12:00", "15:00", "18:00"],
+    5: ["09:00", "11:00", "13:00", "15:00", "17:00"],
+    6: ["08:00", "10:00", "12:00", "14:00", "16:00", "18:00"],
+    7: ["08:00", "10:00", "11:00", "12:00", "14:00", "16:00", "18:00"],
+    8: ["08:00", "09:00", "11:00", "12:00", "13:00", "15:00", "16:00", "18:00"]
+  };
+
+  var ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
+
+  function toMinutes(hhmm) {
+    var match = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+    if (!match) return null;
+    var hour = Number(match[1]);
+    var minute = Number(match[2]);
+    if (hour > 23 || minute > 59) return null;
+    return hour * 60 + minute;
+  }
+
+  function fromMinutes(total) {
+    var hour = Math.floor(total / 60);
+    var minute = total % 60;
+    return (hour < 10 ? "0" : "") + hour + ":" + (minute < 10 ? "0" : "") + minute;
+  }
+
+  /** Normalise to HH:MM and pull it inside the hours the sender actually runs. */
+  function clampTime(raw) {
+    var minutes = toMinutes(raw);
+    if (minutes === null) return "09:00";
+    var low = toMinutes(MIN_TIME);
+    var high = toMinutes(MAX_TIME);
+    return fromMinutes(Math.min(high, Math.max(low, minutes)));
+  }
+
+  /**
+   * Force `times` to hold exactly `count` distinct, ordered slots. Missing slots
+   * are filled from the ladder for that count, then from any remaining choice.
+   */
+  function ensureTimes(times, count) {
+    var wanted = Math.max(1, Math.min(MAX_TIMES_PER_DAY, Number(count) || 1));
+    var out = [];
+    (times || []).forEach(function (time) {
+      if (toMinutes(time) === null) return;
+      var clean = clampTime(time);
+      if (out.indexOf(clean) === -1) out.push(clean);
+    });
+    out = out.slice(0, wanted);
+    var fillers = (TIME_LADDER[wanted] || []).concat(TIME_CHOICES);
+    for (var i = 0; i < fillers.length && out.length < wanted; i++) {
+      if (out.indexOf(fillers[i]) === -1) out.push(fillers[i]);
+    }
+    if (!out.length) out = ["09:00"];
+    return out.sort();
+  }
+
+  var QUICK_ADDS = {
+    month: ["One month before", 30, 30, "total_in_window", 1, ["09:00"]],
+    week: ["One week before", 7, 7, "total_in_window", 1, ["09:00"]],
+    final: ["Final 3 days", 3, 1, "times_per_day", 3, ["09:00", "14:00", "18:00"]],
+    expiry: ["Expiry day", 0, 0, "times_per_day", 3, ["09:00", "14:00", "18:00"]],
+    late: ["Payment is late", -1, -7, "daily", 1, ["09:00"]],
+    custom: ["New step", 7, 1, "daily", 1, ["09:00"]]
+  };
 
   function parseJsonScript(id, fallback) {
     var el = document.getElementById(id);
@@ -19,28 +106,86 @@
     return parseJsonScript("reminder-presets-json", {});
   }
 
+  function escapeAttr(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  function makePhase(spec) {
+    return {
+      name: spec[0],
+      from_days: spec[1],
+      to_days: spec[2],
+      mode: spec[3],
+      count: spec[4],
+      times: spec[5].slice()
+    };
+  }
+
   function readPhases(hidden) {
     try { return JSON.parse(hidden.value || "[]") || []; }
     catch (err) { return []; }
   }
 
-  function writePhases(hidden, phases, presetInput) {
+  function writePhases(hidden, phases, presetInput, forcePreset) {
     hidden.value = JSON.stringify(phases);
-    if (presetInput) {
-      var known = presets();
-      var match = "";
-      ["light", "recommended"].forEach(function (key) {
-        if (JSON.stringify(known[key] || []) === JSON.stringify(phases)) match = key;
-      });
-      presetInput.value = match || "custom";
-      syncPresetPills(hidden.closest("form") || document, presetInput.value);
+    if (!presetInput) return;
+    if (forcePreset) {
+      presetInput.value = forcePreset;
+      return;
     }
+    if (presetInput.value === "custom") return;
+    var recommended = JSON.stringify((presets().recommended || []));
+    presetInput.value = JSON.stringify(phases) === recommended ? "recommended" : "custom";
   }
 
-  function syncPresetPills(root, preset) {
-    root.querySelectorAll(".reminder-preset-pill").forEach(function (btn) {
-      btn.classList.toggle("is-active", btn.getAttribute("data-preset") === preset);
+  function syncTemplateCards(builder, preset) {
+    var mode = preset === "recommended" ? "recommended" : "custom";
+    builder.classList.toggle("is-locked", mode === "recommended");
+    builder.querySelectorAll(".reminder-template-card").forEach(function (card) {
+      var key = card.getAttribute("data-preset");
+      var active = key === mode;
+      card.classList.toggle("is-active", active);
+      var label = card.querySelector(".js-template-label");
+      if (!label) return;
+      if (key === "custom") {
+        label.textContent = active ? "Editing" : "Customize";
+      } else {
+        label.textContent = active ? "Using default" : "Use default";
+      }
     });
+  }
+
+  function kindOf(phase) {
+    var from = Number(phase.from_days);
+    var to = Number(phase.to_days);
+    if (from > 0) return "before";
+    if (from === 0 && to === 0) return "expiry";
+    if (from <= 0 && to <= 0) return "overdue";
+    return "before";
+  }
+
+  function stageKey(phase) {
+    var kind = kindOf(phase);
+    if (kind === "expiry") return "expiry";
+    if (kind === "overdue") return "overdue";
+    var from = Number(phase.from_days);
+    if (from >= 16) return "early";
+    if (from >= 7) return "middle";
+    return "final";
+  }
+
+  function stageLabel(phase) {
+    var labels = {
+      early: "Early",
+      middle: "Middle",
+      final: "Final days",
+      expiry: "Expiry day",
+      overdue: "After expiry"
+    };
+    return labels[stageKey(phase)] || "Step";
   }
 
   function windowDays(fromDays, toDays) {
@@ -79,24 +224,273 @@
   function timesPerSend(phase) {
     if ((phase.mode || "") === "times_per_day") {
       var times = (phase.times || []).filter(Boolean);
-      return Math.max(times.length, Number(phase.count) || 1);
+      return Math.max(times.length, 1);
     }
     return 1;
   }
 
-  function plainSentence(phases) {
-    if (!phases.length) return "Add at least one phase so reminders can be sent.";
-    var bits = phases.map(function (phase) {
-      var days = sendDays(phase);
-      var n = days.length * timesPerSend(phase);
-      var from = phase.from_days;
-      var to = phase.to_days;
-      var windowLabel = (from === to)
-        ? (from === 0 ? "on expiry day" : (from < 0 ? Math.abs(from) + " days overdue" : from + " days left"))
-        : ("from " + from + " to " + to + " days left");
-      return (phase.name || "Phase") + ": " + n + " mail(s) " + windowLabel + ".";
+  function mailCount(phase) {
+    return sendDays(phase).length * timesPerSend(phase);
+  }
+
+  function formatClock(hhmm) {
+    var parts = String(hhmm || "").split(":");
+    var hour = Number(parts[0]);
+    var minute = parts[1] || "00";
+    if (isNaN(hour)) return hhmm;
+    var suffix = hour >= 12 ? "PM" : "AM";
+    var display = hour % 12 || 12;
+    return display + ":" + minute + " " + suffix;
+  }
+
+  function clockList(phase) {
+    return (phase.times || []).map(formatClock).join(", ");
+  }
+
+  function whenSentence(phase) {
+    var kind = kindOf(phase);
+    if (kind === "expiry") return "On the expiry day";
+    if (kind === "overdue") {
+      var lateFrom = Math.abs(Number(phase.from_days));
+      var lateTo = Math.abs(Number(phase.to_days));
+      if (lateFrom === lateTo) {
+        return lateFrom + " day" + (lateFrom === 1 ? "" : "s") + " after expiry";
+      }
+      return "From " + lateFrom + " to " + lateTo + " days after expiry";
+    }
+    var from = Number(phase.from_days);
+    var to = Number(phase.to_days);
+    if (from === to) return "When " + from + " days are left";
+    return "From " + from + " days left until " + to + " days left";
+  }
+
+  function modeSentence(phase) {
+    var clock = clockList(phase);
+    var mode = phase.mode || "daily";
+    if (mode === "weekly") return "once a week at " + clock;
+    if (mode === "alternate") return "every other day at " + clock;
+    if (mode === "daily") return "once every day at " + clock;
+    if (mode === "times_per_day") {
+      return (phase.times || []).length + " times a day (" + clock + ")";
+    }
+    var count = Math.max(1, Number(phase.count) || 1);
+    return count + " email" + (count === 1 ? "" : "s") + " spread over this period at " + clock;
+  }
+
+  function plainPhase(phase) {
+    return whenSentence(phase) + ", send " + modeSentence(phase) + ".";
+  }
+
+  function summarySentence(phases) {
+    if (!phases.length) return "Add at least one step so reminders can be sent.";
+    var total = phases.reduce(function (sum, phase) { return sum + mailCount(phase); }, 0);
+    return "In total a client can receive up to " + total + " email" +
+      (total === 1 ? "" : "s") +
+      " in one renewal cycle, and everything stops the moment they respond.";
+  }
+
+  function sortPhases(phases) {
+    return phases.slice().sort(function (a, b) {
+      return Number(b.from_days) - Number(a.from_days);
     });
-    return bits.join(" ");
+  }
+
+  function timeInputHtml(selected) {
+    return '<input type="time" class="reminder-time-input" data-k="time"' +
+      ' min="' + MIN_TIME + '" max="' + MAX_TIME + '" step="60"' +
+      ' value="' + escapeAttr(clampTime(selected)) + '"' +
+      ' aria-label="Send time">';
+  }
+
+  function timesFieldHtml(phase) {
+    var times = (phase.times || []).slice();
+    if ((phase.mode || "") !== "times_per_day") {
+      return '<div class="reminder-times">' +
+        '<label class="reminder-time-slot">' +
+        '<span class="reminder-time-slot__no">Time</span>' +
+        timeInputHtml(times[0] || "09:00") +
+        "</label></div>";
+    }
+    times = ensureTimes(times, times.length || 1);
+    return '<div class="reminder-times reminder-times--multi">' +
+      times.map(function (time, index) {
+        return '<label class="reminder-time-slot">' +
+          '<span class="reminder-time-slot__no">' +
+          (ORDINALS[index] || index + 1) + " mail</span>" +
+          timeInputHtml(time) +
+          "</label>";
+      }).join("") +
+      "</div>";
+  }
+
+  function stepHtml(phase, index) {
+    var kind = kindOf(phase);
+    var kindOptions = KIND_OPTIONS.map(function (pair) {
+      return '<option value="' + pair[0] + '"' + (kind === pair[0] ? " selected" : "") + ">" + pair[1] + "</option>";
+    }).join("");
+    var modeOptions = MODE_OPTIONS.map(function (pair) {
+      return '<option value="' + pair[0] + '"' + (phase.mode === pair[0] ? " selected" : "") + ">" + pair[1] + "</option>";
+    }).join("");
+
+    var dayFrom = kind === "overdue" ? Math.abs(Number(phase.from_days)) : Number(phase.from_days);
+    var dayTo = kind === "overdue" ? Math.abs(Number(phase.to_days)) : Number(phase.to_days);
+    var unit = kind === "overdue" ? "days late" : "days left";
+
+    var whenDetail = kind === "expiry"
+      ? '<p class="reminder-field__note">Sends on the expiry date only. No day numbers needed.</p>'
+      : '<div class="reminder-sentence">' +
+        "<span>From</span>" +
+        '<input type="number" data-k="from" value="' + dayFrom + '" aria-label="Start day">' +
+        "<span>" + unit + ", until</span>" +
+        '<input type="number" data-k="to" value="' + dayTo + '" aria-label="End day">' +
+        "<span>" + unit + "</span>" +
+        "</div>";
+
+    var countField = "";
+    if (phase.mode === "times_per_day") {
+      countField = '<div class="reminder-sentence">' +
+        "<span>Send</span>" +
+        '<input type="number" data-k="count" min="1" max="' + MAX_TIMES_PER_DAY +
+        '" value="' + (phase.times || ["09:00"]).length +
+        '" aria-label="How many emails a day">' +
+        "<span>emails a day</span>" +
+        "</div>";
+    } else if (phase.mode === "total_in_window") {
+      countField = '<div class="reminder-sentence">' +
+        "<span>Send</span>" +
+        '<input type="number" data-k="count" min="1" max="8" value="' +
+        Math.max(1, Number(phase.count) || 1) + '" aria-label="How many emails">' +
+        "<span>email(s) in total</span>" +
+        "</div>";
+    }
+
+    var count = mailCount(phase);
+
+    return '<div class="reminder-step reminder-step--' + stageKey(phase) +
+      '" data-index="' + index +
+      '" data-mode="' + escapeAttr(phase.mode || "daily") + '">' +
+      '<div class="reminder-step__head">' +
+      '<span class="reminder-step__stage js-step-stage">' + escapeAttr(stageLabel(phase)) + "</span>" +
+      '<input class="reminder-step__name" data-k="name" value="' +
+      escapeAttr(phase.name || "Step") + '" aria-label="Step name">' +
+      '<span class="reminder-step__count js-step-count">' + count +
+      (count === 1 ? " email" : " emails") + "</span>" +
+      '<button type="button" class="reminder-step__remove js-remove-phase" data-index="' +
+      index + '">Remove</button>' +
+      "</div>" +
+      '<div class="reminder-step__body">' +
+      '<div class="reminder-field reminder-field--when">' +
+      '<span class="reminder-field__label">When to send</span>' +
+      '<select data-k="kind">' + kindOptions + "</select>" +
+      whenDetail +
+      "</div>" +
+      '<div class="reminder-field reminder-field--freq">' +
+      '<span class="reminder-field__label">How often</span>' +
+      '<select data-k="mode">' + modeOptions + "</select>" +
+      countField +
+      "</div>" +
+      '<div class="reminder-field reminder-field--times">' +
+      '<span class="reminder-field__label">' +
+      (phase.mode === "times_per_day" ? "Send at these times" : "Send at this time") +
+      "</span>" +
+      timesFieldHtml(phase) +
+      "</div>" +
+      "</div>" +
+      '<p class="reminder-step__plain js-step-plain">' + escapeAttr(plainPhase(phase)) + "</p>" +
+      "</div>";
+  }
+
+  function collectStep(step) {
+    var get = function (key) {
+      var el = step.querySelector('[data-k="' + key + '"]');
+      return el ? el.value : "";
+    };
+    var kind = get("kind") || "before";
+    var from = Number(get("from"));
+    var to = Number(get("to"));
+    if (isNaN(from)) from = 0;
+    if (isNaN(to)) to = 0;
+    if (kind === "expiry") {
+      from = 0;
+      to = 0;
+    } else if (kind === "overdue") {
+      from = -Math.abs(from);
+      to = -Math.abs(to);
+      if (from === 0 && to === 0) { from = -1; to = -7; }
+    } else {
+      from = Math.abs(from);
+      to = Math.abs(to);
+    }
+
+    var times = [];
+    step.querySelectorAll('[data-k="time"]').forEach(function (input) {
+      if (toMinutes(input.value) === null) return;
+      var clean = clampTime(input.value);
+      // Show the correction straight away if the typed time was out of hours.
+      if (clean !== input.value) input.value = clean;
+      times.push(clean);
+    });
+    if (!times.length) times = ["09:00"];
+
+    var previousMode = step.getAttribute("data-mode") || "";
+    var mode = get("mode") || "daily";
+    var count = 1;
+    if (mode === "times_per_day") {
+      // Switching into this mode should immediately offer a few slots to fill.
+      count = previousMode === "times_per_day"
+        ? Number(get("count")) || times.length
+        : 3;
+      times = ensureTimes(times, count);
+      count = times.length;
+    } else if (mode === "total_in_window") {
+      count = Math.max(1, Math.min(8, Number(get("count")) || 1));
+      times = [times[0]];
+    } else {
+      times = [times[0]];
+    }
+
+    return {
+      name: (get("name") || "").trim() || "Step",
+      from_days: from,
+      to_days: to,
+      mode: mode,
+      count: count,
+      times: times
+    };
+  }
+
+  function collectAll(builder) {
+    var phases = [];
+    builder.querySelectorAll(".reminder-step").forEach(function (step) {
+      phases.push(collectStep(step));
+    });
+    return phases;
+  }
+
+  function refreshDerived(builder, phases) {
+    builder.querySelectorAll(".reminder-step").forEach(function (step, index) {
+      var phase = phases[index];
+      if (!phase) return;
+      var plain = step.querySelector(".js-step-plain");
+      if (plain) plain.textContent = plainPhase(phase);
+      var badge = step.querySelector(".js-step-count");
+      if (badge) {
+        var count = mailCount(phase);
+        badge.textContent = count + (count === 1 ? " email" : " emails");
+      }
+      var stage = step.querySelector(".js-step-stage");
+      if (stage) stage.textContent = stageLabel(phase);
+      step.classList.remove(
+        "reminder-step--early",
+        "reminder-step--middle",
+        "reminder-step--final",
+        "reminder-step--expiry",
+        "reminder-step--overdue"
+      );
+      step.classList.add("reminder-step--" + stageKey(phase));
+    });
+    var summary = builder.querySelector(".js-reminder-plain");
+    if (summary) summary.textContent = summarySentence(phases);
   }
 
   function render(builder) {
@@ -105,112 +499,100 @@
     var presetInput = builder.getAttribute("data-preset")
       ? document.getElementById(builder.getAttribute("data-preset"))
       : null;
-    var tbody = builder.querySelector("tbody");
-    var phases = readPhases(hidden);
-    tbody.innerHTML = "";
-    phases.forEach(function (phase, index) {
-      var tr = document.createElement("tr");
-      var modeOptions = MODE_OPTIONS.map(function (pair) {
-        return '<option value="' + pair[0] + '"' + (phase.mode === pair[0] ? " selected" : "") + ">" + pair[1] + "</option>";
-      }).join("");
-      tr.innerHTML =
-        '<td><input data-k="name" value="' + escapeAttr(phase.name || ("Phase " + (index + 1))) + '"></td>' +
-        '<td class="col-from"><input data-k="from_days" type="number" value="' + Number(phase.from_days) + '"></td>' +
-        '<td class="col-to"><input data-k="to_days" type="number" value="' + Number(phase.to_days) + '"></td>' +
-        '<td class="col-mode"><select data-k="mode">' + modeOptions + "</select></td>" +
-        '<td class="col-count"><input data-k="count" type="number" min="1" max="8" value="' + Number(phase.count || 1) + '"></td>' +
-        '<td><input data-k="times" placeholder="09:00, 14:00" value="' + escapeAttr((phase.times || []).join(", ")) + '"></td>' +
-        '<td class="col-remove"><button type="button" class="btn btn-ghost js-remove-phase" data-index="' + index + '" aria-label="Remove phase">×</button></td>';
-      tbody.appendChild(tr);
-    });
-    var help = builder.querySelector(".js-reminder-plain");
-    if (help) help.textContent = plainSentence(phases);
-    if (presetInput) syncPresetPills(builder, presetInput.value || "custom");
+    var phases = sortPhases(readPhases(hidden));
+    writePhases(hidden, phases, presetInput);
+
+    var list = builder.querySelector(".js-step-list");
+    if (list) {
+      list.innerHTML = phases.length
+        ? phases.map(stepHtml).join("")
+        : '<p class="reminder-empty">No steps yet. Add one below and reminders will start going out.</p>';
+    }
+    refreshDerived(builder, phases);
+    if (presetInput) syncTemplateCards(builder, presetInput.value || "custom");
   }
 
-  function escapeAttr(value) {
-    return String(value == null ? "" : value)
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;");
-  }
-
-  function collectRow(tr) {
-    var get = function (key) {
-      var el = tr.querySelector('[data-k="' + key + '"]');
-      return el ? el.value : "";
-    };
-    var times = get("times").split(",").map(function (part) { return part.trim(); }).filter(Boolean);
-    return {
-      name: get("name").trim() || "Phase",
-      from_days: Number(get("from_days")),
-      to_days: Number(get("to_days")),
-      mode: get("mode") || "daily",
-      count: Number(get("count") || 1),
-      times: times.length ? times : ["09:00"]
-    };
+  function commit(builder, phases, presetInput, forcePreset) {
+    var hidden = document.getElementById(builder.getAttribute("data-hidden"));
+    if (!hidden) return;
+    writePhases(hidden, phases, presetInput, forcePreset);
+    if (presetInput) syncTemplateCards(builder, presetInput.value || "custom");
   }
 
   function bind(builder) {
     var hidden = document.getElementById(builder.getAttribute("data-hidden"));
+    if (!hidden) return;
     var presetInput = builder.getAttribute("data-preset")
       ? document.getElementById(builder.getAttribute("data-preset"))
       : null;
-    if (!hidden) return;
 
     builder.addEventListener("change", function (event) {
-      if (!event.target.closest("tbody")) return;
-      var phases = [];
-      builder.querySelectorAll("tbody tr").forEach(function (tr) {
-        phases.push(collectRow(tr));
-      });
-      writePhases(hidden, phases, presetInput);
-      var help = builder.querySelector(".js-reminder-plain");
-      if (help) help.textContent = plainSentence(phases);
-      if (presetInput) syncPresetPills(builder, "custom");
+      var target = event.target;
+      if (!target.closest(".reminder-step")) return;
+      if (builder.classList.contains("is-locked")) return;
+
+      var phases = collectAll(builder);
+      commit(builder, phases, presetInput);
+      // Mode and per-day count both change which fields exist, so rebuild.
+      if (target.tagName === "SELECT" || target.getAttribute("data-k") === "count") {
+        render(builder);
+      } else {
+        refreshDerived(builder, phases);
+      }
     });
 
     builder.addEventListener("click", function (event) {
+      var templateCard = event.target.closest(".reminder-template-card");
+      if (templateCard && presetInput) {
+        var preset = templateCard.getAttribute("data-preset");
+        var known = presets();
+        if (preset === "recommended") {
+          commit(builder, known.recommended || [], presetInput, "recommended");
+        } else {
+          commit(builder, collectAll(builder), presetInput, "custom");
+        }
+        render(builder);
+        return;
+      }
+
+      if (builder.classList.contains("is-locked")) return;
+
       var remove = event.target.closest(".js-remove-phase");
       if (remove) {
-        var phases = readPhases(hidden);
-        phases.splice(Number(remove.getAttribute("data-index")), 1);
-        writePhases(hidden, phases, presetInput);
+        var phasesRemove = collectAll(builder);
+        phasesRemove.splice(Number(remove.getAttribute("data-index")), 1);
+        commit(builder, phasesRemove, presetInput);
         render(builder);
         return;
       }
+
+      var quick = event.target.closest(".js-quick-add");
+      if (quick) {
+        var key = quick.getAttribute("data-quick");
+        if (QUICK_ADDS[key]) {
+          var phasesQuick = collectAll(builder);
+          phasesQuick.push(makePhase(QUICK_ADDS[key]));
+          commit(builder, phasesQuick, presetInput);
+          render(builder);
+        }
+        return;
+      }
+
       if (event.target.closest(".js-add-phase")) {
-        var phasesAdd = readPhases(hidden);
-        phasesAdd.push({
-          name: "New phase",
-          from_days: 7,
-          to_days: 1,
-          mode: "daily",
-          count: 1,
-          times: ["09:00"]
-        });
-        writePhases(hidden, phasesAdd, presetInput);
+        var phasesCustom = collectAll(builder);
+        phasesCustom.push(makePhase(QUICK_ADDS.custom));
+        commit(builder, phasesCustom, presetInput);
         render(builder);
         return;
       }
+
       var copyBtn = event.target.closest(".js-copy-company");
       if (copyBtn) {
         var raw = builder.getAttribute("data-company-default") || "[]";
-        try { writePhases(hidden, JSON.parse(raw), presetInput); }
+        var copied;
+        try { copied = JSON.parse(raw); }
         catch (err) { return; }
-        render(builder);
-        return;
-      }
-      var pill = event.target.closest(".reminder-preset-pill");
-      if (pill && presetInput) {
-        var key = pill.getAttribute("data-preset");
-        var known = presets();
-        if (key !== "custom" && known[key]) {
-          writePhases(hidden, known[key], presetInput);
-          presetInput.value = key;
-        } else {
-          presetInput.value = "custom";
-        }
+        commit(builder, copied, presetInput);
         render(builder);
       }
     });

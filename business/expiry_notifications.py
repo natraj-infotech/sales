@@ -10,6 +10,7 @@ from html import escape
 from io import BytesIO
 
 from django.conf import settings
+from django.db.models import Max
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
@@ -258,6 +259,17 @@ def _form_stopped(sub: ClientSubscription) -> bool:
         and sub.expiry_reminder_stopped_for_end_date
         and sub.expiry_reminder_stopped_for_end_date == sub.end_date
     )
+
+
+def _next_manual_send_number(sub: ClientSubscription, threshold: int, today) -> int:
+    """Next slot number for a manual send, counted separately from automatic ones."""
+    highest = SubscriptionExpiryDispatch.objects.filter(
+        subscription=sub,
+        threshold_window=threshold,
+        sent_on=today,
+        source=SubscriptionExpiryDispatch.Source.MANUAL,
+    ).aggregate(highest=Max("send_number"))["highest"]
+    return (highest or 0) + 1
 
 
 def _manual_skip_reason(client, subs, phases, today) -> str | None:
@@ -1286,6 +1298,11 @@ def send_client_expiry_emails(
     min_days = min(min_days, -31)
     max_days = max(max_days, 90)
     cc_recipients = _client_reminder_cc_recipients(company)
+    dispatch_source = (
+        SubscriptionExpiryDispatch.Source.MANUAL
+        if force
+        else SubscriptionExpiryDispatch.Source.AUTOMATIC
+    )
     grouped: dict[
         int, list[tuple[ClientSubscription, int, int | None, int]]
     ] = defaultdict(list)
@@ -1337,23 +1354,22 @@ def send_client_expiry_emails(
                             f"({_days_remaining_label(days_remaining)}) — client has no email."
                         )
                     continue
-                already_today = SubscriptionExpiryDispatch.objects.filter(
-                    subscription=sub,
-                    sent_on=today,
-                ).exists()
-                if already_today:
-                    continue
                 phase = matching_phase(phases, days_remaining)
                 notice_threshold = (
                     int(phase["from_days"]) if phase else days_remaining
                 )
                 grouped[client.pk].append(
-                    (sub, notice_threshold, days_remaining, 1)
+                    (
+                        sub,
+                        notice_threshold,
+                        days_remaining,
+                        _next_manual_send_number(sub, notice_threshold, today),
+                    )
                 )
             if client.pk not in grouped:
                 logs.append(
                     f"{company.company_name}: skipped {client.name} — "
-                    "already sent a reminder today."
+                    "no subscription is due for a reminder right now."
                 )
     else:
         qs = _active_expiring_for_client_reminders(
@@ -1382,11 +1398,14 @@ def send_client_expiry_emails(
             if phase is None:
                 continue
             notice_threshold = int(phase["from_days"])
+            # Manual sends are ignored here so a manual reminder never eats one of
+            # today's scheduled slots.
             already_sent = set(
                 SubscriptionExpiryDispatch.objects.filter(
                     subscription=sub,
                     threshold_window=notice_threshold,
                     sent_on=today,
+                    source=SubscriptionExpiryDispatch.Source.AUTOMATIC,
                 ).values_list("send_number", flat=True)
             )
             slot = next_due_slot(phase, days_remaining, now, already_sent)
@@ -1475,6 +1494,7 @@ def send_client_expiry_emails(
                     threshold_window=notice_threshold,
                     sent_on=today,
                     send_number=send_number,
+                    source=dispatch_source,
                 )
                 if notice_threshold >= 0:
                     SubscriptionExpiryNotice.objects.get_or_create(

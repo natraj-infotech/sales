@@ -4,35 +4,48 @@
      {% if preset_id %}data-preset="{{ preset_id }}"{% endif %}
      {% if copy_company_json %}data-company-default="{{ copy_company_json }}"{% endif %}>
   {% if show_presets %}
-  <div class="reminder-preset-row" role="group" aria-label="Reminder presets">
-    <button type="button" class="reminder-preset-pill" data-preset="light">Light (30 / 15 / 7)</button>
-    <button type="button" class="reminder-preset-pill" data-preset="recommended">Recommended — Maximum collection</button>
-    <button type="button" class="reminder-preset-pill" data-preset="custom">Custom</button>
+  <div class="reminder-template-grid reminder-template-grid--two" role="group" aria-label="Reminder mode">
+    <div class="reminder-template-card" data-preset="recommended">
+      <div class="reminder-template-card__head">
+        <span class="reminder-template-card__title">Default</span>
+        <span class="reminder-template-card__badge">In use</span>
+      </div>
+      <button type="button" class="reminder-template-card__btn" data-preset="recommended">
+        <span class="js-template-label">Use default</span>
+      </button>
+    </div>
+    <div class="reminder-template-card" data-preset="custom">
+      <div class="reminder-template-card__head">
+        <span class="reminder-template-card__title">Customize</span>
+        <span class="reminder-template-card__badge">In use</span>
+      </div>
+      <button type="button" class="reminder-template-card__btn" data-preset="custom">
+        <span class="js-template-label">Customize</span>
+      </button>
+    </div>
   </div>
+  <p class="reminder-lock-note">
+    Default format is locked. Switch to Customize if you want to change days, times, or steps.
+  </p>
   {% endif %}
 
-  <div class="tracker-table-scroll">
-    <table class="reminder-phase-table">
-      <thead>
-        <tr>
-          <th>Phase</th>
-          <th class="col-from">From</th>
-          <th class="col-to">To</th>
-          <th class="col-mode">How to send</th>
-          <th class="col-count">Count</th>
-          <th>Times</th>
-          <th class="col-remove"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div class="reminder-step-list js-step-list"></div>
+
+  <div class="reminder-add">
+    <h5 class="reminder-subhead">Add another step</h5>
+    <p class="reminder-hint">Pick a ready-made step, or build a custom one.</p>
+    <div class="reminder-add-row">
+      <button type="button" class="reminder-add-btn js-quick-add" data-quick="month">One month before</button>
+      <button type="button" class="reminder-add-btn js-quick-add" data-quick="week">One week before</button>
+      <button type="button" class="reminder-add-btn js-quick-add" data-quick="final">Final 3 days</button>
+      <button type="button" class="reminder-add-btn js-quick-add" data-quick="expiry">Expiry day</button>
+      <button type="button" class="reminder-add-btn js-quick-add" data-quick="late">After expiry</button>
+      <button type="button" class="reminder-add-btn reminder-add-btn--ghost js-add-phase">Custom step</button>
+      {% if copy_company_json %}
+      <button type="button" class="reminder-add-btn reminder-add-btn--ghost js-copy-company">Copy company default</button>
+      {% endif %}
+    </div>
   </div>
-  <p class="reminder-phase-help">From / To are days remaining. Use 0 for expiry day and negative numbers for overdue (example: -1 to -7). For multiple times per day, list times as 09:00, 14:00, 18:00.</p>
-  <p class="reminder-phase-help js-reminder-plain"></p>
-  <div class="reminder-builder-actions">
-    <button type="button" class="btn btn-ghost js-add-phase">+ Add phase</button>
-    {% if copy_company_json %}
-    <button type="button" class="btn btn-ghost js-copy-company">Copy company default</button>
-    {% endif %}
-  </div>
+
+  <p class="reminder-summary js-reminder-plain"></p>
 </div>

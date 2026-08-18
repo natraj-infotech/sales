@@ -27,11 +27,6 @@ User = get_user_model()
 
 
 class CompanyProfileForm(forms.ModelForm):
-    expiry_reminder_schedule_json = forms.CharField(
-        required=False,
-        widget=forms.HiddenInput(),
-    )
-
     class Meta:
         model = CompanyProfile
         fields = (
@@ -51,7 +46,6 @@ class CompanyProfileForm(forms.ModelForm):
             "expiry_email_subject",
             "expiry_email_initial_paragraph",
             "expiry_email_end_paragraph",
-            "expiry_reminder_preset",
             "expiry_client_emails_enabled",
             "expiry_team_digest_enabled",
             "expiry_team_extra_emails",
@@ -69,7 +63,6 @@ class CompanyProfileForm(forms.ModelForm):
             ),
             "expiry_email_initial_paragraph": forms.Textarea(attrs={"rows": 3}),
             "expiry_email_end_paragraph": forms.Textarea(attrs={"rows": 3}),
-            "expiry_reminder_preset": forms.HiddenInput(),
             "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
@@ -124,7 +117,7 @@ class CompanyProfileForm(forms.ModelForm):
         self.fields["expiry_client_emails_enabled"].label = "Email clients before expiry"
         self.fields["expiry_client_emails_enabled"].help_text = (
             "Send renewal reminders to the client email on file according to the "
-            "reminder schedule below. Individual clients can still be turned off."
+            "reminder template. Individual clients can still be turned off."
         )
         self.fields["expiry_team_digest_enabled"].label = "Daily team digest"
         self.fields["expiry_team_digest_enabled"].help_text = (
@@ -140,27 +133,6 @@ class CompanyProfileForm(forms.ModelForm):
             ):
                 self.fields[name].required = False
                 self.fields[name].help_text = "Leave blank to keep the saved app password."
-        schedule = list(self.instance.expiry_reminder_schedule or [])
-        if not schedule:
-            preset = self.instance.expiry_reminder_preset or PRESET_RECOMMENDED
-            schedule = (
-                light_schedule()
-                if preset == PRESET_LIGHT
-                else recommended_schedule()
-            )
-        self.fields["expiry_reminder_schedule_json"].initial = json.dumps(schedule)
-        if not self.instance.expiry_reminder_preset:
-            self.initial.setdefault("expiry_reminder_preset", PRESET_RECOMMENDED)
-
-    def clean_expiry_reminder_preset(self):
-        preset = (self.cleaned_data.get("expiry_reminder_preset") or "").strip()
-        if preset not in VALID_PRESETS:
-            return PRESET_CUSTOM
-        return preset
-
-    def clean_expiry_reminder_schedule_json(self):
-        raw = self.cleaned_data.get("expiry_reminder_schedule_json") or "[]"
-        return json.dumps(normalize_schedule(raw))
 
     def clean_regards_email(self):
         raw = (self.cleaned_data.get("regards_email") or "").strip()
@@ -188,6 +160,50 @@ class CompanyProfileForm(forms.ModelForm):
                 instance.outgoing_email_app_password = (
                     self._original_outgoing_email_app_password
                 )
+        if commit:
+            instance.save()
+        return instance
+
+
+class CompanyReminderScheduleForm(forms.ModelForm):
+    expiry_reminder_schedule_json = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+
+    class Meta:
+        model = CompanyProfile
+        fields = ("expiry_reminder_preset",)
+        widgets = {
+            "expiry_reminder_preset": forms.HiddenInput(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        schedule = list(self.instance.expiry_reminder_schedule or [])
+        if not schedule:
+            preset = self.instance.expiry_reminder_preset or PRESET_RECOMMENDED
+            schedule = (
+                light_schedule()
+                if preset == PRESET_LIGHT
+                else recommended_schedule()
+            )
+        self.fields["expiry_reminder_schedule_json"].initial = json.dumps(schedule)
+        if not self.instance.expiry_reminder_preset:
+            self.initial.setdefault("expiry_reminder_preset", PRESET_RECOMMENDED)
+
+    def clean_expiry_reminder_preset(self):
+        preset = (self.cleaned_data.get("expiry_reminder_preset") or "").strip()
+        if preset not in VALID_PRESETS:
+            return PRESET_CUSTOM
+        return preset
+
+    def clean_expiry_reminder_schedule_json(self):
+        raw = self.cleaned_data.get("expiry_reminder_schedule_json") or "[]"
+        return json.dumps(normalize_schedule(raw))
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
         raw_phases = self.cleaned_data.get("expiry_reminder_schedule_json") or "[]"
         phases = (
             raw_phases

@@ -1,16 +1,25 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
-from .forms import AddCompanyMemberForm, CompanyProfileForm, UpdateCompanyMemberForm
+from .forms import (
+    AddCompanyMemberForm,
+    CompanyProfileForm,
+    CompanyReminderScheduleForm,
+    UpdateCompanyMemberForm,
+)
 from .models import CompanyMember, CompanyProfile
 from .permissions import (
+    company_owner_required,
     get_company_for_user,
     sales_grant_required,
     user_has_sales_access,
     user_is_owner,
 )
+
+MANUAL_SEND_THROTTLE_SECONDS = 20
 
 
 def root_redirect(request):
@@ -86,18 +95,40 @@ def company_setup(request):
     )
 
 
-def _company_setup_context(form, profile):
+@company_owner_required
+def reminder_template(request):
+    company = get_company_for_user(request.user)
+    if request.method == "POST":
+        form = CompanyReminderScheduleForm(request.POST, instance=company)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Reminder schedule saved.")
+            return redirect("reminder_template")
+    else:
+        form = CompanyReminderScheduleForm(instance=company)
+
     from business.reminder_schedule import light_schedule, recommended_schedule
 
+    return render(
+        request,
+        "accounts/reminder_template.html",
+        {
+            "form": form,
+            "company": company,
+            "reminder_presets": {
+                "light": light_schedule(),
+                "recommended": recommended_schedule(),
+            },
+        },
+    )
+
+
+def _company_setup_context(form, profile):
     return {
         "form": form,
         "editing": profile is not None,
         "company": profile,
         "zoho_configured": _zoho_app_configured(),
-        "reminder_presets": {
-            "light": light_schedule(),
-            "recommended": recommended_schedule(),
-        },
     }
 
 
@@ -228,6 +259,21 @@ def company_send_expiry_notifications(request):
         pass
 
     action = request.POST.get("action", "").strip()
+    if action not in {"client", "team", "both"}:
+        messages.error(request, "Unknown send action.")
+        return redirect("company_setup")
+
+    # Manual sends are allowed as often as the owner wants, so the only guard is
+    # against an accidental double submit of the same button.
+    throttle_key = f"expiry-manual-send:{company.pk}:{action}"
+    if not cache.add(throttle_key, "1", MANUAL_SEND_THROTTLE_SECONDS):
+        messages.info(
+            request,
+            "That send was already submitted a moment ago. "
+            f"Wait {MANUAL_SEND_THROTTLE_SECONDS} seconds before sending again.",
+        )
+        return redirect("company_setup")
+
     from business.expiry_notifications import (
         send_client_expiry_emails,
         send_team_expiry_digest,
@@ -245,10 +291,6 @@ def company_send_expiry_notifications(request):
         count, team_logs = send_team_expiry_digest(company, force=True)
         team_sent += count
         logs.extend(team_logs)
-
-    if action not in {"client", "team", "both"}:
-        messages.error(request, "Unknown send action.")
-        return redirect("company_setup")
 
     for line in logs:
         if any(word in line.lower() for word in ("failed", "skipped")):

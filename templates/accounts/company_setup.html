@@ -155,6 +155,27 @@
     color: var(--muted);
     line-height: 1.45;
   }
+  .expiry-schedule {
+    margin-top: 1.5rem;
+    padding: 1.25rem 1.35rem 1.45rem;
+    border: 1px solid rgba(147, 197, 253, 0.4);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(239, 246, 255, 0.55) 0%, rgba(250, 251, 253, 0.9) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 28px rgba(43, 111, 214, 0.06);
+  }
+  .expiry-schedule--cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+  }
+  .expiry-schedule--cta .expiry-action-btn {
+    width: auto;
+    display: inline-flex;
+    min-width: 12rem;
+  }
   .company-logo-field .company-logo-preview {
     display: inline-flex;
     align-items: center;
@@ -274,8 +295,11 @@
 
     <h3 class="tracker-card-section-title">Subscription expiry notifications</h3>
     <p class="expiry-intro">
-      Choose which emails to send, set the reminder schedule, and send manually anytime.
-      Automatic sends run every 15 minutes from 8:00 to 18:45 IST when Celery worker and beat are running.
+      Choose which emails to send, and send manually anytime.
+      Saving a time does not send immediately — mail goes out automatically at that time.
+      Locally this runs every minute while <code>runserver</code> is up (8:00–18:45 IST).
+      Production still uses Celery every 15 minutes in the same window.
+      Set the reminder cadence from Reminder template.
     </p>
 
     <div class="expiry-panel">
@@ -303,17 +327,6 @@
         {{ form.expiry_client_emails_enabled.errors }}
         {{ form.expiry_team_digest_enabled.errors }}
 
-        <h4 class="tracker-card-section-title">Default renewal reminder schedule</h4>
-        <p class="muted" style="margin:-0.2rem 0 0.75rem;font-size:0.8125rem;">
-          This applies to every client unless that client has a custom reminder.
-          From/To are days remaining (0 = expiry day, negative = overdue).
-        </p>
-        {{ form.expiry_reminder_preset }}
-        {{ form.expiry_reminder_schedule_json }}
-        {{ form.expiry_reminder_preset.errors }}
-        {{ form.expiry_reminder_schedule_json.errors }}
-        {% include "includes/reminder_schedule_builder.html" with builder_id="company-reminder-builder" hidden_id=form.expiry_reminder_schedule_json.id_for_label preset_id=form.expiry_reminder_preset.id_for_label show_presets=True %}
-
         {% include "includes/form_field_tracker.html" with field=form.expiry_team_extra_emails icon="mail" full_width=True %}
       </div>
 
@@ -324,7 +337,7 @@
           Save your settings first. Outgoing SMTP must be configured above.
           Client reminders send now to every client with Renewal email On,
           if they have an open subscription in the reminder window.
-          Automatic sends still follow the schedule and times above.
+          Automatic sends still follow the reminder template.
         </p>
         <div class="expiry-action-stack">
           <button type="submit"
@@ -360,6 +373,21 @@
           Save your company profile first to unlock manual send buttons here.
         </p>
       </aside>
+      {% endif %}
+    </div>
+
+    <div class="expiry-schedule expiry-schedule--cta">
+      {% if editing and company %}
+      <a href="{% url 'reminder_template' %}" class="expiry-action-btn expiry-action-btn--primary">
+        Reminder template
+      </a>
+      <p class="expiry-action-note" style="margin:0;">
+        Opens the default renewal reminder schedule. Applies to every client unless they have a custom reminder.
+      </p>
+      {% else %}
+      <p class="expiry-action-note" style="margin:0;">
+        Save your company profile first to open the reminder template.
+      </p>
       {% endif %}
     </div>
 
@@ -416,6 +444,5 @@
   {% endif %}
 </div>
 {% endif %}
-{{ reminder_presets|json_script:"reminder-presets-json" }}
 {% include "includes/reminder_schedule_builder_js.html" %}
 {% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Reminder template{% endblock %}
+
+{% block extra_css %}
+<style>
+  .expiry-schedule {
+    padding: 1.25rem 1.35rem 1.45rem;
+    border: 1px solid rgba(147, 197, 253, 0.4);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(239, 246, 255, 0.55) 0%, rgba(250, 251, 253, 0.9) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 28px rgba(43, 111, 214, 0.06);
+  }
+  .expiry-stop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  .expiry-stop-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Reminder template</h1>
+      <p class="tracker-page-subtitle">Default renewal reminder schedule for {{ company.company_name }}</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a href="{% url 'company_setup' %}" class="btn-tracker-header btn-tracker-ghost">Company profile</a>
+    <button type="submit" form="reminder-template-form" class="btn-tracker-header">
+      <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+      Save changes
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card">
+  <form method="post" id="reminder-template-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="expiry-schedule">
+      <h4 class="tracker-card-section-title" style="margin-top:0;">Default renewal reminder schedule</h4>
+      <p class="muted" style="margin:-0.2rem 0 1rem;font-size:0.8125rem;">
+        Applies to every client, unless that client has its own custom reminder on the client page.
+        Keep Default unless you need a different cadence.
+      </p>
+      {{ form.expiry_reminder_preset }}
+      {{ form.expiry_reminder_schedule_json }}
+      {{ form.expiry_reminder_preset.errors }}
+      {{ form.expiry_reminder_schedule_json.errors }}
+      {% include "includes/reminder_schedule_builder.html" with builder_id="company-reminder-builder" hidden_id=form.expiry_reminder_schedule_json.id_for_label preset_id=form.expiry_reminder_preset.id_for_label show_presets=True %}
+
+      <div class="expiry-stop-grid">
+        <div>
+          <h5 class="reminder-subhead">Reminders stop automatically when</h5>
+          <ul class="expiry-stop-list">
+            <li>The client submits the renewal form for that expiry date.</li>
+            <li>The deal is marked Win, Lost, or Cancel.</li>
+            <li>Renewal email is turned off for that client.</li>
+            <li>The subscription is no longer active, or has no end date.</li>
+          </ul>
+        </div>
+        <div>
+          <h5 class="reminder-subhead">Good to know</h5>
+          <ul class="expiry-stop-list">
+            <li>Outgoing email must be set up in Company profile, otherwise nothing sends.</li>
+            <li>Automatic sending is checked every minute locally (every 15 minutes in production) between 8:00 AM and 6:45 PM IST.</li>
+            <li>A client never gets the same reminder twice on the same day.</li>
+            <li>One client with several expiring products gets a single combined email.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{{ reminder_presets|json_script:"reminder-presets-json" }}
+{% include "includes/reminder_schedule_builder_js.html" %}
+{% endblock %}
