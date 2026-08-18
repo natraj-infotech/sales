@@ -1189,6 +1189,8 @@ def send_client_expiry_emails(
             notice_threshold = _selected_threshold_window(days_remaining, thresholds)
             if notice_threshold is None:
                 continue
+            if not getattr(sub.client, "renewal_emails_enabled", True):
+                continue
             if not sub.client.contact_emails():
                 logs.append(
                     f"{company.company_name}: skipped subscription #{sub.pk} "
@@ -1211,6 +1213,8 @@ def send_client_expiry_emails(
                 continue
             notice_threshold = _selected_threshold_window(days_remaining, thresholds)
             if notice_threshold is None:
+                continue
+            if not getattr(sub.client, "renewal_emails_enabled", True):
                 continue
             if not sub.client.contact_emails():
                 logs.append(

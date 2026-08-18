@@ -144,8 +144,12 @@ class ClientForm(forms.ModelForm):
             "phone_2",
             "phone_3",
             "notes",
+            "renewal_emails_enabled",
         )
-        widgets = {"notes": forms.HiddenInput()}
+        widgets = {
+            "notes": forms.HiddenInput(),
+            "renewal_emails_enabled": forms.CheckboxInput(),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -159,6 +163,11 @@ class ClientForm(forms.ModelForm):
             "phone_3",
         ):
             self.fields[name].required = False
+        self.fields["renewal_emails_enabled"].label = "Renewal emails"
+        self.fields["renewal_emails_enabled"].required = False
+        self.fields["renewal_emails_enabled"].help_text = (
+            "When on, this client receives expiry / renewal reminder emails."
+        )
 
 
 class ProductForm(forms.ModelForm):

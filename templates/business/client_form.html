@@ -34,6 +34,21 @@
           </div>
         </section>
 
+        <section class="tracker-mock-section" aria-labelledby="client-section-reminder" style="margin-top:1.5rem;">
+          <h2 id="client-section-reminder" class="tracker-mock-section-title">Renewal emails</h2>
+          <div class="sla-toggle-row client-renewal-toggle">
+            <div class="toggle-copy">
+              <strong>{{ form.renewal_emails_enabled.label }}</strong>
+              <p>{{ form.renewal_emails_enabled.help_text }}</p>
+            </div>
+            <label class="sla-switch" title="{{ form.renewal_emails_enabled.label }}">
+              {{ form.renewal_emails_enabled }}
+              <span class="slider"></span>
+            </label>
+          </div>
+          {{ form.renewal_emails_enabled.errors }}
+        </section>
+
         <div class="tracker-mock-form-actions">
           <button type="submit" class="btn-mock-save">{% if object %}Save{% else %}Save Client{% endif %}</button>
           <a class="btn-mock-cancel" href="{% url 'client_list' %}">Cancel</a>

@@ -44,6 +44,11 @@ class Client(models.Model):
     phone_2 = models.CharField("Contact 2", max_length=64, blank=True)
     phone_3 = models.CharField("Contact 3", max_length=64, blank=True)
     notes = models.TextField(blank=True)
+    renewal_emails_enabled = models.BooleanField(
+        "renewal emails",
+        default=True,
+        help_text="When off, this client is not sent expiry or renewal reminder emails.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

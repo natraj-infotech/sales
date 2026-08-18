@@ -65,6 +65,11 @@ urlpatterns = [
     path("clients/import/", views.client_import, name="client_import"),
     path("clients/add/", views.client_add, name="client_add"),
     path("clients/<int:pk>/edit/", views.client_edit, name="client_edit"),
+    path(
+        "clients/<int:pk>/renewal-emails/",
+        views.client_toggle_renewal_emails,
+        name="client_toggle_renewal_emails",
+    ),
     path("clients/<int:pk>/delete/", views.client_delete, name="client_delete"),
     path("products/", views.product_list, name="product_list"),
     path("products/bulk-delete/", views.product_bulk_delete, name="product_bulk_delete"),

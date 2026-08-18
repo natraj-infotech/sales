@@ -651,6 +651,24 @@ def client_add(request):
 
 
 @sales_module_required
+@require_http_methods(["POST"])
+def client_toggle_renewal_emails(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(Client, pk=pk, company=company)
+    raw = (request.POST.get("enabled") or "").strip().lower()
+    enabled = raw in {"1", "true", "on", "yes"}
+    obj.renewal_emails_enabled = enabled
+    obj.save(update_fields=["renewal_emails_enabled"])
+    return JsonResponse(
+        {
+            "ok": True,
+            "enabled": obj.renewal_emails_enabled,
+            "label": "On" if obj.renewal_emails_enabled else "Off",
+        }
+    )
+
+
+@sales_module_required
 def client_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Client, pk=pk, company=company)

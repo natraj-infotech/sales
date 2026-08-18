@@ -54,6 +54,7 @@
             <th>Contact 1</th>
             <th>Contact 2</th>
             <th>Contact 3</th>
+            <th class="col-renewal-email">Renewal email</th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
@@ -71,6 +72,19 @@
             <td>{{ c.phone|default:"—" }}</td>
             <td>{{ c.phone_2|default:"—" }}</td>
             <td>{{ c.phone_3|default:"—" }}</td>
+            <td class="col-renewal-email">
+              <div class="renewal-email-cell">
+                <label class="sla-switch" title="Renewal emails for {{ c.name }}">
+                  <input type="checkbox"
+                    class="js-renewal-email-toggle"
+                    data-url="{% url 'client_toggle_renewal_emails' c.pk %}"
+                    {% if c.renewal_emails_enabled %}checked{% endif %}
+                    aria-label="Renewal emails for {{ c.name }}">
+                  <span class="slider"></span>
+                </label>
+                <span class="renewal-email-label">{% if c.renewal_emails_enabled %}On{% else %}Off{% endif %}</span>
+              </div>
+            </td>
             <td class="col-actions">
               <a class="btn-table-edit" href="{% url 'client_edit' c.pk %}">Edit</a>
               <button type="submit"
@@ -85,7 +99,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="10" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+            <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
               No clients. <a href="{% url 'client_add' %}">Add one</a>.
             </td>
           </tr>
@@ -109,6 +123,32 @@
       var all = true;
       boxes.forEach(function (x) { if (!x.checked) all = false; });
       master.checked = all;
+    });
+  });
+})();
+(function () {
+  var toggles = document.querySelectorAll(".js-renewal-email-toggle");
+  if (!toggles.length) return;
+  var csrfInput = document.querySelector("#client-bulk-form [name=csrfmiddlewaretoken]");
+  var csrf = csrfInput ? csrfInput.value : "";
+  toggles.forEach(function (box) {
+    box.addEventListener("change", function () {
+      var label = box.closest(".renewal-email-cell") && box.closest(".renewal-email-cell").querySelector(".renewal-email-label");
+      var body = new FormData();
+      body.append("csrfmiddlewaretoken", csrf);
+      body.append("enabled", box.checked ? "1" : "0");
+      fetch(box.getAttribute("data-url"), {
+        method: "POST",
+        body: body,
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      }).then(function (res) { return res.json(); }).then(function (data) {
+        if (!data || !data.ok) throw new Error("Could not update");
+        box.checked = !!data.enabled;
+        if (label) label.textContent = data.label || (box.checked ? "On" : "Off");
+      }).catch(function () {
+        box.checked = !box.checked;
+        if (label) label.textContent = box.checked ? "On" : "Off";
+      });
     });
   });
 })();
