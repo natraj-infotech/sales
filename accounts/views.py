@@ -82,13 +82,23 @@ def company_setup(request):
     return render(
         request,
         "accounts/company_setup.html",
-        {
-            "form": form,
-            "editing": profile is not None,
-            "company": profile,
-            "zoho_configured": _zoho_app_configured(),
-        },
+        _company_setup_context(form, profile),
     )
+
+
+def _company_setup_context(form, profile):
+    from business.reminder_schedule import light_schedule, recommended_schedule
+
+    return {
+        "form": form,
+        "editing": profile is not None,
+        "company": profile,
+        "zoho_configured": _zoho_app_configured(),
+        "reminder_presets": {
+            "light": light_schedule(),
+            "recommended": recommended_schedule(),
+        },
+    }
 
 
 def _zoho_app_configured() -> bool:
@@ -203,12 +213,7 @@ def company_send_expiry_notifications(request):
         return render(
             request,
             "accounts/company_setup.html",
-            {
-                "form": form,
-                "editing": True,
-                "company": company,
-                "zoho_configured": _zoho_app_configured(),
-            },
+            _company_setup_context(form, company),
         )
 
     company = form.save(commit=False)

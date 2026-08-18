@@ -34,6 +34,9 @@
     white-space: nowrap;
   }
   .cr-status--yes { background: #d1fae5; color: #065f46; }
+  .cr-status--win { background: #d1fae5; color: #065f46; }
+  .cr-status--lost { background: #fee2e2; color: #991b1b; }
+  .cr-status--cancel { background: #e2e8f0; color: #334155; }
   .cr-status--no { background: #f1f5f9; color: #64748b; }
   .cr-status--pending { background: #fef3c7; color: #92400e; }
   tr.cr-row--clickable {
@@ -72,6 +75,135 @@
     from { background: #dbeafe; }
     to { background: transparent; }
   }
+  .cr-deal-cell { white-space: nowrap; }
+  .cr-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .cr-modal[hidden] { display: none; }
+  .cr-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+  }
+  .cr-modal-card {
+    position: relative;
+    width: min(56rem, calc(100vw - 2rem));
+    max-height: min(48rem, calc(100vh - 2rem));
+    overflow: auto;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 1.15rem 1.25rem 1.1rem;
+  }
+  .cr-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .cr-modal-card h3 {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+  .cr-modal-card p,
+  .cr-modal-sub {
+    margin: 0.3rem 0 0;
+    color: var(--muted, #64748b);
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+  .cr-modal-x {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.1rem 0;
+  }
+  .cr-modal-x:hover { color: #0f172a; }
+  .cr-deal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 0.95rem;
+  }
+  .cr-deal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .cr-deal-row-text {
+    min-width: 0;
+    flex: 1;
+  }
+  .cr-deal-row-company {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 650;
+    color: #0f172a;
+    line-height: 1.35;
+  }
+  .cr-deal-row-product {
+    display: block;
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-top: 0.15rem;
+  }
+  .cr-deal-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+  .cr-deal-row-actions .btn-table-edit {
+    padding: 0.38rem 0.7rem;
+    font-size: 0.78rem;
+    min-height: 0;
+  }
+  .cr-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+    justify-content: flex-end;
+  }
+  .cr-modal-actions button {
+    min-height: 1.9rem;
+    padding: 0.28rem 0.7rem;
+    font-size: 0.78rem;
+  }
+  .cr-modal-btn-ghost {
+    background: #fff !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+  .cr-modal-btn-ghost:hover {
+    background: #f8fafc !important;
+  }
+  .cr-modal-btn-loss {
+    background: #dc2626 !important;
+  }
+  .cr-modal-btn-loss:hover {
+    background: #b91c1c !important;
+  }
+  .cr-modal-error {
+    margin-top: 0.5rem;
+    color: #b91c1c;
+    font-size: 0.75rem;
+  }
 </style>
 
 <div class="tracker-card tracker-card--flush-bottom">
@@ -85,6 +217,7 @@
           <th>Response received</th>
           <th>Quotation</th>
           <th>Items</th>
+          <th>Deal Status</th>
         </tr>
       </thead>
       <tbody id="cr-tbody">
@@ -124,6 +257,9 @@
             {% if invite.submitted_at %}
             <span class="cr-status cr-status--yes">Received</span>
             <span class="cr-meta">{{ invite.submitted_at|date:"d M Y, H:i:s" }}</span>
+            {% if invite.submitted_by_email %}
+            <span class="cr-meta">Submitted by {{ invite.submitted_by_email }}</span>
+            {% endif %}
             {% else %}
             <span class="cr-status cr-status--pending">Pending</span>
             {% endif %}
@@ -139,10 +275,29 @@
             {% endif %}
           </td>
           <td data-col="items">{{ invite.line_count }}</td>
+          <td data-col="deal" class="cr-deal-cell">
+            {% with deal=invite.deal_table_state %}
+            {% if deal.pending %}
+            <button
+              type="button"
+              class="btn-table-edit cr-deal-btn"
+              data-deal-url="{% url 'client_renewal_set_deal_status' invite.pk %}"
+            >Deal Status</button>
+            {% elif deal.badges %}
+              {% for badge in deal.badges %}
+              <span class="cr-status cr-status--{{ badge }}">
+                {% if badge == "win" %}Win{% elif badge == "lost" %}Lost{% elif badge == "cancel" %}Cancel{% else %}{{ badge }}{% endif %}
+              </span>
+              {% endfor %}
+            {% else %}
+            <span class="cr-status cr-status--no">—</span>
+            {% endif %}
+            {% endwith %}
+          </td>
         </tr>
         {% empty %}
         <tr id="cr-empty-row">
-          <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">
+          <td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">
             No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
           </td>
         </tr>
@@ -151,6 +306,22 @@
     </table>
   </div>
 </div>
+
+<div id="cr-deal-modal" class="cr-modal" hidden>
+  <div class="cr-modal-backdrop" data-close="1"></div>
+  <div class="cr-modal-card" role="dialog" aria-modal="true" aria-labelledby="cr-deal-title">
+    <div class="cr-modal-head">
+      <div>
+        <h3 id="cr-deal-title">Deal Status</h3>
+        <p id="cr-deal-text" class="cr-modal-sub">Set Win, Lost, or Cancel for each company and product.</p>
+      </div>
+      <button type="button" class="cr-modal-x" data-close="1">Close</button>
+    </div>
+    <div id="cr-deal-list" class="cr-deal-list"></div>
+    <p id="cr-deal-error" class="cr-modal-error" hidden></p>
+  </div>
+</div>
+<input type="hidden" id="cr-csrf" value="{{ csrf_token }}">
 
 <script>
 (function () {
@@ -166,7 +337,8 @@
     if (!row || !row.classList.contains("cr-row--clickable")) return;
     if (row.dataset.bound === "1") return;
     row.dataset.bound = "1";
-    function go() {
+    function go(e) {
+      if (e && e.target && e.target.closest && e.target.closest(".cr-deal-btn")) return;
       var href = row.getAttribute("data-href");
       if (href) window.location.href = href;
     }
@@ -174,7 +346,7 @@
     row.addEventListener("keydown", function (e) {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        go();
+        go(e);
       }
     });
   }
@@ -208,9 +380,14 @@
 
   function responseHtml(row) {
     if (row.submitted_at) {
+      var byline = "";
+      if (row.submitted_by_email) {
+        byline = '<span class="cr-meta">Submitted by ' + escapeHtml(row.submitted_by_email) + "</span>";
+      }
       return (
         '<span class="cr-status cr-status--yes">Received</span>' +
-        '<span class="cr-meta">' + escapeHtml(row.submitted_at) + "</span>"
+        '<span class="cr-meta">' + escapeHtml(row.submitted_at) + "</span>" +
+        byline
       );
     }
     return '<span class="cr-status cr-status--pending">Pending</span>';
@@ -239,6 +416,37 @@
     return '<span class="cr-status cr-status--no">—</span>';
   }
 
+  function dealBadgeHtml(status) {
+    var labels = { win: "Win", lost: "Lost", cancel: "Cancel" };
+    var cls = "cr-status cr-status--" + escapeHtml(status || "no");
+    return '<span class="' + cls + '">' + escapeHtml(labels[status] || status || "—") + "</span>";
+  }
+
+  function dealHtml(row) {
+    if (row.deal_pending) {
+      if (!row.deal_status_url) {
+        return '<span class="cr-status cr-status--no">—</span>';
+      }
+      return (
+        '<button type="button" class="btn-table-edit cr-deal-btn" data-deal-url="' +
+        escapeHtml(row.deal_status_url) +
+        '">Deal Status</button>'
+      );
+    }
+    var badges = row.deal_badges || [];
+    if (badges.length) {
+      return badges.map(dealBadgeHtml).join(" ");
+    }
+    return '<span class="cr-status cr-status--no">—</span>';
+  }
+
+  function paintDealCell(tr, row) {
+    var cell = tr.querySelector('[data-col="deal"]');
+    if (!cell) return;
+    cell.innerHTML = dealHtml(row);
+    bindDealButton(cell.querySelector(".cr-deal-btn"));
+  }
+
   function createRow(row) {
     var tr = document.createElement("tr");
     tr.setAttribute("data-id", row.id);
@@ -254,8 +462,10 @@
       '<td data-col="read">' + readHtml(row) + "</td>" +
       '<td data-col="response">' + responseHtml(row) + "</td>" +
       '<td data-col="quote">' + quoteHtml(row) + "</td>" +
-      '<td data-col="items">' + escapeHtml(row.line_count) + "</td>";
+      '<td data-col="items">' + escapeHtml(row.line_count) + "</td>" +
+      '<td data-col="deal" class="cr-deal-cell">' + dealHtml(row) + "</td>";
     bindRow(tr);
+    bindDealButton(tr.querySelector(".cr-deal-btn"));
     return tr;
   }
 
@@ -264,7 +474,7 @@
     if (!rows.length) {
       if (!empty) {
         tbody.innerHTML =
-          '<tr id="cr-empty-row"><td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">' +
+          '<tr id="cr-empty-row"><td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">' +
           "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
           "</td></tr>";
       }
@@ -295,11 +505,13 @@
       var nextRead = readHtml(row);
       var nextResponse = responseHtml(row);
       var nextQuote = quoteHtml(row);
+      var nextDeal = dealHtml(row);
       var nextItems = String(row.line_count);
       var readCell = tr.querySelector('[data-col="read"]');
       var responseCell = tr.querySelector('[data-col="response"]');
       var quoteCell = tr.querySelector('[data-col="quote"]');
       var itemsCell = tr.querySelector('[data-col="items"]');
+      var dealCell = tr.querySelector('[data-col="deal"]');
       var changed = false;
 
       if (readCell && readCell.innerHTML !== nextRead) {
@@ -316,6 +528,11 @@
       }
       if (itemsCell && itemsCell.textContent !== nextItems) {
         itemsCell.textContent = nextItems;
+        changed = true;
+      }
+      if (dealCell && dealCell.innerHTML !== nextDeal) {
+        dealCell.innerHTML = nextDeal;
+        bindDealButton(dealCell.querySelector(".cr-deal-btn"));
         changed = true;
       }
 
@@ -342,6 +559,243 @@
       if (!seen[id]) existing[id].remove();
     });
   }
+
+  var CSRF = (document.getElementById("cr-csrf") || {}).value || "";
+  var dealModal = document.getElementById("cr-deal-modal");
+  var dealTitle = document.getElementById("cr-deal-title");
+  var dealText = document.getElementById("cr-deal-text");
+  var dealList = document.getElementById("cr-deal-list");
+  var dealError = document.getElementById("cr-deal-error");
+  var activeDealUrl = "";
+  var activeInviteId = "";
+  var dealItems = [];
+  var winSubId = null;
+
+  function closeDealModal() {
+    if (!dealModal) return;
+    dealModal.hidden = true;
+    activeDealUrl = "";
+    activeInviteId = "";
+    dealItems = [];
+    winSubId = null;
+    if (dealList) dealList.innerHTML = "";
+    setDealError("");
+  }
+
+  function setDealError(message) {
+    if (!dealError) return;
+    if (message) {
+      dealError.hidden = false;
+      dealError.textContent = message;
+    } else {
+      dealError.hidden = true;
+      dealError.textContent = "";
+    }
+  }
+
+  function inviteIdFromUrl(url) {
+    var match = String(url || "").match(/client-renewals\/([^/]+)\/deal-status/);
+    return match ? match[1] : "";
+  }
+
+  function applyInviteDealCell(data) {
+    if (!activeInviteId) return;
+    var tr = tbody.querySelector('tr[data-id="' + activeInviteId + '"]');
+    if (!tr) return;
+    paintDealCell(tr, {
+      deal_pending: data.deal_pending,
+      deal_badges: data.deal_badges || [],
+      deal_status_url: data.deal_status_url || activeDealUrl,
+    });
+  }
+
+  function postDealStatus(payload, onSuccess) {
+    var body = new FormData();
+    body.append("csrfmiddlewaretoken", CSRF);
+    Object.keys(payload).forEach(function (key) {
+      body.append(key, payload[key]);
+    });
+    fetch(activeDealUrl, {
+      method: "POST",
+      body: body,
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || !data.ok) {
+            throw new Error((data && data.error) || "Could not save deal status.");
+          }
+          return data;
+        });
+      })
+      .then(onSuccess)
+      .catch(function (err) {
+        setDealError(err.message || "Please try again.");
+      });
+  }
+
+  function handleSaved(data) {
+    dealItems = data.items || [];
+    winSubId = null;
+    setDealError("");
+    applyInviteDealCell(data);
+    if (data.renew_url) {
+      window.location.href = data.renew_url;
+      return;
+    }
+    renderDealList();
+  }
+
+  function renderDealList() {
+    if (!dealList) return;
+    dealTitle.textContent = "Deal Status";
+    dealText.textContent = "Set Win, Lost, or Cancel for each company and product.";
+    dealList.innerHTML = "";
+
+    if (!dealItems.length) {
+      dealList.innerHTML = '<p class="cr-modal-sub">No products on this renewal email.</p>';
+      return;
+    }
+
+    dealItems.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "cr-deal-row";
+      var text = document.createElement("div");
+      text.className = "cr-deal-row-text";
+      text.innerHTML =
+        '<span class="cr-deal-row-company">' + escapeHtml(item.company_name || "Client") + "</span>" +
+        '<span class="cr-deal-row-product">' + escapeHtml(item.product_name || "") + "</span>";
+      var actions = document.createElement("div");
+      actions.className = "cr-deal-row-actions";
+
+      if (item.deal_status) {
+        actions.innerHTML = dealBadgeHtml(item.deal_status);
+      } else if (winSubId === item.subscription_id) {
+        var nowBtn = document.createElement("button");
+        nowBtn.type = "button";
+        nowBtn.className = "btn-table-edit";
+        nowBtn.textContent = "Renew now";
+        nowBtn.addEventListener("click", function () {
+          postDealStatus(
+            { deal_status: "win", update_now: "1", subscription_id: item.subscription_id },
+            handleSaved
+          );
+        });
+        var laterBtn = document.createElement("button");
+        laterBtn.type = "button";
+        laterBtn.className = "btn-table-edit cr-modal-btn-ghost";
+        laterBtn.textContent = "Renew later";
+        laterBtn.addEventListener("click", function () {
+          postDealStatus(
+            { deal_status: "win", subscription_id: item.subscription_id },
+            handleSaved
+          );
+        });
+        var backBtn = document.createElement("button");
+        backBtn.type = "button";
+        backBtn.className = "btn-table-edit cr-modal-btn-ghost";
+        backBtn.textContent = "Back";
+        backBtn.addEventListener("click", function () {
+          winSubId = null;
+          renderDealList();
+        });
+        actions.appendChild(nowBtn);
+        actions.appendChild(laterBtn);
+        actions.appendChild(backBtn);
+      } else {
+        var winBtn = document.createElement("button");
+        winBtn.type = "button";
+        winBtn.className = "btn-table-edit";
+        winBtn.textContent = "Win";
+        winBtn.addEventListener("click", function () {
+          winSubId = item.subscription_id;
+          setDealError("");
+          renderDealList();
+        });
+        var lostBtn = document.createElement("button");
+        lostBtn.type = "button";
+        lostBtn.className = "btn-table-edit cr-modal-btn-loss";
+        lostBtn.textContent = "Lost";
+        lostBtn.addEventListener("click", function () {
+          postDealStatus(
+            { deal_status: "lost", subscription_id: item.subscription_id },
+            handleSaved
+          );
+        });
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn-table-edit cr-modal-btn-ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.addEventListener("click", function () {
+          postDealStatus(
+            { deal_status: "cancel", subscription_id: item.subscription_id },
+            handleSaved
+          );
+        });
+        actions.appendChild(winBtn);
+        actions.appendChild(lostBtn);
+        actions.appendChild(cancelBtn);
+      }
+
+      row.appendChild(text);
+      row.appendChild(actions);
+      dealList.appendChild(row);
+    });
+  }
+
+  function openDealList(url) {
+    activeDealUrl = url;
+    activeInviteId = inviteIdFromUrl(url);
+    winSubId = null;
+    setDealError("");
+    dealTitle.textContent = "Deal Status";
+    dealText.textContent = "Loading…";
+    if (dealList) dealList.innerHTML = "";
+    dealModal.hidden = false;
+    fetch(url, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || !data.ok) {
+            throw new Error((data && data.error) || "Could not load deals.");
+          }
+          return data;
+        });
+      })
+      .then(function (data) {
+        dealItems = data.items || [];
+        renderDealList();
+      })
+      .catch(function (err) {
+        dealText.textContent = "";
+        setDealError(err.message || "Could not load deals.");
+      });
+  }
+
+  function bindDealButton(btn) {
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var url = btn.getAttribute("data-deal-url");
+      if (url) openDealList(url);
+    });
+  }
+
+  document.querySelectorAll(".cr-deal-btn").forEach(bindDealButton);
+
+  if (dealModal) {
+    dealModal.addEventListener("click", function (e) {
+      if (e.target && e.target.getAttribute("data-close") === "1") closeDealModal();
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && dealModal && !dealModal.hidden) closeDealModal();
+  });
 
   function setMeta(text, isError) {
     if (!meta) return;

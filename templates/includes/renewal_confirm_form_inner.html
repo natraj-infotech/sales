@@ -82,6 +82,40 @@
     color: #2563eb;
     font-weight: 600;
   }
+  .renewal-submitter {
+    margin: 0 0 1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    background: #f8fafc;
+    max-width: 28rem;
+  }
+  .renewal-submitter label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+  .renewal-submitter input[type="email"] {
+    display: block;
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 2px solid #2563eb;
+    border-radius: 6px;
+    font-size: 0.9375rem;
+    background: #fff;
+  }
+  .renewal-submitter .helptext {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+  }
+  .renewal-submitter .field-error {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    margin-top: 0.35rem;
+  }
 </style>
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>
   Confirm subscription renewal
@@ -96,6 +130,20 @@
   {% if formset.non_form_errors %}
   <div class="tracker-mock-form-errors">{{ formset.non_form_errors }}</div>
   {% endif %}
+  {% if submitter_form.non_field_errors %}
+  <div class="tracker-mock-form-errors">{{ submitter_form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="renewal-submitter">
+    <label for="{{ submitter_form.submitter_email.id_for_label }}">{{ submitter_form.submitter_email.label }}</label>
+    {{ submitter_form.submitter_email }}
+    {% if submitter_form.submitter_email.help_text %}
+    <span class="helptext">{{ submitter_form.submitter_email.help_text }}</span>
+    {% endif %}
+    {% if submitter_form.submitter_email.errors %}
+    <div class="field-error">{{ submitter_form.submitter_email.errors }}</div>
+    {% endif %}
+  </div>
 
   <div class="renewal-confirm-scroll">
     <table class="renewal-confirm-table">

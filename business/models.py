@@ -49,6 +49,19 @@ class Client(models.Model):
         default=True,
         help_text="When off, this client is not sent expiry or renewal reminder emails.",
     )
+    use_custom_reminder = models.BooleanField(
+        "use custom reminder",
+        default=False,
+        help_text="When on, this client uses its own reminder schedule and/or email wording.",
+    )
+    reminder_schedule = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Custom reminder phases for this client. Blank fields inherit company default.",
+    )
+    reminder_email_subject = models.CharField(max_length=255, blank=True)
+    reminder_email_initial_paragraph = models.TextField(blank=True)
+    reminder_email_end_paragraph = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -109,6 +122,11 @@ class ClientSubscription(models.Model):
         PAUSED = "paused", "Paused"
         ENDED = "ended", "Ended"
 
+    class DealStatus(models.TextChoices):
+        WIN = "win", "Win"
+        LOST = "lost", "Lost"
+        CANCEL = "cancel", "Cancel"
+
     company = models.ForeignKey(
         CompanyProfile, on_delete=models.CASCADE, related_name="subscriptions"
     )
@@ -124,6 +142,12 @@ class ClientSubscription(models.Model):
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.ACTIVE
     )
+    deal_status = models.CharField(
+        max_length=16,
+        choices=DealStatus.choices,
+        blank=True,
+        default="",
+    )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
@@ -132,6 +156,12 @@ class ClientSubscription(models.Model):
     serial_number = models.CharField(max_length=128, blank=True)
     subscription_code = models.CharField("subscription id", max_length=64, blank=True)
     notes = models.TextField(blank=True)
+    expiry_reminder_stopped_for_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="When set to the current end date, client reminder emails stop "
+        "until the subscription is renewed with a new end date.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -210,11 +240,19 @@ class SubscriptionRenewalInvite(models.Model):
     read_at = models.DateTimeField(null=True, blank=True)
     read_source = models.CharField(max_length=32, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by_email = models.EmailField(blank=True)
     zoho_quote_id = models.CharField(max_length=64, blank=True)
     zoho_quote_number = models.CharField(max_length=128, blank=True)
     zoho_quote_url = models.URLField(blank=True)
     quotation_sent_at = models.DateTimeField(null=True, blank=True)
     quotation_error = models.TextField(blank=True)
+    deal_status = models.CharField(
+        max_length=16,
+        choices=ClientSubscription.DealStatus.choices,
+        blank=True,
+        default="",
+    )
+    deal_status_set_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -230,6 +268,103 @@ class SubscriptionRenewalInvite(models.Model):
     @property
     def response_received(self) -> bool:
         return self.is_submitted
+
+    def allowed_submitter_emails(self) -> list[str]:
+        emails: list[str] = []
+        seen: set[str] = set()
+
+        def add(raw: str) -> None:
+            addr = (raw or "").strip()
+            key = addr.lower()
+            if addr and key not in seen:
+                seen.add(key)
+                emails.append(addr)
+
+        add(self.client_email)
+        for line in self.lines.all():
+            client = getattr(getattr(line, "subscription", None), "client", None)
+            if client is None:
+                continue
+            for addr in client.contact_emails():
+                add(addr)
+        return emails
+
+    def is_allowed_submitter(self, email: str) -> bool:
+        key = (email or "").strip().lower()
+        if not key:
+            return False
+        return key in {addr.lower() for addr in self.allowed_submitter_emails()}
+
+    def deal_table_state(self) -> dict:
+        """Pending flag and unique deal badges from linked subscriptions."""
+        pending = False
+        badges: list[str] = []
+        seen: set[str] = set()
+        lines = list(self.lines.all())
+        if not lines:
+            return {"pending": True, "badges": []}
+        for line in lines:
+            status = getattr(getattr(line, "subscription", None), "deal_status", "") or ""
+            if status:
+                if status not in seen:
+                    seen.add(status)
+                    badges.append(status)
+            else:
+                pending = True
+        return {"pending": pending, "badges": badges}
+
+    def deal_line_items(self, next_url: str) -> list[dict]:
+        from urllib.parse import urlencode
+
+        from django.urls import reverse
+
+        items = []
+        seen: set[int] = set()
+        lines = self.lines.select_related(
+            "subscription",
+            "subscription__product",
+            "subscription__client",
+        ).order_by("id")
+        for line in lines:
+            sub = line.subscription
+            if not sub or sub.pk in seen:
+                continue
+            seen.add(sub.pk)
+            status = sub.deal_status or ""
+            company_name = line.company_name or (
+                sub.client.name if sub.client_id else ""
+            )
+            product_name = line.product_name or sub.product.name
+            renew_url = ""
+            if not status:
+                renew_path = reverse("subscription_renew", kwargs={"pk": sub.pk})
+                renew_url = f"{renew_path}?{urlencode({'next': next_url})}"
+            items.append(
+                {
+                    "subscription_id": sub.pk,
+                    "company_name": company_name,
+                    "product_name": product_name,
+                    "deal_status": status,
+                    "deal_status_label": sub.get_deal_status_display() if status else "",
+                    "renew_url": renew_url,
+                }
+            )
+        return items
+
+    def apply_line_deal_status(self, subscription_id: int, status: str) -> None:
+        """Set Win/Lost/Cancel on one linked subscription only."""
+        line = (
+            self.lines.select_related("subscription")
+            .filter(subscription_id=subscription_id)
+            .first()
+        )
+        if line is None or line.subscription is None:
+            raise ValueError("Subscription is not part of this renewal email.")
+        sub = line.subscription
+        if sub.deal_status:
+            raise ValueError("Deal status is already set.")
+        sub.deal_status = status
+        sub.save(update_fields=["deal_status"])
 
 
 class SubscriptionRenewalInviteLine(models.Model):
@@ -263,7 +398,7 @@ class SubscriptionExpiryDispatch(models.Model):
         on_delete=models.CASCADE,
         related_name="expiry_dispatches",
     )
-    threshold_window = models.PositiveSmallIntegerField()
+    threshold_window = models.IntegerField()
     sent_on = models.DateField()
     send_number = models.PositiveSmallIntegerField(default=1)
     sent_at = models.DateTimeField(auto_now_add=True)

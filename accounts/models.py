@@ -92,6 +92,14 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="Phone or other contact shown under Best Regards in client renewal emails.",
     )
+    expiry_email_subject = models.CharField(
+        "expiry email subject",
+        max_length=255,
+        blank=True,
+        help_text="Subject for client renewal reminder emails. "
+        "Leave blank to use the default. Merge tags: "
+        "{{client_name}}, {{product_name}}, {{days_left}}, {{expiry_date}}.",
+    )
     expiry_email_initial_paragraph = models.TextField(
         "expiry email initial paragraph",
         blank=True,
@@ -103,6 +111,16 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="Shown below the product table in client subscription expiry emails. "
         "Leave blank to use the default text.",
+    )
+    expiry_reminder_preset = models.CharField(
+        max_length=20,
+        default="recommended",
+        help_text="light, recommended, or custom reminder cadence.",
+    )
+    expiry_reminder_schedule = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of reminder phases (from/to days, send mode, times).",
     )
     expiry_client_emails_enabled = models.BooleanField(
         "email clients before subscription expiry",

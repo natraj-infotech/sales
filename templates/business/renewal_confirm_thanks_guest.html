@@ -5,6 +5,9 @@
 <div class="card">
   <h2 style="margin-top:0;">Thank you</h2>
   <p class="muted">Your renewal confirmation was submitted successfully. You can close this page.</p>
+  {% if invite.submitted_by_email %}
+  <p class="muted">Submitted by {{ invite.submitted_by_email }}</p>
+  {% endif %}
   <div class="table-wrap" style="margin-top:1rem;">
     <table class="renewal-confirm-table" style="width:100%;border-collapse:collapse;">
       <thead>

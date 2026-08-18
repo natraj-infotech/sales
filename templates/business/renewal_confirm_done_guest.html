@@ -5,6 +5,9 @@
 <div class="card">
   <h2 style="margin-top:0;">Already submitted</h2>
   <p class="muted">This renewal confirmation link has already been used.</p>
+  {% if invite.submitted_by_email %}
+  <p class="muted">Submitted by {{ invite.submitted_by_email }}</p>
+  {% endif %}
   {% if lines %}
   <div class="table-wrap" style="margin-top:1rem;">
     <table style="width:100%;border-collapse:collapse;">

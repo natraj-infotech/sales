@@ -79,6 +79,12 @@
         {{ invite.submitted_at|date:"d M Y, H:i" }}
       </div>
     </div>
+    <div class="tracker-mock-field">
+      <span class="tracker-mock-label">Submitted by</span>
+      <div class="tracker-mock-readonly">
+        {% if invite.submitted_by_email %}{{ invite.submitted_by_email }}{% else %}—{% endif %}
+      </div>
+    </div>
   </div>
 </div>
 
@@ -92,6 +98,7 @@
           <th>Product</th>
           <th>Current quantity</th>
           <th>Renewal count</th>
+          <th>Submitted by</th>
         </tr>
       </thead>
       <tbody>
@@ -101,6 +108,7 @@
           <td>{{ line.product_name }}</td>
           <td>{{ line.current_quantity }}</td>
           <td><strong>{{ line.renewal_count }}</strong></td>
+          <td>{% if invite.submitted_by_email %}{{ invite.submitted_by_email }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

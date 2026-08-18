@@ -93,6 +93,7 @@ class ClientSubscriptionAdmin(admin.ModelAdmin):
         "subscription_code",
         "invoice_number",
         "status",
+        "deal_status",
         "start_date",
         "end_date",
         "billing_amount",
@@ -120,12 +121,14 @@ class SubscriptionRenewalInviteAdmin(admin.ModelAdmin):
         "read_at",
         "read_source",
         "submitted_at",
+        "submitted_by_email",
         "quotation_sent_at",
+        "deal_status",
         "zoho_quote_number",
         "created_at",
     )
     list_filter = ("company",)
-    search_fields = ("client_email",)
+    search_fields = ("client_email", "submitted_by_email")
 
 
 @admin.register(SubscriptionRenewalInviteLine)

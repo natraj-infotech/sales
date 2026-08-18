@@ -206,7 +206,7 @@ CELERY_RESULT_BACKEND = os.environ.get(
 )
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 120
+CELERY_TASK_TIME_LIMIT = 300
 if CELERY_BROKER_URL.startswith("filesystem://"):
     _celery_queue_in = str(BASE_DIR / ".celery" / "out")
     _celery_queue_out = str(BASE_DIR / ".celery" / "out")
@@ -240,13 +240,9 @@ CELERY_BEAT_SCHEDULE = {
         "task": "business.tasks.fetch_caselock_inbox_task",
         "schedule": 15.0,
     },
-    "send-expiry-notifications-daily": {
+    "send-expiry-notifications-daytime": {
         "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(hour=11, minute=0),
-    },
-    "send-expiry-notifications-evening": {
-        "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(hour=18, minute=0),
+        "schedule": crontab(minute="*/15", hour="8-18"),
     },
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",

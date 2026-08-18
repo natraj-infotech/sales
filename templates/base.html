@@ -1882,6 +1882,111 @@
       font-size: 0.7rem;
       color: var(--muted);
     }
+    .reminder-builder { margin-top: 0.35rem; }
+    .reminder-preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.85rem;
+    }
+    .reminder-preset-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--border-input);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .reminder-preset-pill.is-active {
+      border-color: #93c5fd;
+      background: var(--accent-soft);
+      color: var(--accent-hover);
+    }
+    .reminder-phase-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    .reminder-phase-table th,
+    .reminder-phase-table td {
+      padding: 0.45rem 0.4rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      text-align: left;
+    }
+    .reminder-phase-table th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+    }
+    .reminder-phase-table input,
+    .reminder-phase-table select {
+      width: 100%;
+      min-width: 0;
+      padding: 0.38rem 0.45rem;
+      border: 1px solid var(--border-input);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      background: #fff;
+    }
+    .reminder-phase-table .col-from,
+    .reminder-phase-table .col-to,
+    .reminder-phase-table .col-count { width: 4.6rem; }
+    .reminder-phase-table .col-mode { width: 11rem; }
+    .reminder-phase-table .col-remove { width: 2.2rem; text-align: center; }
+    .reminder-phase-help {
+      margin: 0.65rem 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .reminder-builder-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .merge-tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0.35rem 0 0.85rem;
+    }
+    .merge-tag-chip {
+      border: 1px solid #bfdbfe;
+      background: var(--accent-soft);
+      color: var(--accent-hover);
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.75rem;
+      font-family: ui-monospace, Consolas, monospace;
+      cursor: pointer;
+    }
+    .reminder-tabs {
+      display: flex;
+      gap: 0.4rem;
+      margin: 0.75rem 0 1rem;
+    }
+    .reminder-tab {
+      border: 1px solid var(--border-input);
+      background: #fff;
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .reminder-tab.is-active {
+      background: var(--header-blue);
+      border-color: var(--header-blue);
+      color: #fff;
+    }
+    .client-reminder-custom { margin-top: 0.75rem; }
     .sla-toggle-row.client-renewal-toggle {
       margin: 0 0 1rem;
       background: #f8fafc;
@@ -2047,7 +2152,7 @@
 </head>
 <body>
   {% include "includes/tracker_svg_sprite.html" %}
-  {% if user.is_authenticated and not public_page %}
+  {% if user.is_authenticated and not public_page and request.resolver_match.url_name != "account_logout" %}
   <div class="layout" id="app-layout">
     <aside class="sidebar" id="app-sidebar">
       <div class="sidebar-top">

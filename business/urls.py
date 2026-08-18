@@ -48,6 +48,11 @@ urlpatterns = [
         name="client_renewal_detail",
     ),
     path(
+        "client-renewals/<uuid:pk>/deal-status/",
+        views.client_renewal_set_deal_status,
+        name="client_renewal_set_deal_status",
+    ),
+    path(
         "client-renewals/<uuid:pk>/send-quotation/",
         views.client_renewal_send_quotation,
         name="client_renewal_send_quotation",

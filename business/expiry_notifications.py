@@ -23,18 +23,26 @@ from business.models import (
     SubscriptionRenewalInviteLine,
 )
 from business.outbound_mail import send_company_outbound
+from business.reminder_schedule import (
+    DEFAULT_END_PARAGRAPH,
+    DEFAULT_INITIAL_PARAGRAPH,
+    apply_merge_tags,
+    in_schedule_window,
+    matching_phase,
+    merge_context,
+    next_due_slot,
+    now_for_today,
+    resolve_email_copy,
+    resolve_schedule,
+    schedule_bounds,
+)
 from business.renewal_read_tracking import send_renewal_email
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_NOTIFY_DAYS = (30, 15, 7)
-DEFAULT_EXPIRY_INITIAL_PARAGRAPH = (
-    "Kindly renew it to ensure there is no interruption to your services."
-)
-DEFAULT_EXPIRY_END_PARAGRAPH = (
-    "We request you to share your confirmation at the earliest so that we can "
-    "initiate the renewal process and ensure uninterrupted service."
-)
+DEFAULT_EXPIRY_INITIAL_PARAGRAPH = DEFAULT_INITIAL_PARAGRAPH
+DEFAULT_EXPIRY_END_PARAGRAPH = DEFAULT_END_PARAGRAPH
 VALID_NOTIFY_DAYS = {7, 15, 30, 45, 90}
 DIGEST_EXPORT_HEADERS: tuple[str, ...] = (
     "Subscription ID",
@@ -195,13 +203,16 @@ def _active_expiring_on_day(company: CompanyProfile, days_before: int, today):
     )
 
 
-def _active_expiring_within(company: CompanyProfile, max_days: int, today):
+def _active_expiring_within(
+    company: CompanyProfile, max_days: int, today, *, min_days: int = 0
+):
     until = today + timedelta(days=max_days)
+    since = today + timedelta(days=min_days)
     return (
         company.subscriptions.filter(
             status=ClientSubscription.Status.ACTIVE,
             end_date__isnull=False,
-            end_date__gte=today,
+            end_date__gte=since,
             end_date__lte=until,
         )
         .select_related("client", "product", "vendor")
@@ -209,13 +220,94 @@ def _active_expiring_within(company: CompanyProfile, max_days: int, today):
     )
 
 
-def _selected_threshold_window(days_remaining: int, thresholds: list[int]) -> int | None:
-    eligible = sorted(threshold for threshold in thresholds if days_remaining <= threshold)
-    return eligible[0] if eligible else None
+def _active_expiring_for_client_reminders(
+    company: CompanyProfile, max_days: int, today, *, min_days: int = 0
+):
+    """Expiring active subscriptions that are still open for client reminder emails."""
+    return _active_expiring_within(
+        company, max_days, today, min_days=min_days
+    ).exclude(
+        deal_status__in=[
+            ClientSubscription.DealStatus.WIN,
+            ClientSubscription.DealStatus.LOST,
+            ClientSubscription.DealStatus.CANCEL,
+        ]
+    )
 
 
-def _max_daily_sends(days_remaining: int) -> int:
-    return 1
+_BLOCKING_DEAL_STATUSES = {
+    ClientSubscription.DealStatus.WIN,
+    ClientSubscription.DealStatus.LOST,
+    ClientSubscription.DealStatus.CANCEL,
+}
+
+
+def _days_remaining_label(days_remaining: int | None) -> str:
+    if days_remaining is None:
+        return "no end date"
+    if days_remaining < 0:
+        return f"{abs(days_remaining)} days overdue"
+    if days_remaining == 0:
+        return "expires today"
+    return f"{days_remaining} days remaining"
+
+
+def _form_stopped(sub: ClientSubscription) -> bool:
+    return bool(
+        sub.end_date
+        and sub.expiry_reminder_stopped_for_end_date
+        and sub.expiry_reminder_stopped_for_end_date == sub.end_date
+    )
+
+
+def _manual_skip_reason(client, subs, phases, today) -> str | None:
+    """Why a renewal-email-enabled client gets no manual send. None = can send."""
+    if not client.contact_emails():
+        return "client has no email"
+    if not subs:
+        low, high = schedule_bounds(phases)
+        return (
+            "no active subscription in the reminder window "
+            f"({high} to {low} days remaining)"
+        )
+    open_subs = [
+        sub
+        for sub in subs
+        if (sub.deal_status or "") not in _BLOCKING_DEAL_STATUSES
+        and not _form_stopped(sub)
+    ]
+    if not open_subs:
+        if all(_form_stopped(sub) for sub in subs):
+            return "renewal form already submitted for the current expiry"
+        statuses = sorted(
+            {
+                (sub.get_deal_status_display() or sub.deal_status)
+                for sub in subs
+                if sub.deal_status
+            }
+        )
+        label = " / ".join(statuses) if statuses else "closed"
+        return f"marked {label} — client reminders are stopped"
+    in_window = []
+    outside = []
+    for sub in open_subs:
+        days = (sub.end_date - today).days if sub.end_date else None
+        if days is None:
+            continue
+        if in_schedule_window(phases, days):
+            in_window.append(days)
+        else:
+            outside.append(days)
+    if in_window:
+        return None
+    if outside:
+        sample = outside[0]
+        low, high = schedule_bounds(phases)
+        return (
+            f"{_days_remaining_label(sample)}; reminder window is "
+            f"{high} to {low} days remaining"
+        )
+    return "no dated active subscription to remind"
 
 
 def _subscription_bill_type(sub: ClientSubscription) -> str:
@@ -264,6 +356,10 @@ def _days_left_badge(days_remaining: int | None) -> tuple[str, str, str]:
     """Return (label, emoji, accent_hex) for days-left status."""
     if days_remaining is None:
         return "—", "⚪", "#6B7280"
+    if days_remaining < 0:
+        return f"{abs(days_remaining)} overdue", "🔴", "#DC2626"
+    if days_remaining == 0:
+        return "Expires today", "🔴", "#DC2626"
     if days_remaining <= 7:
         return f"{days_remaining} days", "🔴", "#DC2626"
     if days_remaining <= 15:
@@ -275,16 +371,20 @@ def _client_email_body(
     sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
     *,
     renewal_url: str = "",
+    initial_paragraph: str | None = None,
+    end_paragraph: str | None = None,
 ) -> str:
     contact_bits = _client_contact_lines(company)
     all_items = [item for _, items in sections for item in items]
     threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
-    initial_paragraph = _expiry_email_paragraph(
-        company, "expiry_email_initial_paragraph", DEFAULT_EXPIRY_INITIAL_PARAGRAPH
-    )
-    end_paragraph = _expiry_email_paragraph(
-        company, "expiry_email_end_paragraph", DEFAULT_EXPIRY_END_PARAGRAPH
-    )
+    if initial_paragraph is None:
+        initial_paragraph = _expiry_email_paragraph(
+            company, "expiry_email_initial_paragraph", DEFAULT_EXPIRY_INITIAL_PARAGRAPH
+        )
+    if end_paragraph is None:
+        end_paragraph = _expiry_email_paragraph(
+            company, "expiry_email_end_paragraph", DEFAULT_EXPIRY_END_PARAGRAPH
+        )
     lines = [
         "Dear Sir/Madam,",
         "",
@@ -386,6 +486,8 @@ def _client_email_html(
     *,
     renewal_url: str = "",
     logo_cid: str = "",
+    initial_paragraph: str | None = None,
+    end_paragraph: str | None = None,
 ) -> str:
     all_items = [item for _, items in sections for item in items]
     threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
@@ -607,14 +709,18 @@ def _client_email_html(
         company_name=company_name,
         threshold_days=escape(str(threshold_days)),
         initial_paragraph=_expiry_email_paragraph_html(
-            _expiry_email_paragraph(
+            initial_paragraph
+            if initial_paragraph is not None
+            else _expiry_email_paragraph(
                 company,
                 "expiry_email_initial_paragraph",
                 DEFAULT_EXPIRY_INITIAL_PARAGRAPH,
             )
         ),
         end_paragraph=_expiry_email_paragraph_html(
-            _expiry_email_paragraph(
+            end_paragraph
+            if end_paragraph is not None
+            else _expiry_email_paragraph(
                 company,
                 "expiry_email_end_paragraph",
                 DEFAULT_EXPIRY_END_PARAGRAPH,
@@ -1163,6 +1269,7 @@ def send_client_expiry_emails(
     force: bool = False,
 ) -> tuple[int, list[str]]:
     today = today or timezone.localdate()
+    now = now_for_today(today)
     logs: list[str] = []
     sent_count = 0
 
@@ -1174,63 +1281,119 @@ def send_client_expiry_emails(
         )
         return 0, logs
 
-    thresholds = parse_notify_days(company.expiry_notify_at_days)
+    company_phases = resolve_schedule(company)
+    min_days, max_days = schedule_bounds(company_phases)
+    min_days = min(min_days, -31)
+    max_days = max(max_days, 90)
     cc_recipients = _client_reminder_cc_recipients(company)
     grouped: dict[
         int, list[tuple[ClientSubscription, int, int | None, int]]
     ] = defaultdict(list)
 
     if force:
-        max_days = max(thresholds)
-        for sub in _active_expiring_within(company, max_days, today):
-            days_remaining = sub.days_until_expiry
-            if days_remaining is None:
-                continue
-            notice_threshold = _selected_threshold_window(days_remaining, thresholds)
-            if notice_threshold is None:
-                continue
-            if not getattr(sub.client, "renewal_emails_enabled", True):
-                continue
-            if not sub.client.contact_emails():
-                logs.append(
-                    f"{company.company_name}: skipped subscription #{sub.pk} "
-                    f"({days_remaining} days remaining) — client has no email."
-                )
-                continue
-            dispatch_count = SubscriptionExpiryDispatch.objects.filter(
-                subscription=sub,
-                threshold_window=notice_threshold,
-                sent_on=today,
-            ).count()
-            grouped[sub.client_id].append(
-                (sub, notice_threshold, days_remaining, dispatch_count + 1)
+        on_clients = list(
+            company.clients.filter(renewal_emails_enabled=True)
+            .prefetch_related("subscriptions__product", "subscriptions__vendor")
+            .order_by("name")
+        )
+        if not on_clients:
+            logs.append(
+                f"{company.company_name}: skipped client reminders — "
+                "no clients have Renewal email turned on."
             )
+        skipped_no_email: set[int] = set()
+        for client in on_clients:
+            phases = resolve_schedule(company, client)
+            window_low, window_high = schedule_bounds(phases)
+            subs = [
+                sub
+                for sub in client.subscriptions.all()
+                if sub.status == ClientSubscription.Status.ACTIVE
+                and sub.end_date is not None
+                and window_low <= (sub.end_date - today).days <= window_high
+            ]
+            # Include out-of-window / blocked subs so skip reasons are accurate.
+            related_subs = [
+                sub
+                for sub in client.subscriptions.all()
+                if sub.status == ClientSubscription.Status.ACTIVE
+                and sub.end_date is not None
+            ]
+            skip = _manual_skip_reason(client, related_subs, phases, today)
+            if skip:
+                logs.append(f"{company.company_name}: skipped {client.name} — {skip}.")
+                continue
+            for sub in subs:
+                if (sub.deal_status or "") in _BLOCKING_DEAL_STATUSES:
+                    continue
+                if _form_stopped(sub):
+                    continue
+                days_remaining = (sub.end_date - today).days
+                if not client.contact_emails():
+                    if client.pk not in skipped_no_email:
+                        skipped_no_email.add(client.pk)
+                        logs.append(
+                            f"{company.company_name}: skipped {client.name} "
+                            f"({_days_remaining_label(days_remaining)}) — client has no email."
+                        )
+                    continue
+                already_today = SubscriptionExpiryDispatch.objects.filter(
+                    subscription=sub,
+                    sent_on=today,
+                ).exists()
+                if already_today:
+                    continue
+                phase = matching_phase(phases, days_remaining)
+                notice_threshold = (
+                    int(phase["from_days"]) if phase else days_remaining
+                )
+                grouped[client.pk].append(
+                    (sub, notice_threshold, days_remaining, 1)
+                )
+            if client.pk not in grouped:
+                logs.append(
+                    f"{company.company_name}: skipped {client.name} — "
+                    "already sent a reminder today."
+                )
     else:
-        max_days = max(thresholds)
-        for sub in _active_expiring_within(company, max_days, today):
-            days_remaining = sub.days_until_expiry
+        qs = _active_expiring_for_client_reminders(
+            company, max_days, today, min_days=min_days
+        )
+        skipped_no_email = set()
+        for sub in qs:
+            client = sub.client
+            if not getattr(client, "renewal_emails_enabled", True):
+                continue
+            if _form_stopped(sub):
+                continue
+            days_remaining = (sub.end_date - today).days if sub.end_date else None
             if days_remaining is None:
                 continue
-            notice_threshold = _selected_threshold_window(days_remaining, thresholds)
-            if notice_threshold is None:
+            if not client.contact_emails():
+                if client.pk not in skipped_no_email:
+                    skipped_no_email.add(client.pk)
+                    logs.append(
+                        f"{company.company_name}: skipped {client.name} "
+                        f"({days_remaining} days remaining) — client has no email."
+                    )
                 continue
-            if not getattr(sub.client, "renewal_emails_enabled", True):
+            phases = resolve_schedule(company, client)
+            phase = matching_phase(phases, days_remaining)
+            if phase is None:
                 continue
-            if not sub.client.contact_emails():
-                logs.append(
-                    f"{company.company_name}: skipped subscription #{sub.pk} "
-                    f"({days_remaining} days remaining) — client has no email."
-                )
+            notice_threshold = int(phase["from_days"])
+            already_sent = set(
+                SubscriptionExpiryDispatch.objects.filter(
+                    subscription=sub,
+                    threshold_window=notice_threshold,
+                    sent_on=today,
+                ).values_list("send_number", flat=True)
+            )
+            slot = next_due_slot(phase, days_remaining, now, already_sent)
+            if slot is None:
                 continue
-            dispatch_count = SubscriptionExpiryDispatch.objects.filter(
-                subscription=sub,
-                threshold_window=notice_threshold,
-                sent_on=today,
-            ).count()
-            if dispatch_count >= _max_daily_sends(days_remaining):
-                continue
-            grouped[sub.client_id].append(
-                (sub, notice_threshold, days_remaining, dispatch_count + 1)
+            grouped[client.pk].append(
+                (sub, notice_threshold, days_remaining, slot)
             )
 
     for _client_id, items in grouped.items():
@@ -1248,16 +1411,35 @@ def send_client_expiry_emails(
             )
         ]
         body_items = [item for _, client_items in sections for item in client_items]
-        subject = _client_reminder_subject(body_items)
+        copy = resolve_email_copy(company, client)
         invite = _create_renewal_invite(company, client_email, items)
         renewal_url = renewal_invite_absolute_url(invite)
-        body = _client_email_body(company, sections, renewal_url=renewal_url)
+        context = merge_context(
+            company=company,
+            client=client,
+            items=body_items,
+            renewal_url=renewal_url,
+        )
+        subject = apply_merge_tags(copy["subject"], context).strip() or (
+            _client_reminder_subject(body_items)
+        )
+        initial_paragraph = apply_merge_tags(copy["initial"], context)
+        end_paragraph = apply_merge_tags(copy["end"], context)
+        body = _client_email_body(
+            company,
+            sections,
+            renewal_url=renewal_url,
+            initial_paragraph=initial_paragraph,
+            end_paragraph=end_paragraph,
+        )
         logo_inline = _company_logo_inline(company)
         html_body = _client_email_html(
             company,
             sections,
             renewal_url=renewal_url,
             logo_cid=logo_inline[0] if logo_inline else "",
+            initial_paragraph=initial_paragraph,
+            end_paragraph=end_paragraph,
         )
         inline_images = [logo_inline] if logo_inline else None
 
@@ -1294,18 +1476,14 @@ def send_client_expiry_emails(
                     sent_on=today,
                     send_number=send_number,
                 )
-                SubscriptionExpiryNotice.objects.get_or_create(
-                    subscription=sub,
-                    days_before=notice_threshold,
-                )
-            doubled = any(
-                (days_remaining is not None and days_remaining <= DOUBLE_SEND_DAYS_REMAINING)
-                for _, _, days_remaining, _ in items
-            )
-            cadence_note = " (double-send window)" if doubled else ""
+                if notice_threshold >= 0:
+                    SubscriptionExpiryNotice.objects.get_or_create(
+                        subscription=sub,
+                        days_before=notice_threshold,
+                    )
             logs.append(
                 f"{company.company_name}: client reminder sent to {client_email} "
-                f"({len(items)} subscription(s)){cadence_note}."
+                f"({len(items)} subscription(s))."
             )
         else:
             invite.delete()
@@ -1344,9 +1522,11 @@ def send_team_expiry_digest(
         )
         return 0, logs
 
-    thresholds = parse_notify_days(company.expiry_notify_at_days)
-    max_days = max(thresholds)
-    subs = list(_active_expiring_within(company, max_days, today))
+    phases = resolve_schedule(company)
+    min_days, max_days = schedule_bounds(phases)
+    subs = list(
+        _active_expiring_within(company, max_days, today, min_days=min_days)
+    )
     if not subs:
         company.expiry_team_digest_last_sent = today
         company.save(update_fields=["expiry_team_digest_last_sent"])

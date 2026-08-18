@@ -272,19 +272,10 @@
       {% include "includes/form_field_tracker.html" with field=form.regards_contact icon="phone" %}
     </div>
 
-    <h3 class="tracker-card-section-title">Expiry email paragraphs</h3>
-    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
-      Custom lines for the client subscription expiry notice. Leave blank to keep the default text.
-    </p>
-    <div class="tracker-form-grid">
-      {% include "includes/form_field_tracker.html" with field=form.expiry_email_initial_paragraph icon="doc" full_width=True %}
-      {% include "includes/form_field_tracker.html" with field=form.expiry_email_end_paragraph icon="doc" full_width=True %}
-    </div>
-
     <h3 class="tracker-card-section-title">Subscription expiry notifications</h3>
     <p class="expiry-intro">
-      Choose which emails to send, set day thresholds, and send manually anytime.
-      Automatic daily sends run at 8:00 UTC when Celery worker and beat are running.
+      Choose which emails to send, set the reminder schedule, and send manually anytime.
+      Automatic sends run every 15 minutes from 8:00 to 18:45 IST when Celery worker and beat are running.
     </p>
 
     <div class="expiry-panel">
@@ -312,21 +303,16 @@
         {{ form.expiry_client_emails_enabled.errors }}
         {{ form.expiry_team_digest_enabled.errors }}
 
-        <div class="expiry-thresholds">
-          <span class="expiry-thresholds__label">Notify at these day thresholds</span>
-          <div class="expiry-threshold-pills">
-            {% for checkbox in form.expiry_notify_day_choices %}
-            <label class="expiry-threshold-pill">
-              {{ checkbox.tag }}
-              <span>{{ checkbox.choice_label }}</span>
-            </label>
-            {% endfor %}
-          </div>
-          {% if form.expiry_notify_day_choices.help_text %}
-          <span class="tracker-helptext">{{ form.expiry_notify_day_choices.help_text }}</span>
-          {% endif %}
-          {{ form.expiry_notify_day_choices.errors }}
-        </div>
+        <h4 class="tracker-card-section-title">Default renewal reminder schedule</h4>
+        <p class="muted" style="margin:-0.2rem 0 0.75rem;font-size:0.8125rem;">
+          This applies to every client unless that client has a custom reminder.
+          From/To are days remaining (0 = expiry day, negative = overdue).
+        </p>
+        {{ form.expiry_reminder_preset }}
+        {{ form.expiry_reminder_schedule_json }}
+        {{ form.expiry_reminder_preset.errors }}
+        {{ form.expiry_reminder_schedule_json.errors }}
+        {% include "includes/reminder_schedule_builder.html" with builder_id="company-reminder-builder" hidden_id=form.expiry_reminder_schedule_json.id_for_label preset_id=form.expiry_reminder_preset.id_for_label show_presets=True %}
 
         {% include "includes/form_field_tracker.html" with field=form.expiry_team_extra_emails icon="mail" full_width=True %}
       </div>
@@ -336,7 +322,9 @@
         <h4 class="tracker-card-section-title" style="margin-top:0;">Send now</h4>
         <p class="expiry-action-note">
           Save your settings first. Outgoing SMTP must be configured above.
-          Client reminders only go out for subscriptions hitting a selected threshold today.
+          Client reminders send now to every client with Renewal email On,
+          if they have an open subscription in the reminder window.
+          Automatic sends still follow the schedule and times above.
         </p>
         <div class="expiry-action-stack">
           <button type="submit"
@@ -373,6 +361,23 @@
         </p>
       </aside>
       {% endif %}
+    </div>
+
+    <h3 class="tracker-card-section-title" style="margin-top:1.5rem;">Default reminder email template</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Used for every client that does not have a custom template. Leave fields blank to keep the defaults.
+    </p>
+    <div class="merge-tag-row" aria-label="Merge tags">
+      <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}client_name{% templatetag closevariable %}">{% templatetag openvariable %}client_name{% templatetag closevariable %}</button>
+      <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}product_name{% templatetag closevariable %}">{% templatetag openvariable %}product_name{% templatetag closevariable %}</button>
+      <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}days_left{% templatetag closevariable %}">{% templatetag openvariable %}days_left{% templatetag closevariable %}</button>
+      <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_initial_paragraph.id_for_label }}" data-tag="{% templatetag openvariable %}expiry_date{% templatetag closevariable %}">{% templatetag openvariable %}expiry_date{% templatetag closevariable %}</button>
+      <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_end_paragraph.id_for_label }}" data-tag="{% templatetag openvariable %}renewal_link{% templatetag closevariable %}">{% templatetag openvariable %}renewal_link{% templatetag closevariable %}</button>
+    </div>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.expiry_email_subject icon="mail" full_width=True %}
+      {% include "includes/form_field_tracker.html" with field=form.expiry_email_initial_paragraph icon="doc" full_width=True %}
+      {% include "includes/form_field_tracker.html" with field=form.expiry_email_end_paragraph icon="doc" full_width=True %}
     </div>
   </form>
 </div>
@@ -411,4 +416,6 @@
   {% endif %}
 </div>
 {% endif %}
+{{ reminder_presets|json_script:"reminder-presets-json" }}
+{% include "includes/reminder_schedule_builder_js.html" %}
 {% endblock %}

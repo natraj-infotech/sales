@@ -44,6 +44,20 @@
   .dashboard-expiring-meta strong {
     color: var(--text, #0f172a);
   }
+  .dash-deal {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .dash-deal--win { background: #d1fae5; color: #065f46; }
+  .dash-deal--lost { background: #fee2e2; color: #991b1b; }
+  .dash-deal--cancel { background: #e2e8f0; color: #334155; }
+  .dash-deal--empty { color: var(--muted, #64748b); font-weight: 600; text-transform: none; letter-spacing: 0; }
 </style>
 {% endblock %}
 
@@ -123,6 +137,7 @@
         <th>Status</th>
         <th>End date</th>
         <th>Days left</th>
+        <th>Deal Status</th>
         <th></th>
       </tr>
     </thead>
@@ -135,6 +150,17 @@
         <td>{{ s.get_status_display }}</td>
         <td>{{ s.end_date }}</td>
         <td>{{ s.days_until_expiry }}</td>
+        <td>
+          {% if s.deal_status == "win" %}
+          <span class="dash-deal dash-deal--win">Win</span>
+          {% elif s.deal_status == "lost" %}
+          <span class="dash-deal dash-deal--lost">Lost</span>
+          {% elif s.deal_status == "cancel" %}
+          <span class="dash-deal dash-deal--cancel">Cancel</span>
+          {% else %}
+          <span class="dash-deal dash-deal--empty">—</span>
+          {% endif %}
+        </td>
         <td>
           <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ dashboard_renew_next|urlencode }}">Renew</a>
         </td>

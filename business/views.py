@@ -4,7 +4,7 @@ from io import StringIO
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -27,6 +27,7 @@ from .forms import (
     ClientForm,
     ClientSubscriptionForm,
     RenewalConfirmLineFormSet,
+    RenewalConfirmSubmitterForm,
     SubscriptionRenewForm,
     ProductForm,
     SupportSLASettingsForm,
@@ -218,6 +219,28 @@ def dashboard(request):
     return render(request, "business/dashboard.html", ctx)
 
 
+def _renewal_invite_line_prefetch():
+    return Prefetch(
+        "lines",
+        queryset=SubscriptionRenewalInviteLine.objects.select_related(
+            "subscription",
+            "subscription__client",
+            "subscription__product",
+        ),
+    )
+
+
+def _invite_deal_payload(invite):
+    state = invite.deal_table_state()
+    return {
+        "deal_pending": state["pending"],
+        "deal_badges": state["badges"],
+        "deal_status_url": reverse(
+            "client_renewal_set_deal_status", kwargs={"pk": invite.pk}
+        ),
+    }
+
+
 @sales_module_required
 def client_renewal_list(request):
     company = _company(request)
@@ -233,6 +256,7 @@ def client_renewal_list(request):
             email_sent_at__isnull=False,
         )
         .annotate(line_count=Count("lines"))
+        .prefetch_related(_renewal_invite_line_prefetch())
         .order_by("-email_sent_at", "-created_at")
     )
     return render(
@@ -261,6 +285,7 @@ def client_renewal_live(request):
             email_sent_at__isnull=False,
         )
         .annotate(line_count=Count("lines"))
+        .prefetch_related(_renewal_invite_line_prefetch())
         .order_by("-email_sent_at", "-created_at")
     )
     rows = []
@@ -268,19 +293,20 @@ def client_renewal_live(request):
         detail_url = ""
         if invite.submitted_at:
             detail_url = reverse("client_renewal_detail", kwargs={"pk": invite.pk})
-        rows.append(
-            {
-                "id": str(invite.pk),
-                "client_email": invite.client_email,
-                "email_sent_at": _format_dt(invite.email_sent_at),
-                "read_at": _format_dt(invite.read_at),
-                "read_source": invite.read_source or "",
-                "submitted_at": _format_dt(invite.submitted_at),
-                "quotation_sent_at": _format_dt(invite.quotation_sent_at),
-                "line_count": invite.line_count,
-                "detail_url": detail_url,
-            }
-        )
+        row = {
+            "id": str(invite.pk),
+            "client_email": invite.client_email,
+            "email_sent_at": _format_dt(invite.email_sent_at),
+            "read_at": _format_dt(invite.read_at),
+            "read_source": invite.read_source or "",
+            "submitted_at": _format_dt(invite.submitted_at),
+            "submitted_by_email": invite.submitted_by_email or "",
+            "quotation_sent_at": _format_dt(invite.quotation_sent_at),
+            "line_count": invite.line_count,
+            "detail_url": detail_url,
+        }
+        row.update(_invite_deal_payload(invite))
+        rows.append(row)
     return JsonResponse(
         {
             "ok": True,
@@ -288,6 +314,88 @@ def client_renewal_live(request):
             "polled_at": _format_dt(timezone.now()),
             "logs": poll_logs,
             "rows": rows,
+        }
+    )
+
+
+@sales_module_required
+@require_http_methods(["GET", "POST"])
+def client_renewal_set_deal_status(request, pk):
+    company = _company(request)
+    invite = get_object_or_404(
+        SubscriptionRenewalInvite.objects.prefetch_related(
+            _renewal_invite_line_prefetch()
+        ),
+        pk=pk,
+        company=company,
+        email_sent_at__isnull=False,
+    )
+    next_url = reverse("client_renewal_list")
+
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "items": invite.deal_line_items(next_url),
+                **_invite_deal_payload(invite),
+            }
+        )
+
+    valid = {
+        ClientSubscription.DealStatus.WIN,
+        ClientSubscription.DealStatus.LOST,
+        ClientSubscription.DealStatus.CANCEL,
+    }
+    status = (request.POST.get("deal_status") or "").strip().lower()
+    if status not in valid:
+        return JsonResponse(
+            {"ok": False, "error": "Choose Win, Lost, or Cancel."},
+            status=400,
+        )
+    try:
+        subscription_id = int(request.POST.get("subscription_id") or "")
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"ok": False, "error": "Choose a company / product."},
+            status=400,
+        )
+
+    items_before = invite.deal_line_items(next_url)
+    target = next(
+        (item for item in items_before if item["subscription_id"] == subscription_id),
+        None,
+    )
+    if target is None:
+        return JsonResponse(
+            {"ok": False, "error": "Subscription is not part of this renewal email."},
+            status=400,
+        )
+
+    try:
+        invite.apply_line_deal_status(subscription_id, status)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    update_now = (request.POST.get("update_now") or "").strip() in {
+        "1",
+        "true",
+        "yes",
+    }
+    renew_url = ""
+    if status == ClientSubscription.DealStatus.WIN and update_now:
+        renew_url = target.get("renew_url") or ""
+
+    invite = SubscriptionRenewalInvite.objects.prefetch_related(
+        _renewal_invite_line_prefetch()
+    ).get(pk=invite.pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "deal_status": status,
+            "subscription_id": subscription_id,
+            "items": invite.deal_line_items(next_url),
+            "renew_url": renew_url,
+            **_invite_deal_payload(invite),
         }
     )
 
@@ -630,14 +738,14 @@ def client_import(request):
 def client_add(request):
     company = _company(request)
     if request.method == "POST":
-        form = ClientForm(request.POST)
+        form = ClientForm(request.POST, company=company)
         if form.is_valid():
             c = form.save(commit=False)
             c.company = company
             c.save()
             return redirect("client_list")
     else:
-        form = ClientForm()
+        form = ClientForm(company=company)
     return render(
         request,
         "business/client_form.html",
@@ -646,6 +754,7 @@ def client_add(request):
             "form": form,
             "title": "Add Client",
             "subtitle": "Create client for client subscription mapping",
+            "reminder_presets": {},
         },
     )
 
@@ -673,12 +782,12 @@ def client_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Client, pk=pk, company=company)
     if request.method == "POST":
-        form = ClientForm(request.POST, instance=obj)
+        form = ClientForm(request.POST, instance=obj, company=company)
         if form.is_valid():
             form.save()
             return redirect("client_list")
     else:
-        form = ClientForm(instance=obj)
+        form = ClientForm(instance=obj, company=company)
     return render(
         request,
         "business/client_form.html",
@@ -688,6 +797,7 @@ def client_edit(request, pk):
             "title": "Edit Client",
             "subtitle": "Update client for client subscription mapping",
             "object": obj,
+            "reminder_presets": {},
         },
     )
 
@@ -1966,7 +2076,8 @@ def renewal_track_open(request, invite_id):
 def renewal_confirm_public(request, invite_id):
     invite = get_object_or_404(
         SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
-            "lines"
+            "lines",
+            "lines__subscription__client",
         ),
         pk=invite_id,
     )
@@ -1978,27 +2089,51 @@ def renewal_confirm_public(request, invite_id):
             {"invite": invite, "lines": lines, "public_page": True},
         )
     if request.method == "POST":
+        submitter_form = RenewalConfirmSubmitterForm(request.POST)
         formset = RenewalConfirmLineFormSet(request.POST)
-        if formset.is_valid():
-            line_map = {line.pk: line for line in lines}
-            for form in formset.forms:
-                line = line_map.get(form.cleaned_data["line_id"])
-                if line is None:
-                    continue
-                line.renewal_count = form.cleaned_data["renewal_count"]
-                line.save(update_fields=["renewal_count"])
-            invite.submitted_at = timezone.now()
-            invite.save(update_fields=["submitted_at"])
-            from business.expiry_notifications import send_renewal_confirmation_email
+        if submitter_form.is_valid() and formset.is_valid():
+            submitter_email = submitter_form.cleaned_data["submitter_email"].strip()
+            if not invite.is_allowed_submitter(submitter_email):
+                submitter_form.add_error(
+                    "submitter_email",
+                    "This form can only be submitted using Email 1, Email 2, or Email 3 "
+                    "from the client record.",
+                )
+            else:
+                line_map = {line.pk: line for line in lines}
+                for form in formset.forms:
+                    line = line_map.get(form.cleaned_data["line_id"])
+                    if line is None:
+                        continue
+                    line.renewal_count = form.cleaned_data["renewal_count"]
+                    line.save(update_fields=["renewal_count"])
+                invite.submitted_at = timezone.now()
+                invite.submitted_by_email = submitter_email
+                invite.save(update_fields=["submitted_at", "submitted_by_email"])
+                stopped = []
+                for line in lines:
+                    sub = getattr(line, "subscription", None)
+                    if sub is None or not sub.end_date:
+                        continue
+                    if sub.expiry_reminder_stopped_for_end_date == sub.end_date:
+                        continue
+                    sub.expiry_reminder_stopped_for_end_date = sub.end_date
+                    stopped.append(sub)
+                if stopped:
+                    ClientSubscription.objects.bulk_update(
+                        stopped, ["expiry_reminder_stopped_for_end_date"]
+                    )
+                from business.expiry_notifications import send_renewal_confirmation_email
 
-            send_renewal_confirmation_email(invite, lines)
-            return render(
-                request,
-                "business/renewal_confirm_thanks_guest.html",
-                {"invite": invite, "lines": lines, "public_page": True},
-            )
+                send_renewal_confirmation_email(invite, lines)
+                return render(
+                    request,
+                    "business/renewal_confirm_thanks_guest.html",
+                    {"invite": invite, "lines": lines, "public_page": True},
+                )
         rows = list(zip(formset.forms, lines))
     else:
+        submitter_form = RenewalConfirmSubmitterForm()
         formset = RenewalConfirmLineFormSet(
             initial=[{"line_id": line.pk} for line in lines]
         )
@@ -2010,6 +2145,7 @@ def renewal_confirm_public(request, invite_id):
             "invite": invite,
             "lines": lines,
             "formset": formset,
+            "submitter_form": submitter_form,
             "rows": rows,
             "public_page": True,
         },

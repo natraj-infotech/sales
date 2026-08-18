@@ -1,0 +1,236 @@
+<script>
+(function () {
+  var MODE_OPTIONS = [
+    ["weekly", "Weekly"],
+    ["alternate", "Alternate days"],
+    ["daily", "Daily — once"],
+    ["times_per_day", "Daily — multiple times"],
+    ["total_in_window", "Total mails in this window"]
+  ];
+
+  function parseJsonScript(id, fallback) {
+    var el = document.getElementById(id);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent || "null") || fallback; }
+    catch (err) { return fallback; }
+  }
+
+  function presets() {
+    return parseJsonScript("reminder-presets-json", {});
+  }
+
+  function readPhases(hidden) {
+    try { return JSON.parse(hidden.value || "[]") || []; }
+    catch (err) { return []; }
+  }
+
+  function writePhases(hidden, phases, presetInput) {
+    hidden.value = JSON.stringify(phases);
+    if (presetInput) {
+      var known = presets();
+      var match = "";
+      ["light", "recommended"].forEach(function (key) {
+        if (JSON.stringify(known[key] || []) === JSON.stringify(phases)) match = key;
+      });
+      presetInput.value = match || "custom";
+      syncPresetPills(hidden.closest("form") || document, presetInput.value);
+    }
+  }
+
+  function syncPresetPills(root, preset) {
+    root.querySelectorAll(".reminder-preset-pill").forEach(function (btn) {
+      btn.classList.toggle("is-active", btn.getAttribute("data-preset") === preset);
+    });
+  }
+
+  function windowDays(fromDays, toDays) {
+    var days = [];
+    if (fromDays >= toDays) {
+      for (var d = fromDays; d >= toDays; d--) days.push(d);
+    } else {
+      for (var d2 = fromDays; d2 <= toDays; d2++) days.push(d2);
+    }
+    return days;
+  }
+
+  function sendDays(phase) {
+    var days = windowDays(Number(phase.from_days), Number(phase.to_days));
+    var mode = phase.mode || "daily";
+    var count = Math.max(1, Number(phase.count) || 1);
+    if (!days.length) return [];
+    if (mode === "daily" || mode === "times_per_day") return days;
+    if (mode === "weekly") return days.filter(function (_, i) { return i % 7 === 0; });
+    if (mode === "alternate") return days.filter(function (_, i) { return i % 2 === 0; });
+    if (mode === "total_in_window") {
+      count = Math.min(count, days.length);
+      if (count === 1) return [days[0]];
+      var out = [];
+      var seen = {};
+      for (var i = 0; i < count; i++) {
+        var idx = Math.round(i * (days.length - 1) / (count - 1));
+        var day = days[idx];
+        if (!seen[day]) { seen[day] = true; out.push(day); }
+      }
+      return out;
+    }
+    return days;
+  }
+
+  function timesPerSend(phase) {
+    if ((phase.mode || "") === "times_per_day") {
+      var times = (phase.times || []).filter(Boolean);
+      return Math.max(times.length, Number(phase.count) || 1);
+    }
+    return 1;
+  }
+
+  function plainSentence(phases) {
+    if (!phases.length) return "Add at least one phase so reminders can be sent.";
+    var bits = phases.map(function (phase) {
+      var days = sendDays(phase);
+      var n = days.length * timesPerSend(phase);
+      var from = phase.from_days;
+      var to = phase.to_days;
+      var windowLabel = (from === to)
+        ? (from === 0 ? "on expiry day" : (from < 0 ? Math.abs(from) + " days overdue" : from + " days left"))
+        : ("from " + from + " to " + to + " days left");
+      return (phase.name || "Phase") + ": " + n + " mail(s) " + windowLabel + ".";
+    });
+    return bits.join(" ");
+  }
+
+  function render(builder) {
+    var hidden = document.getElementById(builder.getAttribute("data-hidden"));
+    if (!hidden) return;
+    var presetInput = builder.getAttribute("data-preset")
+      ? document.getElementById(builder.getAttribute("data-preset"))
+      : null;
+    var tbody = builder.querySelector("tbody");
+    var phases = readPhases(hidden);
+    tbody.innerHTML = "";
+    phases.forEach(function (phase, index) {
+      var tr = document.createElement("tr");
+      var modeOptions = MODE_OPTIONS.map(function (pair) {
+        return '<option value="' + pair[0] + '"' + (phase.mode === pair[0] ? " selected" : "") + ">" + pair[1] + "</option>";
+      }).join("");
+      tr.innerHTML =
+        '<td><input data-k="name" value="' + escapeAttr(phase.name || ("Phase " + (index + 1))) + '"></td>' +
+        '<td class="col-from"><input data-k="from_days" type="number" value="' + Number(phase.from_days) + '"></td>' +
+        '<td class="col-to"><input data-k="to_days" type="number" value="' + Number(phase.to_days) + '"></td>' +
+        '<td class="col-mode"><select data-k="mode">' + modeOptions + "</select></td>" +
+        '<td class="col-count"><input data-k="count" type="number" min="1" max="8" value="' + Number(phase.count || 1) + '"></td>' +
+        '<td><input data-k="times" placeholder="09:00, 14:00" value="' + escapeAttr((phase.times || []).join(", ")) + '"></td>' +
+        '<td class="col-remove"><button type="button" class="btn btn-ghost js-remove-phase" data-index="' + index + '" aria-label="Remove phase">×</button></td>';
+      tbody.appendChild(tr);
+    });
+    var help = builder.querySelector(".js-reminder-plain");
+    if (help) help.textContent = plainSentence(phases);
+    if (presetInput) syncPresetPills(builder, presetInput.value || "custom");
+  }
+
+  function escapeAttr(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  function collectRow(tr) {
+    var get = function (key) {
+      var el = tr.querySelector('[data-k="' + key + '"]');
+      return el ? el.value : "";
+    };
+    var times = get("times").split(",").map(function (part) { return part.trim(); }).filter(Boolean);
+    return {
+      name: get("name").trim() || "Phase",
+      from_days: Number(get("from_days")),
+      to_days: Number(get("to_days")),
+      mode: get("mode") || "daily",
+      count: Number(get("count") || 1),
+      times: times.length ? times : ["09:00"]
+    };
+  }
+
+  function bind(builder) {
+    var hidden = document.getElementById(builder.getAttribute("data-hidden"));
+    var presetInput = builder.getAttribute("data-preset")
+      ? document.getElementById(builder.getAttribute("data-preset"))
+      : null;
+    if (!hidden) return;
+
+    builder.addEventListener("change", function (event) {
+      if (!event.target.closest("tbody")) return;
+      var phases = [];
+      builder.querySelectorAll("tbody tr").forEach(function (tr) {
+        phases.push(collectRow(tr));
+      });
+      writePhases(hidden, phases, presetInput);
+      var help = builder.querySelector(".js-reminder-plain");
+      if (help) help.textContent = plainSentence(phases);
+      if (presetInput) syncPresetPills(builder, "custom");
+    });
+
+    builder.addEventListener("click", function (event) {
+      var remove = event.target.closest(".js-remove-phase");
+      if (remove) {
+        var phases = readPhases(hidden);
+        phases.splice(Number(remove.getAttribute("data-index")), 1);
+        writePhases(hidden, phases, presetInput);
+        render(builder);
+        return;
+      }
+      if (event.target.closest(".js-add-phase")) {
+        var phasesAdd = readPhases(hidden);
+        phasesAdd.push({
+          name: "New phase",
+          from_days: 7,
+          to_days: 1,
+          mode: "daily",
+          count: 1,
+          times: ["09:00"]
+        });
+        writePhases(hidden, phasesAdd, presetInput);
+        render(builder);
+        return;
+      }
+      var copyBtn = event.target.closest(".js-copy-company");
+      if (copyBtn) {
+        var raw = builder.getAttribute("data-company-default") || "[]";
+        try { writePhases(hidden, JSON.parse(raw), presetInput); }
+        catch (err) { return; }
+        render(builder);
+        return;
+      }
+      var pill = event.target.closest(".reminder-preset-pill");
+      if (pill && presetInput) {
+        var key = pill.getAttribute("data-preset");
+        var known = presets();
+        if (key !== "custom" && known[key]) {
+          writePhases(hidden, known[key], presetInput);
+          presetInput.value = key;
+        } else {
+          presetInput.value = "custom";
+        }
+        render(builder);
+      }
+    });
+
+    render(builder);
+  }
+
+  document.querySelectorAll(".reminder-builder").forEach(bind);
+
+  document.querySelectorAll("[data-merge-target]").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var field = document.getElementById(chip.getAttribute("data-merge-target"));
+      if (!field) return;
+      var tag = chip.getAttribute("data-tag") || "";
+      field.focus();
+      var start = field.selectionStart || field.value.length;
+      var end = field.selectionEnd || start;
+      field.value = field.value.slice(0, start) + tag + field.value.slice(end);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+})();
+</script>

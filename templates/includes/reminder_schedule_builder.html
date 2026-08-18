@@ -1,0 +1,38 @@
+<div class="reminder-builder"
+     id="{{ builder_id }}"
+     data-hidden="{{ hidden_id }}"
+     {% if preset_id %}data-preset="{{ preset_id }}"{% endif %}
+     {% if copy_company_json %}data-company-default="{{ copy_company_json }}"{% endif %}>
+  {% if show_presets %}
+  <div class="reminder-preset-row" role="group" aria-label="Reminder presets">
+    <button type="button" class="reminder-preset-pill" data-preset="light">Light (30 / 15 / 7)</button>
+    <button type="button" class="reminder-preset-pill" data-preset="recommended">Recommended — Maximum collection</button>
+    <button type="button" class="reminder-preset-pill" data-preset="custom">Custom</button>
+  </div>
+  {% endif %}
+
+  <div class="tracker-table-scroll">
+    <table class="reminder-phase-table">
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th class="col-from">From</th>
+          <th class="col-to">To</th>
+          <th class="col-mode">How to send</th>
+          <th class="col-count">Count</th>
+          <th>Times</th>
+          <th class="col-remove"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="reminder-phase-help">From / To are days remaining. Use 0 for expiry day and negative numbers for overdue (example: -1 to -7). For multiple times per day, list times as 09:00, 14:00, 18:00.</p>
+  <p class="reminder-phase-help js-reminder-plain"></p>
+  <div class="reminder-builder-actions">
+    <button type="button" class="btn btn-ghost js-add-phase">+ Add phase</button>
+    {% if copy_company_json %}
+    <button type="button" class="btn btn-ghost js-copy-company">Copy company default</button>
+    {% endif %}
+  </div>
+</div>
