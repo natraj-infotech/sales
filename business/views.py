@@ -27,7 +27,9 @@ from .forms import (
     ClientForm,
     ClientSubscriptionForm,
     RenewalConfirmLineFormSet,
+    RenewalConfirmOtpForm,
     RenewalConfirmSubmitterForm,
+    RenewalNewProductFormSet,
     SubscriptionRenewForm,
     ProductForm,
     SupportSLASettingsForm,
@@ -46,6 +48,7 @@ from .models import (
     Product,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
+    SubscriptionRenewalInviteNewProduct,
     TicketPriorityRule,
     Vendor,
 )
@@ -407,6 +410,7 @@ def client_renewal_detail(request, pk):
         SubscriptionRenewalInvite.objects.prefetch_related(
             "lines",
             "lines__subscription",
+            "new_products",
         ),
         pk=pk,
         company=company,
@@ -421,6 +425,7 @@ def client_renewal_detail(request, pk):
             "company": company,
             "invite": invite,
             "lines": invite.lines.order_by("id"),
+            "new_products": invite.new_products.order_by("id"),
             "zoho_configured": zoho_configured(),
             "zoho_connected": company.zoho_connected,
             "quoteable_count": invite.lines.filter(renewal_count__gt=0).count(),
@@ -2072,72 +2077,78 @@ def renewal_track_open(request, invite_id):
     return HttpResponse(TRANSPARENT_GIF, content_type="image/gif")
 
 
-@require_http_methods(["GET", "POST"])
-def renewal_confirm_public(request, invite_id):
-    invite = get_object_or_404(
-        SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
-            "lines",
-            "lines__subscription__client",
-        ),
-        pk=invite_id,
+def _renewal_otp_page(
+    request,
+    invite,
+    lines,
+    *,
+    otp_step="email",
+    otp_email="",
+    email_form=None,
+    otp_form=None,
+    otp_notice="",
+):
+    return render(
+        request,
+        "business/renewal_confirm_otp_guest.html",
+        {
+            "invite": invite,
+            "lines": lines,
+            "public_page": True,
+            "otp_step": otp_step,
+            "otp_email": otp_email,
+            "otp_notice": otp_notice,
+            "email_form": email_form
+            or RenewalConfirmSubmitterForm(
+                initial={"submitter_email": otp_email} if otp_email else None
+            ),
+            "otp_form": otp_form or RenewalConfirmOtpForm(),
+        },
     )
-    lines = list(invite.lines.order_by("id"))
-    if invite.is_submitted:
-        return render(
-            request,
-            "business/renewal_confirm_done_guest.html",
-            {"invite": invite, "lines": lines, "public_page": True},
-        )
-    if request.method == "POST":
-        submitter_form = RenewalConfirmSubmitterForm(request.POST)
-        formset = RenewalConfirmLineFormSet(request.POST)
-        if submitter_form.is_valid() and formset.is_valid():
-            submitter_email = submitter_form.cleaned_data["submitter_email"].strip()
-            if not invite.is_allowed_submitter(submitter_email):
-                submitter_form.add_error(
-                    "submitter_email",
-                    "This form can only be submitted using Email 1, Email 2, or Email 3 "
-                    "from the client record.",
-                )
-            else:
-                line_map = {line.pk: line for line in lines}
-                for form in formset.forms:
-                    line = line_map.get(form.cleaned_data["line_id"])
-                    if line is None:
-                        continue
-                    line.renewal_count = form.cleaned_data["renewal_count"]
-                    line.save(update_fields=["renewal_count"])
-                invite.submitted_at = timezone.now()
-                invite.submitted_by_email = submitter_email
-                invite.save(update_fields=["submitted_at", "submitted_by_email"])
-                stopped = []
-                for line in lines:
-                    sub = getattr(line, "subscription", None)
-                    if sub is None or not sub.end_date:
-                        continue
-                    if sub.expiry_reminder_stopped_for_end_date == sub.end_date:
-                        continue
-                    sub.expiry_reminder_stopped_for_end_date = sub.end_date
-                    stopped.append(sub)
-                if stopped:
-                    ClientSubscription.objects.bulk_update(
-                        stopped, ["expiry_reminder_stopped_for_end_date"]
-                    )
-                from business.expiry_notifications import send_renewal_confirmation_email
 
-                send_renewal_confirmation_email(invite, lines)
-                return render(
-                    request,
-                    "business/renewal_confirm_thanks_guest.html",
-                    {"invite": invite, "lines": lines, "public_page": True},
-                )
-        rows = list(zip(formset.forms, lines))
-    else:
-        submitter_form = RenewalConfirmSubmitterForm()
-        formset = RenewalConfirmLineFormSet(
-            initial=[{"line_id": line.pk} for line in lines]
+
+def _invite_excluded_product_ids(lines):
+    ids = set()
+    for line in lines:
+        sub = getattr(line, "subscription", None)
+        if sub is not None and sub.product_id:
+            ids.add(sub.product_id)
+    return ids
+
+
+def _available_renewal_products(company, excluded_ids):
+    qs = company.products.exclude(pk__in=excluded_ids).order_by("name")
+    return [{"id": p.pk, "name": p.name} for p in qs]
+
+
+def _new_product_formset_kwargs(invite, lines):
+    return {
+        "prefix": "new_products",
+        "company": invite.company,
+        "excluded_product_ids": _invite_excluded_product_ids(lines),
+    }
+
+
+def _annotate_new_product_forms(formset, name_by_id):
+    for form in formset.forms:
+        raw = form["product_id"].value()
+        try:
+            form.product_display_name = name_by_id.get(int(raw), "Product")
+        except (TypeError, ValueError):
+            form.product_display_name = "Product"
+
+
+def _renewal_quantity_page(
+    request, invite, lines, formset, verified_email, new_product_formset=None
+):
+    excluded_ids = _invite_excluded_product_ids(lines)
+    available_products = _available_renewal_products(invite.company, excluded_ids)
+    name_by_id = dict(invite.company.products.values_list("pk", "name"))
+    if new_product_formset is None:
+        new_product_formset = RenewalNewProductFormSet(
+            **_new_product_formset_kwargs(invite, lines)
         )
-        rows = list(zip(formset.forms, lines))
+    _annotate_new_product_forms(new_product_formset, name_by_id)
     return render(
         request,
         "business/renewal_confirm_form_guest.html",
@@ -2145,11 +2156,221 @@ def renewal_confirm_public(request, invite_id):
             "invite": invite,
             "lines": lines,
             "formset": formset,
-            "submitter_form": submitter_form,
-            "rows": rows,
+            "rows": list(zip(formset.forms, lines)),
+            "new_product_formset": new_product_formset,
+            "available_products": available_products,
+            "verified_email": verified_email,
             "public_page": True,
         },
     )
+
+
+def _save_renewal_confirmation(
+    invite, lines, formset, submitter_email, new_product_formset=None
+):
+    line_map = {line.pk: line for line in lines}
+    for form in formset.forms:
+        line = line_map.get(form.cleaned_data["line_id"])
+        if line is None:
+            continue
+        line.renewal_count = form.cleaned_data["renewal_count"]
+        line.save(update_fields=["renewal_count"])
+
+    invite.new_products.all().delete()
+    product_ids = []
+    extras = []
+    if new_product_formset is not None:
+        for form in new_product_formset.forms:
+            if not form.cleaned_data:
+                continue
+            product_ids.append(form.cleaned_data["product_id"])
+        products = {
+            p.pk: p
+            for p in Product.objects.filter(
+                company=invite.company, pk__in=product_ids
+            )
+        }
+        company_name = lines[0].company_name if lines else ""
+        for form in new_product_formset.forms:
+            if not form.cleaned_data:
+                continue
+            product = products.get(form.cleaned_data["product_id"])
+            extras.append(
+                SubscriptionRenewalInviteNewProduct(
+                    invite=invite,
+                    product=product,
+                    company_name=company_name,
+                    product_name=product.name if product else "",
+                    quantity=form.cleaned_data["quantity"],
+                )
+            )
+    if extras:
+        SubscriptionRenewalInviteNewProduct.objects.bulk_create(extras)
+
+    invite.submitted_at = timezone.now()
+    invite.submitted_by_email = submitter_email
+    invite.save(update_fields=["submitted_at", "submitted_by_email"])
+    stopped = []
+    for line in lines:
+        sub = getattr(line, "subscription", None)
+        if sub is None or not sub.end_date:
+            continue
+        if sub.expiry_reminder_stopped_for_end_date == sub.end_date:
+            continue
+        sub.expiry_reminder_stopped_for_end_date = sub.end_date
+        stopped.append(sub)
+    if stopped:
+        ClientSubscription.objects.bulk_update(
+            stopped, ["expiry_reminder_stopped_for_end_date"]
+        )
+    from business.expiry_notifications import send_renewal_confirmation_email
+
+    new_products = list(invite.new_products.order_by("id"))
+    send_renewal_confirmation_email(invite, lines, new_products=new_products)
+    return new_products
+
+
+@require_http_methods(["GET", "POST"])
+def renewal_confirm_public(request, invite_id):
+    from business.renewal_otp import (
+        clear_otp_state,
+        get_otp_state,
+        issue_and_send_otp,
+        verified_submitter_email,
+        verify_otp,
+    )
+
+    invite = get_object_or_404(
+        SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
+            "lines",
+            "lines__subscription__client",
+            "lines__subscription__product",
+            "new_products",
+        ),
+        pk=invite_id,
+    )
+    lines = list(invite.lines.order_by("id"))
+    new_products = list(invite.new_products.order_by("id"))
+    if invite.is_submitted:
+        return render(
+            request,
+            "business/renewal_confirm_done_guest.html",
+            {
+                "invite": invite,
+                "lines": lines,
+                "new_products": new_products,
+                "public_page": True,
+            },
+        )
+
+    action = (request.POST.get("action") or "").strip() if request.method == "POST" else ""
+    if request.method == "POST" and action == "change_email":
+        clear_otp_state(request, invite)
+        return redirect("renewal_confirm_public", invite_id=invite.pk)
+
+    if request.method == "POST" and action == "request_otp":
+        email_form = RenewalConfirmSubmitterForm(request.POST)
+        if email_form.is_valid():
+            email = email_form.cleaned_data["submitter_email"].strip()
+            ok, err = issue_and_send_otp(request, invite, email)
+            if ok:
+                return _renewal_otp_page(
+                    request,
+                    invite,
+                    lines,
+                    otp_step="code",
+                    otp_email=email,
+                )
+            email_form.add_error("submitter_email", err)
+        return _renewal_otp_page(request, invite, lines, email_form=email_form)
+
+    if request.method == "POST" and action in {"verify_otp", "resend_otp"}:
+        state = get_otp_state(request, invite)
+        otp_email = (state.get("email") or "").strip()
+        if not otp_email:
+            return _renewal_otp_page(request, invite, lines)
+        if action == "resend_otp":
+            ok, err = issue_and_send_otp(request, invite, otp_email)
+            otp_form = RenewalConfirmOtpForm()
+            if not ok:
+                otp_form.add_error(None, err)
+            return _renewal_otp_page(
+                request,
+                invite,
+                lines,
+                otp_step="code",
+                otp_email=otp_email,
+                otp_form=otp_form,
+                otp_notice="A new code was sent." if ok else "",
+            )
+        otp_form = RenewalConfirmOtpForm(request.POST)
+        if otp_form.is_valid():
+            ok, err = verify_otp(request, invite, otp_form.cleaned_data["otp_code"])
+            if ok:
+                return redirect("renewal_confirm_public", invite_id=invite.pk)
+            otp_form.add_error("otp_code", err)
+        return _renewal_otp_page(
+            request,
+            invite,
+            lines,
+            otp_step="code",
+            otp_email=otp_email,
+            otp_form=otp_form,
+        )
+
+    verified_email = verified_submitter_email(request, invite)
+    if request.method == "POST":
+        if not verified_email:
+            return _renewal_otp_page(request, invite, lines)
+        formset = RenewalConfirmLineFormSet(request.POST)
+        new_product_formset = RenewalNewProductFormSet(
+            request.POST, **_new_product_formset_kwargs(invite, lines)
+        )
+        if formset.is_valid() and new_product_formset.is_valid():
+            saved_new = _save_renewal_confirmation(
+                invite,
+                lines,
+                formset,
+                verified_email,
+                new_product_formset=new_product_formset,
+            )
+            clear_otp_state(request, invite)
+            return render(
+                request,
+                "business/renewal_confirm_thanks_guest.html",
+                {
+                    "invite": invite,
+                    "lines": lines,
+                    "new_products": saved_new,
+                    "public_page": True,
+                },
+            )
+        return _renewal_quantity_page(
+            request,
+            invite,
+            lines,
+            formset,
+            verified_email,
+            new_product_formset=new_product_formset,
+        )
+
+    if not verified_email:
+        state = get_otp_state(request, invite)
+        otp_email = (state.get("email") or "").strip()
+        expires_at = float(state.get("expires_at") or 0)
+        pending_code = bool(otp_email and state.get("code_hash") and timezone.now().timestamp() <= expires_at)
+        if pending_code:
+            return _renewal_otp_page(
+                request,
+                invite,
+                lines,
+                otp_step="code",
+                otp_email=otp_email,
+            )
+        return _renewal_otp_page(request, invite, lines)
+
+    formset = RenewalConfirmLineFormSet(initial=[{"line_id": line.pk} for line in lines])
+    return _renewal_quantity_page(request, invite, lines, formset, verified_email)
 
 
 @require_http_methods(["GET", "POST"])

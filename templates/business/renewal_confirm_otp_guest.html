@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Verify email{% endblock %}
+
+{% block content_guest %}
+<style>
+  .renewal-otp-card p { margin: 0 0 0.85rem; }
+  .renewal-otp-field { margin: 0 0 1rem; max-width: 28rem; }
+  .renewal-otp-field label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+  .renewal-otp-field input[type="email"],
+  .renewal-otp-field input[type="text"] {
+    display: block;
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 2px solid #2563eb;
+    border-radius: 6px;
+    font-size: 0.9375rem;
+    background: #fff;
+  }
+  .renewal-otp-field input[name="otp_code"] {
+    letter-spacing: 0.28em;
+    font-weight: 700;
+    font-size: 1.15rem;
+  }
+  .renewal-otp-field .helptext {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+  }
+  .renewal-otp-field .field-error,
+  .renewal-otp-errors {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    margin-top: 0.35rem;
+  }
+  .renewal-otp-field .field-error ul,
+  .renewal-otp-errors ul {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+  .renewal-otp-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    margin-top: 0.25rem;
+  }
+</style>
+<div class="card renewal-otp-card">
+  <h2 style="margin-top:0;">Verify your email</h2>
+  {% if otp_step == "code" %}
+  <p class="muted">
+    A verification code was sent to <strong>{{ otp_email }}</strong>.
+    Enter it below to confirm renewal quantities.
+  </p>
+  {% if otp_notice %}
+  <p class="muted" style="color:#047857;">{{ otp_notice }}</p>
+  {% endif %}
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="verify_otp">
+    {% if otp_form.non_field_errors %}
+    <div class="renewal-otp-errors">{{ otp_form.non_field_errors }}</div>
+    {% endif %}
+    <div class="renewal-otp-field">
+      <label for="{{ otp_form.otp_code.id_for_label }}">{{ otp_form.otp_code.label }}</label>
+      {{ otp_form.otp_code }}
+      {% if otp_form.otp_code.errors %}
+      <div class="field-error">{{ otp_form.otp_code.errors }}</div>
+      {% endif %}
+    </div>
+    <div class="renewal-otp-actions">
+      <button type="submit" class="btn btn-primary">Verify code</button>
+    </div>
+  </form>
+  <form method="post" style="margin-top:0.75rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="resend_otp">
+    <button type="submit" class="btn btn-ghost">Resend code</button>
+  </form>
+  <form method="post" style="margin-top:0.35rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="change_email">
+    <button type="submit" class="btn btn-ghost">Use a different email</button>
+  </form>
+  {% else %}
+  <p class="muted">
+    Only Email 1, Email 2, or Email 3 from the client record can confirm quantities.
+    A one-time code will be sent to that inbox.
+  </p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="request_otp">
+    {% if email_form.non_field_errors %}
+    <div class="renewal-otp-errors">{{ email_form.non_field_errors }}</div>
+    {% endif %}
+    <div class="renewal-otp-field">
+      <label for="{{ email_form.submitter_email.id_for_label }}">{{ email_form.submitter_email.label }}</label>
+      {{ email_form.submitter_email }}
+      {% if email_form.submitter_email.help_text %}
+      <span class="helptext">{{ email_form.submitter_email.help_text }}</span>
+      {% endif %}
+      {% if email_form.submitter_email.errors %}
+      <div class="field-error">{{ email_form.submitter_email.errors }}</div>
+      {% endif %}
+    </div>
+    <button type="submit" class="btn btn-primary">Send verification code</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

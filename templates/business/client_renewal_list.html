@@ -258,7 +258,7 @@
             <span class="cr-status cr-status--yes">Received</span>
             <span class="cr-meta">{{ invite.submitted_at|date:"d M Y, H:i:s" }}</span>
             {% if invite.submitted_by_email %}
-            <span class="cr-meta">Submitted by {{ invite.submitted_by_email }}</span>
+            <span class="cr-meta">Quantity sent by {{ invite.submitted_by_email }}</span>
             {% endif %}
             {% else %}
             <span class="cr-status cr-status--pending">Pending</span>
@@ -382,7 +382,7 @@
     if (row.submitted_at) {
       var byline = "";
       if (row.submitted_by_email) {
-        byline = '<span class="cr-meta">Submitted by ' + escapeHtml(row.submitted_by_email) + "</span>";
+        byline = '<span class="cr-meta">Quantity sent by ' + escapeHtml(row.submitted_by_email) + "</span>";
       }
       return (
         '<span class="cr-status cr-status--yes">Received</span>' +

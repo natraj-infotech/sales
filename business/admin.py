@@ -10,6 +10,7 @@ from .models import (
     ClientSubscription,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
+    SubscriptionRenewalInviteNewProduct,
     SupportTicket,
     SupportTicketComment,
     SupportTicketMeta,
@@ -141,6 +142,12 @@ class SubscriptionRenewalInviteLineAdmin(admin.ModelAdmin):
         "invite",
     )
     search_fields = ("company_name", "product_name")
+
+
+@admin.register(SubscriptionRenewalInviteNewProduct)
+class SubscriptionRenewalInviteNewProductAdmin(admin.ModelAdmin):
+    list_display = ("product_name", "quantity", "company_name", "invite")
+    search_fields = ("product_name", "company_name")
 
 
 @admin.register(SupportTicket)

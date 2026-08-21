@@ -82,39 +82,134 @@
     color: #2563eb;
     font-weight: 600;
   }
-  .renewal-submitter {
-    margin: 0 0 1rem;
-    padding: 0.9rem 1rem;
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 8px;
-    background: #f8fafc;
-    max-width: 28rem;
+  .renewal-add-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 1.25rem;
   }
-  .renewal-submitter label {
-    display: block;
+  .renewal-new-heading {
+    margin: 0 0 0.65rem;
+    font-size: 1rem;
+  }
+  .renewal-new-block[hidden] {
+    display: none;
+  }
+  .renewal-new-table .col-qty {
+    width: 150px;
+    min-width: 150px;
+    background: #f0f9ff;
+  }
+  .renewal-new-table thead .col-qty {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .renewal-new-table .col-remove {
+    width: 90px;
+    text-align: right;
+  }
+  .renewal-new-remove {
+    border: none;
+    background: transparent;
+    color: #b91c1c;
     font-size: 0.8125rem;
     font-weight: 600;
-    margin-bottom: 0.35rem;
+    cursor: pointer;
+    padding: 0.2rem 0;
   }
-  .renewal-submitter input[type="email"] {
-    display: block;
-    width: 100%;
-    padding: 0.55rem 0.65rem;
-    border: 2px solid #2563eb;
-    border-radius: 6px;
-    font-size: 0.9375rem;
+  .renewal-new-remove:hover {
+    text-decoration: underline;
+  }
+  .renewal-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .renewal-picker[hidden] {
+    display: none;
+  }
+  .renewal-picker-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+  }
+  .renewal-picker-card {
+    position: relative;
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 2rem));
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 1.1rem 1.15rem 1rem;
   }
-  .renewal-submitter .helptext {
-    display: block;
-    margin-top: 0.35rem;
-    font-size: 0.75rem;
+  .renewal-picker-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .renewal-picker-card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .renewal-picker-card p {
+    margin: 0.3rem 0 0;
     color: var(--muted, #64748b);
+    font-size: 0.84rem;
   }
-  .renewal-submitter .field-error {
-    color: #dc2626;
-    font-size: 0.8125rem;
-    margin-top: 0.35rem;
+  .renewal-picker-x {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.1rem 0;
+  }
+  .renewal-picker-x:hover {
+    color: #0f172a;
+  }
+  .renewal-picker-search {
+    width: 100%;
+    margin: 0.85rem 0 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+  }
+  .renewal-picker-list {
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-height: 8rem;
+  }
+  .renewal-picker-item {
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    color: var(--text, #1a1d21);
+  }
+  .renewal-picker-item:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+  }
+  .renewal-picker-empty {
+    margin: 0.5rem 0 0;
+    color: #64748b;
+    font-size: 0.875rem;
   }
 </style>
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>
@@ -126,24 +221,11 @@
 
 <form method="post" novalidate>
   {% csrf_token %}
+  <input type="hidden" name="action" value="submit_quantities">
   {{ formset.management_form }}
   {% if formset.non_form_errors %}
   <div class="tracker-mock-form-errors">{{ formset.non_form_errors }}</div>
   {% endif %}
-  {% if submitter_form.non_field_errors %}
-  <div class="tracker-mock-form-errors">{{ submitter_form.non_field_errors }}</div>
-  {% endif %}
-
-  <div class="renewal-submitter">
-    <label for="{{ submitter_form.submitter_email.id_for_label }}">{{ submitter_form.submitter_email.label }}</label>
-    {{ submitter_form.submitter_email }}
-    {% if submitter_form.submitter_email.help_text %}
-    <span class="helptext">{{ submitter_form.submitter_email.help_text }}</span>
-    {% endif %}
-    {% if submitter_form.submitter_email.errors %}
-    <div class="field-error">{{ submitter_form.submitter_email.errors }}</div>
-    {% endif %}
-  </div>
 
   <div class="renewal-confirm-scroll">
     <table class="renewal-confirm-table">
@@ -177,5 +259,213 @@
     </table>
   </div>
 
+  {{ new_product_formset.management_form }}
+  {% if new_product_formset.non_form_errors %}
+  <div class="tracker-mock-form-errors">{{ new_product_formset.non_form_errors }}</div>
+  {% endif %}
+
+  <div class="renewal-add-bar">
+    <button type="button" class="btn btn-ghost" id="renewal-add-btn"{% if not available_products %} hidden{% endif %}>
+      Add
+    </button>
+    {% if not available_products %}
+    <span class="muted">All products from the list are already in this renewal.</span>
+    {% endif %}
+  </div>
+
+  <div class="renewal-new-block" id="renewal-new-block"{% if not new_product_formset.forms %} hidden{% endif %}>
+    <h3 class="renewal-new-heading">New subscription quantity</h3>
+    <div class="renewal-confirm-scroll">
+      <table class="renewal-confirm-table renewal-new-table">
+        <thead>
+          <tr>
+            <th class="col-product">Product</th>
+            <th class="col-qty">Quantity</th>
+            <th class="col-remove"></th>
+          </tr>
+        </thead>
+        <tbody id="renewal-new-tbody">
+          {% for form in new_product_formset.forms %}
+          <tr data-product-id="{{ form.product_id.value }}">
+            <td class="renewal-confirm-readonly col-product">
+              {{ form.product_id }}
+              <span class="renewal-new-product-name">{{ form.product_display_name }}</span>
+              {% if form.product_id.errors %}
+              <div class="field-error" style="color:#dc2626;font-size:0.8125rem;margin-top:0.25rem;">
+                {{ form.product_id.errors }}
+              </div>
+              {% endif %}
+            </td>
+            <td class="col-qty">
+              {{ form.quantity }}
+              {% if form.quantity.errors %}
+              <div class="field-error" style="color:#dc2626;font-size:0.8125rem;margin-top:0.25rem;">
+                {{ form.quantity.errors }}
+              </div>
+              {% endif %}
+            </td>
+            <td class="col-remove">
+              <button type="button" class="renewal-new-remove">Remove</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <button type="submit" class="btn btn-primary">Submit renewal confirmation</button>
 </form>
+
+<template id="renewal-new-product-template">
+  <tr>
+    <td class="renewal-confirm-readonly col-product">
+      {{ new_product_formset.empty_form.product_id }}
+      <span class="renewal-new-product-name"></span>
+    </td>
+    <td class="col-qty">
+      {{ new_product_formset.empty_form.quantity }}
+    </td>
+    <td class="col-remove">
+      <button type="button" class="renewal-new-remove">Remove</button>
+    </td>
+  </tr>
+</template>
+
+{{ available_products|json_script:"renewal-available-products" }}
+
+<div class="renewal-picker" id="renewal-picker" hidden>
+  <div class="renewal-picker-backdrop" data-close-picker></div>
+  <div class="renewal-picker-card" role="dialog" aria-modal="true" aria-labelledby="renewal-picker-title">
+    <div class="renewal-picker-head">
+      <div>
+        <h3 id="renewal-picker-title">Add product</h3>
+        <p>Choose a product from the list, then enter quantity.</p>
+      </div>
+      <button type="button" class="renewal-picker-x" data-close-picker>Close</button>
+    </div>
+    <input type="search" class="renewal-picker-search" id="renewal-picker-search" placeholder="Search products" autocomplete="off">
+    <div class="renewal-picker-list" id="renewal-picker-list"></div>
+    <p class="renewal-picker-empty" id="renewal-picker-empty" hidden>No matching products left to add.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var productsEl = document.getElementById("renewal-available-products");
+  var products = [];
+  try {
+    products = JSON.parse(productsEl.textContent || "[]");
+  } catch (e) {
+    products = [];
+  }
+  var totalInput = document.querySelector('input[name="new_products-TOTAL_FORMS"]');
+  var tbody = document.getElementById("renewal-new-tbody");
+  var block = document.getElementById("renewal-new-block");
+  var addBtn = document.getElementById("renewal-add-btn");
+  var picker = document.getElementById("renewal-picker");
+  var pickerList = document.getElementById("renewal-picker-list");
+  var pickerEmpty = document.getElementById("renewal-picker-empty");
+  var pickerSearch = document.getElementById("renewal-picker-search");
+  var template = document.getElementById("renewal-new-product-template");
+  if (!totalInput || !tbody || !addBtn || !picker || !template) return;
+
+  function selectedIds() {
+    var ids = {};
+    tbody.querySelectorAll("tr[data-product-id]").forEach(function (row) {
+      ids[String(row.getAttribute("data-product-id"))] = true;
+    });
+    return ids;
+  }
+
+  function remainingProducts(query) {
+    var taken = selectedIds();
+    var q = (query || "").trim().toLowerCase();
+    return products.filter(function (item) {
+      if (taken[String(item.id)]) return false;
+      if (!q) return true;
+      return String(item.name || "").toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function reindex() {
+    var rows = tbody.querySelectorAll("tr");
+    rows.forEach(function (row, index) {
+      row.querySelectorAll("input, select, textarea").forEach(function (input) {
+        if (input.name) {
+          input.name = input.name.replace(/new_products-\d+-/, "new_products-" + index + "-");
+        }
+        if (input.id) {
+          input.id = input.id.replace(/id_new_products-\d+-/, "id_new_products-" + index + "-");
+        }
+      });
+    });
+    totalInput.value = String(rows.length);
+    block.hidden = rows.length === 0;
+    addBtn.hidden = remainingProducts("").length === 0;
+  }
+
+  function renderPicker() {
+    var items = remainingProducts(pickerSearch.value);
+    pickerList.innerHTML = "";
+    pickerEmpty.hidden = items.length > 0;
+    items.forEach(function (item) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "renewal-picker-item";
+      btn.textContent = item.name;
+      btn.addEventListener("click", function () {
+        addProduct(item);
+      });
+      pickerList.appendChild(btn);
+    });
+  }
+
+  function openPicker() {
+    if (remainingProducts("").length === 0) return;
+    picker.hidden = false;
+    pickerSearch.value = "";
+    renderPicker();
+    pickerSearch.focus();
+  }
+
+  function closePicker() {
+    picker.hidden = true;
+  }
+
+  function addProduct(item) {
+    var html = template.innerHTML.replace(/__prefix__/g, String(tbody.querySelectorAll("tr").length));
+    var wrap = document.createElement("tbody");
+    wrap.innerHTML = html.trim();
+    var row = wrap.querySelector("tr");
+    row.setAttribute("data-product-id", String(item.id));
+    var idInput = row.querySelector('input[name$="-product_id"]');
+    if (idInput) idInput.value = item.id;
+    var qtyInput = row.querySelector('input[name$="-quantity"]');
+    if (qtyInput && !qtyInput.value) qtyInput.value = "1";
+    var nameEl = row.querySelector(".renewal-new-product-name");
+    if (nameEl) nameEl.textContent = item.name;
+    tbody.appendChild(row);
+    reindex();
+    closePicker();
+    if (qtyInput) qtyInput.focus();
+  }
+
+  addBtn.addEventListener("click", openPicker);
+  picker.addEventListener("click", function (event) {
+    if (event.target.hasAttribute("data-close-picker")) closePicker();
+  });
+  pickerSearch.addEventListener("input", renderPicker);
+  tbody.addEventListener("click", function (event) {
+    var btn = event.target.closest(".renewal-new-remove");
+    if (!btn) return;
+    var row = btn.closest("tr");
+    if (row) row.remove();
+    reindex();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !picker.hidden) closePicker();
+  });
+  reindex();
+})();
+</script>

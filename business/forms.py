@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import formset_factory
+from django.forms import BaseFormSet, formset_factory
 from django.db.models import Q
 from django.db.models.functions import Trim
 
@@ -510,7 +510,8 @@ class RenewalConfirmLineForm(forms.Form):
 class RenewalConfirmSubmitterForm(forms.Form):
     submitter_email = forms.EmailField(
         label="Your email",
-        help_text="Enter Email 1, Email 2, or Email 3 from the client record.",
+        help_text="Use Email 1, Email 2, or Email 3 from the client record. "
+        "A verification code will be sent to this address.",
         widget=forms.EmailInput(
             attrs={
                 "placeholder": "you@example.com",
@@ -520,7 +521,92 @@ class RenewalConfirmSubmitterForm(forms.Form):
     )
 
 
+class RenewalConfirmOtpForm(forms.Form):
+    otp_code = forms.CharField(
+        label="Verification code",
+        min_length=6,
+        max_length=8,
+        widget=forms.TextInput(
+            attrs={
+                "inputmode": "numeric",
+                "autocomplete": "one-time-code",
+                "placeholder": "6-digit code",
+                "pattern": "[0-9]*",
+            }
+        ),
+    )
+
+    def clean_otp_code(self):
+        raw = self.cleaned_data.get("otp_code") or ""
+        code = "".join(ch for ch in raw if ch.isdigit())
+        if len(code) != 6:
+            raise forms.ValidationError("Enter the 6-digit code sent to your email.")
+        return code
+
+
 RenewalConfirmLineFormSet = formset_factory(RenewalConfirmLineForm, extra=0)
+
+
+class RenewalNewProductForm(forms.Form):
+    product_id = forms.IntegerField(widget=forms.HiddenInput)
+    quantity = forms.IntegerField(
+        min_value=1,
+        initial=1,
+        label="Quantity",
+        widget=forms.NumberInput(
+            attrs={
+                "min": 1,
+                "placeholder": "Qty",
+                "aria-label": "New product quantity",
+            }
+        ),
+    )
+
+
+class BaseRenewalNewProductFormSet(BaseFormSet):
+    def __init__(self, *args, company=None, excluded_product_ids=None, **kwargs):
+        self.company = company
+        self.excluded_product_ids = set(excluded_product_ids or [])
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        valid_ids = set()
+        if self.company is not None:
+            valid_ids = set(
+                Product.objects.filter(company=self.company).values_list("pk", flat=True)
+            )
+        seen = set()
+        for form in self.forms:
+            if not form.cleaned_data:
+                continue
+            product_id = form.cleaned_data.get("product_id")
+            if product_id is None:
+                continue
+            if product_id in self.excluded_product_ids:
+                form.add_error(
+                    "product_id",
+                    "This product is already in your renewal list.",
+                )
+                continue
+            if valid_ids and product_id not in valid_ids:
+                form.add_error("product_id", "Select a product from the list.")
+                continue
+            if product_id in seen:
+                form.add_error("product_id", "This product was already added.")
+                continue
+            seen.add(product_id)
+
+
+RenewalNewProductFormSet = formset_factory(
+    RenewalNewProductForm,
+    formset=BaseRenewalNewProductFormSet,
+    extra=0,
+    max_num=50,
+    validate_max=True,
+)
 
 
 class CaseLockInboxForm(forms.ModelForm):

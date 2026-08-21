@@ -770,7 +770,7 @@ def _renewal_confirmation_cc_recipients(
     return extra
 
 
-def _renewal_confirmation_body(company: CompanyProfile, lines) -> str:
+def _renewal_confirmation_body(company: CompanyProfile, lines, new_products=None) -> str:
     contact_bits = _client_contact_lines(company)
     rows = [
         "Dear Sir/Madam,",
@@ -789,9 +789,27 @@ def _renewal_confirmation_body(company: CompanyProfile, lines) -> str:
         rows.append(
             f"| {company_name:<30} | {product_name:<28} | {current_qty:<8} | {renewal_qty:<8} |"
         )
+    rows.append(
+        "+--------------------------------+------------------------------+----------+----------+"
+    )
+    if new_products:
+        rows.extend(
+            [
+                "",
+                "New subscription quantity",
+                "",
+                "+------------------------------+----------+",
+                "| Product                      | Quantity |",
+                "+------------------------------+----------+",
+            ]
+        )
+        for item in new_products:
+            product_name = (item.product_name or "")[:28]
+            qty = str(item.quantity)
+            rows.append(f"| {product_name:<28} | {qty:<8} |")
+        rows.append("+------------------------------+----------+")
     rows.extend(
         [
-            "+--------------------------------+------------------------------+----------+----------+",
             "",
             "Thank you.",
             "",
@@ -803,11 +821,72 @@ def _renewal_confirmation_body(company: CompanyProfile, lines) -> str:
     return "\n".join(rows)
 
 
+def _renewal_new_products_email_html(
+    new_products,
+    *,
+    font: str,
+    text: str,
+    border: str,
+    card_bg: str,
+    table_header_bg: str,
+) -> str:
+    if not new_products:
+        return ""
+    table_rows: list[str] = []
+    for item in new_products:
+        table_rows.append(
+            """
+                <tr>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;vertical-align:top;background-color:{card_bg};">
+                    {product_name}
+                  </td>
+                  <td style="padding:14px 12px;border:1px solid {border};color:{text};font-family:{font};font-size:14px;font-weight:600;vertical-align:middle;background-color:{card_bg};" align="center">
+                    {quantity}
+                  </td>
+                </tr>
+            """.format(
+                border=border,
+                text=text,
+                font=font,
+                card_bg=card_bg,
+                product_name=escape(item.product_name or ""),
+                quantity=escape(str(item.quantity)),
+            ).strip()
+        )
+    return """
+        <tr>
+          <td style="padding:8px 28px 8px 28px;font-family:{font};">
+            <p style="margin:0 0 10px 0;font-size:14px;letter-spacing:0.4px;text-transform:uppercase;color:{text};font-weight:700;">
+              New subscription quantity
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;margin:0 0 12px 0;">
+              <thead>
+                <tr>
+                  <th align="left" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Product</th>
+                  <th align="center" style="padding:12px;background-color:{table_header_bg};border:1px solid {border};color:#FFFFFF;font-family:{font};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Quantity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {table_rows}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+    """.format(
+        font=font,
+        text=text,
+        table_header_bg=table_header_bg,
+        border=border,
+        table_rows="\n".join(table_rows),
+    )
+
+
 def _renewal_confirmation_html(
     company: CompanyProfile,
     lines,
     *,
     logo_cid: str = "",
+    new_products=None,
 ) -> str:
     font = "'Segoe UI', Arial, Helvetica, sans-serif"
     text = "#374151"
@@ -923,6 +1002,7 @@ def _renewal_confirmation_html(
             </table>
           </td>
         </tr>
+        {new_products_section}
         <tr>
           <td style="padding:8px 28px 28px 28px;font-family:{font};">
             <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
@@ -951,11 +1031,21 @@ def _renewal_confirmation_html(
         company_name=company_name,
         offer_line=escape(RENEWAL_CONFIRMATION_OFFER_LINE),
         table_rows="\n".join(table_rows),
+        new_products_section=_renewal_new_products_email_html(
+            new_products or [],
+            font=font,
+            text=text,
+            border=border,
+            card_bg=card_bg,
+            table_header_bg=table_header_bg,
+        ),
         contact_html=contact_html,
     )
 
 
-def send_renewal_confirmation_email(invite: SubscriptionRenewalInvite, lines=None) -> bool:
+def send_renewal_confirmation_email(
+    invite: SubscriptionRenewalInvite, lines=None, new_products=None
+) -> bool:
     """Email the client a copy of the quantities they just confirmed."""
     try:
         company = invite.company
@@ -975,13 +1065,16 @@ def send_renewal_confirmation_email(invite: SubscriptionRenewalInvite, lines=Non
 
         if lines is None:
             lines = list(invite.lines.order_by("id"))
+        if new_products is None:
+            new_products = list(invite.new_products.order_by("id"))
 
-        body = _renewal_confirmation_body(company, lines)
+        body = _renewal_confirmation_body(company, lines, new_products=new_products)
         logo_inline = _company_logo_inline(company)
         html_body = _renewal_confirmation_html(
             company,
             lines,
             logo_cid=logo_inline[0] if logo_inline else "",
+            new_products=new_products,
         )
         cc_addresses = _renewal_confirmation_cc_recipients(invite, to_email)
         ok, err, _internet_message_id = send_renewal_email(

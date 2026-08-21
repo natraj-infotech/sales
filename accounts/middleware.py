@@ -10,6 +10,7 @@ class RequireCompanyProfileMiddleware:
         "/static/",
         "/media/",
         "/caselock/fill/",
+        "/renewal/",
     )
 
     EXACT_PATHS = (

@@ -6,7 +6,7 @@
   <h2 style="margin-top:0;">Thank you</h2>
   <p class="muted">Your renewal confirmation was submitted successfully. You can close this page.</p>
   {% if invite.submitted_by_email %}
-  <p class="muted">Submitted by {{ invite.submitted_by_email }}</p>
+  <p class="muted">Quantity sent by {{ invite.submitted_by_email }}</p>
   {% endif %}
   <div class="table-wrap" style="margin-top:1rem;">
     <table class="renewal-confirm-table" style="width:100%;border-collapse:collapse;">
@@ -30,5 +30,26 @@
       </tbody>
     </table>
   </div>
+  {% if new_products %}
+  <h3 style="margin:1.25rem 0 0.65rem;font-size:1rem;">New subscription quantity</h3>
+  <div class="table-wrap">
+    <table class="renewal-confirm-table" style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Product</th>
+          <th style="text-align:left;padding:0.5rem;border:1px solid #e2e8f0;">Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in new_products %}
+        <tr>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ item.product_name }}</td>
+          <td style="padding:0.5rem;border:1px solid #e2e8f0;">{{ item.quantity }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

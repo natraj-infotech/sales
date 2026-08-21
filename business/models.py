@@ -421,6 +421,32 @@ class SubscriptionRenewalInviteLine(models.Model):
         return f"{self.company_name} — {self.product_name}"
 
 
+class SubscriptionRenewalInviteNewProduct(models.Model):
+    """Extra catalog products requested on a renewal confirmation. Not a subscription."""
+
+    invite = models.ForeignKey(
+        SubscriptionRenewalInvite,
+        on_delete=models.CASCADE,
+        related_name="new_products",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="renewal_invite_new_products",
+    )
+    company_name = models.CharField(max_length=255, blank=True)
+    product_name = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.product_name} × {self.quantity}"
+
+
 class SubscriptionExpiryDispatch(models.Model):
     """Tracks each expiry reminder dispatch so daily quotas can be enforced."""
 

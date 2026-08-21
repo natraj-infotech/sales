@@ -49,6 +49,43 @@
   .cr-quote-status--sent { background: #d1fae5; color: #065f46; }
   .cr-quote-status--pending { background: #fef3c7; color: #92400e; }
   .cr-quote-status--error { background: #fee2e2; color: #991b1b; }
+  .cr-renewal-table-scroll {
+    overflow-x: hidden;
+  }
+  table.cr-renewal-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+  .cr-renewal-table thead th {
+    white-space: normal;
+    word-break: break-word;
+  }
+  .cr-renewal-table tbody td {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .cr-renewal-table .col-company {
+    width: 18%;
+  }
+  .cr-renewal-table .col-product {
+    width: 34%;
+  }
+  .cr-renewal-table .col-qty,
+  .cr-renewal-table .col-renewal {
+    width: 12%;
+    white-space: nowrap;
+  }
+  .cr-renewal-table .col-sent-by {
+    width: 24%;
+  }
+  .cr-renewal-table.cr-renewal-table--new .col-product {
+    width: 78%;
+  }
+  .cr-renewal-table.cr-renewal-table--new .col-qty {
+    width: 22%;
+  }
 </style>
 
 <div class="tracker-card" style="margin-bottom:1rem;">
@@ -80,7 +117,7 @@
       </div>
     </div>
     <div class="tracker-mock-field">
-      <span class="tracker-mock-label">Submitted by</span>
+      <span class="tracker-mock-label">Quantity sent by</span>
       <div class="tracker-mock-readonly">
         {% if invite.submitted_by_email %}{{ invite.submitted_by_email }}{% else %}—{% endif %}
       </div>
@@ -90,30 +127,52 @@
 
 <div class="tracker-card tracker-card--flush-bottom">
   <h3 class="tracker-card-section-title" style="margin-top:0;">Renewal details</h3>
-  <div class="tracker-table-scroll">
-    <table class="tracker-table-pro tracker-table-pro--wide">
+  <div class="tracker-table-scroll cr-renewal-table-scroll">
+    <table class="tracker-table-pro cr-renewal-table">
       <thead>
         <tr>
-          <th>Company name</th>
-          <th>Product</th>
-          <th>Current quantity</th>
-          <th>Renewal count</th>
-          <th>Submitted by</th>
+          <th class="col-company">Company name</th>
+          <th class="col-product">Product</th>
+          <th class="col-qty">Current quantity</th>
+          <th class="col-renewal">Renewal count</th>
+          <th class="col-sent-by">Quantity sent by</th>
         </tr>
       </thead>
       <tbody>
         {% for line in lines %}
         <tr>
-          <td>{{ line.company_name }}</td>
-          <td>{{ line.product_name }}</td>
-          <td>{{ line.current_quantity }}</td>
-          <td><strong>{{ line.renewal_count }}</strong></td>
-          <td>{% if invite.submitted_by_email %}{{ invite.submitted_by_email }}{% else %}—{% endif %}</td>
+          <td class="col-company">{{ line.company_name }}</td>
+          <td class="col-product">{{ line.product_name }}</td>
+          <td class="col-qty">{{ line.current_quantity }}</td>
+          <td class="col-renewal"><strong>{{ line.renewal_count }}</strong></td>
+          <td class="col-sent-by">{% if invite.submitted_by_email %}{{ invite.submitted_by_email }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  {% if new_products %}
+  <h3 class="tracker-card-section-title">New subscription quantity</h3>
+  <div class="tracker-table-scroll cr-renewal-table-scroll">
+    <table class="tracker-table-pro cr-renewal-table cr-renewal-table--new">
+      <thead>
+        <tr>
+          <th class="col-product">Product</th>
+          <th class="col-qty">Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in new_products %}
+        <tr>
+          <td class="col-product">{{ item.product_name }}</td>
+          <td class="col-qty"><strong>{{ item.quantity }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   <div class="cr-quote-panel">
     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:space-between;">
