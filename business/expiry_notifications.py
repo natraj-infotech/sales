@@ -37,6 +37,7 @@ from business.reminder_schedule import (
     resolve_schedule,
     schedule_bounds,
 )
+from business.reminder_templates import company_reminder_bounds
 from business.renewal_read_tracking import send_renewal_email
 
 logger = logging.getLogger(__name__)
@@ -1293,8 +1294,7 @@ def send_client_expiry_emails(
         )
         return 0, logs
 
-    company_phases = resolve_schedule(company)
-    min_days, max_days = schedule_bounds(company_phases)
+    min_days, max_days = company_reminder_bounds(company)
     min_days = min(min_days, -31)
     max_days = max(max_days, 90)
     cc_recipients = _client_reminder_cc_recipients(company)
@@ -1543,7 +1543,7 @@ def send_team_expiry_digest(
         return 0, logs
 
     phases = resolve_schedule(company)
-    min_days, max_days = schedule_bounds(phases)
+    min_days, max_days = company_reminder_bounds(company)
     subs = list(
         _active_expiring_within(company, max_days, today, min_days=min_days)
     )

@@ -2,12 +2,12 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from .forms import (
     AddCompanyMemberForm,
     CompanyProfileForm,
-    CompanyReminderScheduleForm,
     UpdateCompanyMemberForm,
 )
 from .models import CompanyMember, CompanyProfile
@@ -97,26 +97,128 @@ def company_setup(request):
 
 @company_owner_required
 def reminder_template(request):
-    company = get_company_for_user(request.user)
-    if request.method == "POST":
-        form = CompanyReminderScheduleForm(request.POST, instance=company)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Reminder schedule saved.")
-            return redirect("reminder_template")
-    else:
-        form = CompanyReminderScheduleForm(instance=company)
+    import json
 
-    from business.reminder_schedule import light_schedule, recommended_schedule
+    from django.core.exceptions import ValidationError
+
+    from business.models import Client, ReminderTemplate
+    from business.reminder_schedule import default_reminder_cycle_steps, recommended_schedule
+    from business.reminder_templates import (
+        create_reminder_template,
+        delete_reminder_template,
+        ensure_default_reminder_template,
+        save_reminder_templates,
+    )
+
+    company = get_company_for_user(request.user)
+    ensure_default_reminder_template(company)
+
+    if request.method == "POST":
+        delete_id = (request.POST.get("delete_template_id") or "").strip()
+        if delete_id.isdigit():
+            template = ReminderTemplate.objects.filter(
+                pk=int(delete_id), company=company
+            ).first()
+            if template is None:
+                messages.error(request, "Reminder template not found.")
+            else:
+                try:
+                    delete_reminder_template(template)
+                    messages.success(request, "Reminder template deleted.")
+                except ValidationError as exc:
+                    messages.error(request, str(exc))
+            return redirect("reminder_template")
+
+        action = (request.POST.get("action") or "save").strip()
+        if action == "create":
+            name = (request.POST.get("new_template_name") or "").strip()
+            try:
+                template = create_reminder_template(company, name or "New template")
+                messages.success(request, "Reminder schedule cycle created.")
+                return redirect(f"{reverse('reminder_template')}?active={template.pk}")
+            except ValidationError as exc:
+                messages.error(request, str(exc))
+            return redirect("reminder_template")
+
+        template_payloads = []
+        client_assignments: dict[int, list[int]] = {}
+        for template in ReminderTemplate.objects.filter(company=company):
+            template_payloads.append(
+                {
+                    "id": template.pk,
+                    "name": request.POST.get(f"template_{template.pk}_name", ""),
+                    "schedule": request.POST.get(
+                        f"template_{template.pk}_schedule_json", "[]"
+                    ),
+                }
+            )
+            raw_ids = request.POST.getlist(f"template_{template.pk}_clients")
+            client_assignments[template.pk] = [
+                int(value)
+                for value in raw_ids
+                if str(value).isdigit()
+            ]
+        try:
+            save_reminder_templates(
+                company,
+                template_payloads=template_payloads,
+                client_assignments=client_assignments,
+            )
+            messages.success(request, "Reminder templates saved.")
+        except ValidationError as exc:
+            messages.error(request, str(exc))
+        active = (request.POST.get("active_template_id") or "").strip()
+        if active.isdigit():
+            return redirect(f"{reverse('reminder_template')}?active={active}")
+        return redirect("reminder_template")
+
+    templates = list(
+        ReminderTemplate.objects.filter(company=company).prefetch_related("clients")
+    )
+    all_clients = list(Client.objects.filter(company=company).order_by("name"))
+    default_template = next((item for item in templates if item.is_default), None)
+
+    template_rows = []
+    for template in templates:
+        if template.is_default:
+            assigned_clients = [
+                client
+                for client in all_clients
+                if client.reminder_template_id in (None, template.pk)
+            ]
+            assigned_client_ids = {client.pk for client in assigned_clients}
+        else:
+            assigned_clients = list(template.clients.all())
+            assigned_client_ids = {client.pk for client in assigned_clients}
+        template_rows.append(
+            {
+                "template": template,
+                "schedule_json": json.dumps(template.schedule or []),
+                "assigned_clients": assigned_clients,
+                "assigned_client_ids": assigned_client_ids,
+                "builder_id": f"template-builder-{template.pk}",
+                "hidden_id": f"template-{template.pk}-schedule-json",
+            }
+        )
+
+    active_raw = (request.GET.get("active") or "").strip()
+    active_template_id = None
+    if active_raw.isdigit():
+        active_template_id = int(active_raw)
+    elif template_rows:
+        active_template_id = template_rows[0]["template"].pk
 
     return render(
         request,
         "accounts/reminder_template.html",
         {
-            "form": form,
             "company": company,
+            "template_rows": template_rows,
+            "all_clients": all_clients,
+            "default_template": default_template,
+            "active_template_id": active_template_id,
+            "default_cycle_steps": default_reminder_cycle_steps(),
             "reminder_presets": {
-                "light": light_schedule(),
                 "recommended": recommended_schedule(),
             },
         },

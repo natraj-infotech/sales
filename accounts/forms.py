@@ -11,14 +11,6 @@ from business.reminder_schedule import (
     DEFAULT_EMAIL_SUBJECT,
     DEFAULT_END_PARAGRAPH,
     DEFAULT_INITIAL_PARAGRAPH,
-    PRESET_CUSTOM,
-    PRESET_LIGHT,
-    PRESET_RECOMMENDED,
-    VALID_PRESETS,
-    light_schedule,
-    normalize_schedule,
-    notify_days_csv,
-    recommended_schedule,
 )
 
 from .models import CompanyMember, CompanyProfile
@@ -160,58 +152,6 @@ class CompanyProfileForm(forms.ModelForm):
                 instance.outgoing_email_app_password = (
                     self._original_outgoing_email_app_password
                 )
-        if commit:
-            instance.save()
-        return instance
-
-
-class CompanyReminderScheduleForm(forms.ModelForm):
-    expiry_reminder_schedule_json = forms.CharField(
-        required=False,
-        widget=forms.HiddenInput(),
-    )
-
-    class Meta:
-        model = CompanyProfile
-        fields = ("expiry_reminder_preset",)
-        widgets = {
-            "expiry_reminder_preset": forms.HiddenInput(),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        schedule = list(self.instance.expiry_reminder_schedule or [])
-        if not schedule:
-            preset = self.instance.expiry_reminder_preset or PRESET_RECOMMENDED
-            schedule = (
-                light_schedule()
-                if preset == PRESET_LIGHT
-                else recommended_schedule()
-            )
-        self.fields["expiry_reminder_schedule_json"].initial = json.dumps(schedule)
-        if not self.instance.expiry_reminder_preset:
-            self.initial.setdefault("expiry_reminder_preset", PRESET_RECOMMENDED)
-
-    def clean_expiry_reminder_preset(self):
-        preset = (self.cleaned_data.get("expiry_reminder_preset") or "").strip()
-        if preset not in VALID_PRESETS:
-            return PRESET_CUSTOM
-        return preset
-
-    def clean_expiry_reminder_schedule_json(self):
-        raw = self.cleaned_data.get("expiry_reminder_schedule_json") or "[]"
-        return json.dumps(normalize_schedule(raw))
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        raw_phases = self.cleaned_data.get("expiry_reminder_schedule_json") or "[]"
-        phases = (
-            raw_phases
-            if isinstance(raw_phases, list)
-            else json.loads(raw_phases or "[]")
-        )
-        instance.expiry_reminder_schedule = phases
-        instance.expiry_notify_at_days = notify_days_csv(phases)
         if commit:
             instance.save()
         return instance

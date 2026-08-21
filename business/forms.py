@@ -1,5 +1,3 @@
-import json
-
 from django import forms
 from django.forms import formset_factory
 from django.db.models import Q
@@ -134,11 +132,6 @@ class VendorForm(forms.ModelForm):
 
 
 class ClientForm(forms.ModelForm):
-    reminder_schedule_json = forms.CharField(
-        required=False,
-        widget=forms.HiddenInput(),
-    )
-
     class Meta:
         model = Client
         fields = (
@@ -152,30 +145,16 @@ class ClientForm(forms.ModelForm):
             "phone_3",
             "notes",
             "renewal_emails_enabled",
-            "use_custom_reminder",
-            "reminder_email_subject",
-            "reminder_email_initial_paragraph",
-            "reminder_email_end_paragraph",
+            "reminder_template",
         )
         widgets = {
             "notes": forms.HiddenInput(),
             "renewal_emails_enabled": forms.CheckboxInput(),
-            "use_custom_reminder": forms.CheckboxInput(),
-            "reminder_email_subject": forms.TextInput(
-                attrs={"placeholder": "{{client_name}} — subscription expiring in {{days_left}} days"}
-            ),
-            "reminder_email_initial_paragraph": forms.Textarea(attrs={"rows": 3}),
-            "reminder_email_end_paragraph": forms.Textarea(attrs={"rows": 3}),
         }
 
     def __init__(self, *args, company=None, **kwargs):
-        from business.reminder_schedule import (
-            DEFAULT_EMAIL_SUBJECT,
-            DEFAULT_END_PARAGRAPH,
-            DEFAULT_INITIAL_PARAGRAPH,
-            normalize_schedule,
-            resolve_schedule,
-        )
+        from business.models import ReminderTemplate
+        from business.reminder_templates import ensure_default_reminder_template
 
         self.company = company
         super().__init__(*args, **kwargs)
@@ -194,61 +173,20 @@ class ClientForm(forms.ModelForm):
         self.fields["renewal_emails_enabled"].help_text = (
             "When on, this client receives expiry / renewal reminder emails."
         )
-        self.fields["use_custom_reminder"].label = "Use a custom reminder"
-        self.fields["use_custom_reminder"].required = False
-        self.fields["use_custom_reminder"].help_text = (
-            "Override the company default schedule and/or email wording for this client."
-        )
-        self.fields["reminder_email_subject"].label = "Subject line"
-        self.fields["reminder_email_initial_paragraph"].label = "Opening paragraph"
-        self.fields["reminder_email_end_paragraph"].label = "Closing paragraph"
-        self.fields["reminder_email_subject"].required = False
-        self.fields["reminder_email_initial_paragraph"].required = False
-        self.fields["reminder_email_end_paragraph"].required = False
-        schedule = list(self.instance.reminder_schedule or [])
-        if not schedule and company is not None:
-            try:
-                schedule = resolve_schedule(company)
-            except Exception:
-                schedule = []
-        self.fields["reminder_schedule_json"].initial = json.dumps(schedule)
-        self.company_default_schedule_json = json.dumps(
-            resolve_schedule(company) if company is not None else []
-        )
-        self.fields["reminder_email_subject"].widget.attrs["placeholder"] = (
-            DEFAULT_EMAIL_SUBJECT
-        )
-        self.fields["reminder_email_initial_paragraph"].widget.attrs["placeholder"] = (
-            DEFAULT_INITIAL_PARAGRAPH
-        )
-        self.fields["reminder_email_end_paragraph"].widget.attrs["placeholder"] = (
-            DEFAULT_END_PARAGRAPH
-        )
-        self._normalize_schedule = normalize_schedule
-
-    def clean_reminder_schedule_json(self):
-        raw = self.cleaned_data.get("reminder_schedule_json") or "[]"
-        required = bool(self.cleaned_data.get("use_custom_reminder"))
-        try:
-            phases = self._normalize_schedule(raw, required=required)
-        except Exception:
-            if required:
-                raise
-            phases = []
-        return json.dumps(phases)
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        if self.cleaned_data.get("use_custom_reminder"):
-            raw = self.cleaned_data.get("reminder_schedule_json") or "[]"
-            instance.reminder_schedule = (
-                raw if isinstance(raw, list) else json.loads(raw or "[]")
+        if company is not None:
+            ensure_default_reminder_template(company)
+            self.fields["reminder_template"].queryset = (
+                ReminderTemplate.objects.filter(company=company)
+                .order_by("-is_default", "name")
             )
-        elif not self.instance.pk:
-            instance.reminder_schedule = None
-        if commit:
-            instance.save()
-        return instance
+        else:
+            self.fields["reminder_template"].queryset = ReminderTemplate.objects.none()
+        self.fields["reminder_template"].required = False
+        self.fields["reminder_template"].label = "Reminder template"
+        self.fields["reminder_template"].empty_label = "Use company default"
+        self.fields["reminder_template"].help_text = (
+            "Choose which renewal reminder schedule this client follows."
+        )
 
 
 class ProductForm(forms.ModelForm):

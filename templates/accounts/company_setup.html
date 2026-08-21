@@ -379,10 +379,10 @@
     <div class="expiry-schedule expiry-schedule--cta">
       {% if editing and company %}
       <a href="{% url 'reminder_template' %}" class="expiry-action-btn expiry-action-btn--primary">
-        Reminder template
+        Reminder templates
       </a>
       <p class="expiry-action-note" style="margin:0;">
-        Opens the default renewal reminder schedule. Applies to every client unless they have a custom reminder.
+        Create named reminder schedule cycles and assign clients to each one.
       </p>
       {% else %}
       <p class="expiry-action-note" style="margin:0;">
@@ -391,9 +391,9 @@
       {% endif %}
     </div>
 
-    <h3 class="tracker-card-section-title" style="margin-top:1.5rem;">Default reminder email template</h3>
+    <h3 class="tracker-card-section-title" style="margin-top:1.5rem;">Renewal reminder email wording</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
-      Used for every client that does not have a custom template. Leave fields blank to keep the defaults.
+      Shared by all client reminder emails. Leave fields blank to keep the defaults.
     </p>
     <div class="merge-tag-row" aria-label="Merge tags">
       <button type="button" class="merge-tag-chip" data-merge-target="{{ form.expiry_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}client_name{% templatetag closevariable %}">{% templatetag openvariable %}client_name{% templatetag closevariable %}</button>

@@ -48,45 +48,13 @@
           </div>
           {{ form.renewal_emails_enabled.errors }}
 
-          <div class="sla-toggle-row client-renewal-toggle">
-            <div class="toggle-copy">
-              <strong>{{ form.use_custom_reminder.label }}</strong>
-              <p>{{ form.use_custom_reminder.help_text }}</p>
-            </div>
-            <label class="sla-switch" title="{{ form.use_custom_reminder.label }}">
-              {{ form.use_custom_reminder }}
-              <span class="slider"></span>
-            </label>
+          <div class="tracker-mock-grid" style="margin-top:1rem;">
+            {% include "includes/form_field_mock.html" with field=form.reminder_template extra_class="tracker-mock-field--full" %}
           </div>
-          {{ form.use_custom_reminder.errors }}
-
-          <div class="client-reminder-custom" id="client-custom-reminder"{% if not form.use_custom_reminder.value %} hidden{% endif %}>
-            <div class="reminder-tabs" role="tablist">
-              <button type="button" class="reminder-tab is-active" data-tab="schedule">Schedule</button>
-              <button type="button" class="reminder-tab" data-tab="wording">Email wording</button>
-            </div>
-            <div data-pane="schedule">
-              {{ form.reminder_schedule_json }}
-              {{ form.reminder_schedule_json.errors }}
-              {% include "includes/reminder_schedule_builder.html" with builder_id="client-reminder-builder" hidden_id=form.reminder_schedule_json.id_for_label show_presets=False copy_company_json=form.company_default_schedule_json %}
-            </div>
-            <div data-pane="wording" hidden>
-              <div class="merge-tag-row">
-                <button type="button" class="merge-tag-chip" data-merge-target="{{ form.reminder_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}client_name{% templatetag closevariable %}">{% templatetag openvariable %}client_name{% templatetag closevariable %}</button>
-                <button type="button" class="merge-tag-chip" data-merge-target="{{ form.reminder_email_subject.id_for_label }}" data-tag="{% templatetag openvariable %}days_left{% templatetag closevariable %}">{% templatetag openvariable %}days_left{% templatetag closevariable %}</button>
-                <button type="button" class="merge-tag-chip" data-merge-target="{{ form.reminder_email_initial_paragraph.id_for_label }}" data-tag="{% templatetag openvariable %}product_name{% templatetag closevariable %}">{% templatetag openvariable %}product_name{% templatetag closevariable %}</button>
-                <button type="button" class="merge-tag-chip" data-merge-target="{{ form.reminder_email_end_paragraph.id_for_label }}" data-tag="{% templatetag openvariable %}renewal_link{% templatetag closevariable %}">{% templatetag openvariable %}renewal_link{% templatetag closevariable %}</button>
-              </div>
-              <p class="tracker-mock-helptext" style="margin:0 0 0.75rem;">Leave a field blank to inherit the company default for that line.</p>
-              <div class="tracker-mock-grid">
-                {% include "includes/form_field_mock.html" with field=form.reminder_email_subject extra_class="tracker-mock-field--full" %}
-              </div>
-              <div class="tracker-mock-grid" style="margin-top:1rem;">
-                {% include "includes/form_field_mock.html" with field=form.reminder_email_initial_paragraph %}
-                {% include "includes/form_field_mock.html" with field=form.reminder_email_end_paragraph %}
-              </div>
-            </div>
-          </div>
+          <p class="tracker-mock-helptext" style="margin:0.35rem 0 0;">
+            Manage schedules and bulk client assignment from
+            <a href="{% url 'reminder_template' %}">Reminder templates</a>.
+          </p>
         </section>
 
         <div class="tracker-mock-form-actions">
@@ -103,29 +71,4 @@
     </div>
   </div>
 </div>
-{{ reminder_presets|json_script:"reminder-presets-json" }}
-{% include "includes/reminder_schedule_builder_js.html" %}
-<script>
-(function () {
-  var toggle = document.getElementById("{{ form.use_custom_reminder.id_for_label }}");
-  var panel = document.getElementById("client-custom-reminder");
-  function sync() {
-    if (!toggle || !panel) return;
-    panel.hidden = !toggle.checked;
-  }
-  if (toggle) toggle.addEventListener("change", sync);
-  sync();
-  document.querySelectorAll(".reminder-tab").forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      var key = tab.getAttribute("data-tab");
-      document.querySelectorAll(".reminder-tab").forEach(function (btn) {
-        btn.classList.toggle("is-active", btn === tab);
-      });
-      document.querySelectorAll("[data-pane]").forEach(function (pane) {
-        pane.hidden = pane.getAttribute("data-pane") !== key;
-      });
-    });
-  });
-})();
-</script>
 {% endblock %}

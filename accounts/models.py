@@ -112,16 +112,6 @@ class CompanyProfile(models.Model):
         help_text="Shown below the product table in client subscription expiry emails. "
         "Leave blank to use the default text.",
     )
-    expiry_reminder_preset = models.CharField(
-        max_length=20,
-        default="recommended",
-        help_text="light, recommended, or custom reminder cadence.",
-    )
-    expiry_reminder_schedule = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of reminder phases (from/to days, send mode, times).",
-    )
     expiry_client_emails_enabled = models.BooleanField(
         "email clients before subscription expiry",
         default=False,

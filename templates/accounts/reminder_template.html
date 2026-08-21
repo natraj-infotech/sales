@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Reminder template{% endblock %}
+{% block title %}Reminder templates{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -28,6 +28,197 @@
     color: var(--text-secondary);
     line-height: 1.7;
   }
+  .reminder-cycle-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid rgba(147, 197, 253, 0.35);
+  }
+  .reminder-cycle-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid rgba(147, 197, 253, 0.55);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .reminder-cycle-tab:hover {
+    border-color: rgba(37, 99, 235, 0.45);
+    background: rgba(239, 246, 255, 0.95);
+  }
+  .reminder-cycle-tab.is-active {
+    border-color: rgba(37, 99, 235, 0.65);
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+  }
+  .reminder-cycle-tab__badge {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    opacity: 0.85;
+  }
+  .reminder-cycle-tab--add {
+    border-style: dashed;
+    color: #1d4ed8;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .reminder-add-cycle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px dashed rgba(37, 99, 235, 0.35);
+    border-radius: var(--radius);
+    background: rgba(239, 246, 255, 0.45);
+  }
+  .reminder-add-cycle[hidden] {
+    display: none !important;
+  }
+  .reminder-add-cycle input[type="text"] {
+    min-width: 14rem;
+    flex: 1 1 14rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    font: inherit;
+  }
+  .reminder-add-cycle__hint {
+    width: 100%;
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+  .reminder-template-panel {
+    border: 1px solid rgba(147, 197, 253, 0.35);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.72);
+    padding: 1.1rem 1.15rem 1.25rem;
+  }
+  .reminder-template-panel[hidden] {
+    display: none !important;
+  }
+  .reminder-template-panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin-bottom: 0.85rem;
+  }
+  .reminder-template-panel__title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    flex: 1 1 16rem;
+  }
+  .reminder-template-name {
+    min-width: 14rem;
+    flex: 1 1 14rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    font: inherit;
+  }
+  .reminder-template-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .reminder-section-block {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .reminder-section-block:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .reminder-section-block__title {
+    margin: 0 0 0.35rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .reminder-section-block__hint {
+    margin: 0 0 0.65rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+  .reminder-client-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0.45rem 0.85rem;
+    max-height: 14rem;
+    overflow: auto;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    background: rgba(248, 250, 252, 0.9);
+  }
+  .reminder-client-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.8125rem;
+  }
+  .reminder-default-cycle-name {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .reminder-default-locked-note {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+  .reminder-default-schedule {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    background: rgba(248, 250, 252, 0.95);
+    overflow: hidden;
+  }
+  .reminder-default-schedule li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.35rem 1rem;
+    padding: 0.7rem 0.85rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.8125rem;
+  }
+  .reminder-default-schedule li:first-child {
+    border-top: 0;
+  }
+  .reminder-default-schedule__title {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .reminder-default-schedule__detail {
+    color: var(--text-secondary);
+  }
 </style>
 {% endblock %}
 
@@ -36,13 +227,13 @@
   <div class="tracker-page-header-text">
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
     <div>
-      <h1 class="tracker-page-title">Reminder template</h1>
-      <p class="tracker-page-subtitle">Default renewal reminder schedule for {{ company.company_name }}</p>
+      <h1 class="tracker-page-title">Reminder schedule cycles</h1>
+      <p class="tracker-page-subtitle">Create cycles, assign clients, and set reminder windows for {{ company.company_name }}</p>
     </div>
   </div>
   <div class="tracker-page-actions">
     <a href="{% url 'company_setup' %}" class="btn-tracker-header btn-tracker-ghost">Company profile</a>
-    <button type="submit" form="reminder-template-form" class="btn-tracker-header">
+    <button type="submit" form="reminder-templates-form" class="btn-tracker-header">
       <svg aria-hidden="true"><use href="#i-pencil"/></svg>
       Save changes
     </button>
@@ -52,21 +243,159 @@
 
 {% block content %}
 <div class="tracker-card">
-  <form method="post" id="reminder-template-form">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
+  <div class="expiry-schedule">
+    <h4 class="tracker-card-section-title" style="margin-top:0;">Schedule cycles</h4>
+    <p class="muted" style="margin:-0.2rem 0 1rem;font-size:0.8125rem;">
+      Pick a cycle at the top. Assign clients to it, then set the reminder windows and send times below.
+      Each client follows only one cycle. Unassigned clients stay on the default cycle.
+    </p>
 
-    <div class="expiry-schedule">
-      <h4 class="tracker-card-section-title" style="margin-top:0;">Default renewal reminder schedule</h4>
-      <p class="muted" style="margin:-0.2rem 0 1rem;font-size:0.8125rem;">
-        Applies to every client, unless that client has its own custom reminder on the client page.
-        Keep Default unless you need a different cadence.
-      </p>
-      {{ form.expiry_reminder_preset }}
-      {{ form.expiry_reminder_schedule_json }}
-      {{ form.expiry_reminder_preset.errors }}
-      {{ form.expiry_reminder_schedule_json.errors }}
-      {% include "includes/reminder_schedule_builder.html" with builder_id="company-reminder-builder" hidden_id=form.expiry_reminder_schedule_json.id_for_label preset_id=form.expiry_reminder_preset.id_for_label show_presets=True %}
+    <div class="reminder-cycle-tabs" role="tablist" aria-label="Schedule cycles">
+      {% for row in template_rows %}
+      {% with template=row.template %}
+      <button
+        type="button"
+        class="reminder-cycle-tab{% if template.pk == active_template_id %} is-active{% endif %}"
+        role="tab"
+        aria-selected="{% if template.pk == active_template_id %}true{% else %}false{% endif %}"
+        aria-controls="template-panel-{{ template.pk }}"
+        id="template-tab-{{ template.pk }}"
+        data-template-id="{{ template.pk }}"
+      >
+        <span class="js-tab-label">{{ template.name }}</span>
+        {% if template.is_default %}<span class="reminder-cycle-tab__badge">Default</span>{% endif %}
+      </button>
+      {% endwith %}
+      {% endfor %}
+      <button type="button" class="reminder-cycle-tab reminder-cycle-tab--add" id="toggle-add-cycle">
+        + Add cycle
+      </button>
+    </div>
+
+    <div class="reminder-add-cycle" id="add-cycle-panel" hidden>
+      <p class="reminder-add-cycle__hint">Create another schedule cycle with its own reminder windows and client list.</p>
+      <form method="post" style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center;width:100%;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <input type="text" name="new_template_name" placeholder="Cycle name (e.g. VIP Aggressive)" maxlength="120" required>
+        <button type="submit" class="btn-tracker-header btn-tracker-ghost">Create cycle</button>
+        <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cancel-add-cycle">Cancel</button>
+      </form>
+    </div>
+
+  <form method="post" id="reminder-templates-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save">
+    <input type="hidden" name="active_template_id" id="active-template-id" value="{{ active_template_id }}">
+
+      <div class="reminder-template-panels">
+        {% for row in template_rows %}
+        {% with template=row.template %}
+        <section
+          class="reminder-template-panel"
+          id="template-panel-{{ template.pk }}"
+          role="tabpanel"
+          aria-labelledby="template-tab-{{ template.pk }}"
+          data-template-id="{{ template.pk }}"
+          {% if template.pk != active_template_id %}hidden{% endif %}
+        >
+          <div class="reminder-template-panel__head">
+            <div class="reminder-template-panel__title-row">
+              {% if template.is_default %}
+              <div>
+                <h3 class="reminder-default-cycle-name" id="template-heading-{{ template.pk }}">{{ template.name }}</h3>
+                <p class="reminder-default-locked-note" id="template-default-note-{{ template.pk }}">
+                  Locked default cycle — schedule cannot be changed or deleted.
+                </p>
+              </div>
+              <span class="reminder-template-badge">Default</span>
+              {% else %}
+              <label for="template-heading-{{ template.pk }}" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">Cycle name</label>
+              <input
+                type="text"
+                class="reminder-template-name js-template-name-input"
+                id="template-heading-{{ template.pk }}"
+                name="template_{{ template.pk }}_name"
+                value="{{ template.name }}"
+                maxlength="120"
+                data-tab-label="template-tab-{{ template.pk }}"
+              >
+              {% endif %}
+            </div>
+            {% if not template.is_default %}
+            <button
+              type="submit"
+              class="btn-tracker-header btn-tracker-ghost"
+              name="delete_template_id"
+              value="{{ template.pk }}"
+              onclick="return confirm('Delete {{ template.name|escapejs }}? Assigned clients will move to the default cycle.');"
+            >
+              Delete cycle
+            </button>
+            {% endif %}
+          </div>
+
+          <div class="reminder-section-block">
+            <h5 class="reminder-section-block__title">Clients on this cycle</h5>
+            <p class="reminder-section-block__hint">
+              {% if template.is_default %}
+              Clients here use the default cycle. Anyone not assigned to another cycle stays here automatically.
+              {% else %}
+              Tick the clients who should follow this cycle's reminder schedule.
+              {% endif %}
+            </p>
+            {% if all_clients %}
+            <div class="reminder-client-grid js-client-grid" data-template-id="{{ template.pk }}">
+              {% for client in all_clients %}
+              <label class="reminder-client-option">
+                <input
+                  type="checkbox"
+                  class="js-client-assign"
+                  name="template_{{ template.pk }}_clients"
+                  value="{{ client.pk }}"
+                  data-client-id="{{ client.pk }}"
+                  {% if client.pk in row.assigned_client_ids %}checked{% endif %}
+                >
+                <span>{{ client.name }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted" style="font-size:0.8125rem;">No clients yet. Add clients first, then assign them here or from the client page.</p>
+            {% endif %}
+          </div>
+
+          <div class="reminder-section-block">
+            <h5 class="reminder-section-block__title">Reminder windows &amp; send times</h5>
+            {% if template.is_default %}
+            <p class="reminder-section-block__hint">
+              This default cycle is fixed for all companies. Create another cycle if you need a different schedule.
+            </p>
+            <ul class="reminder-default-schedule">
+              {% for step in default_cycle_steps %}
+              <li>
+                <span class="reminder-default-schedule__title">{{ step.title }}</span>
+                <span class="reminder-default-schedule__detail">{{ step.detail }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="reminder-section-block__hint">
+              Add steps for this cycle — for example 30 days before expiry, final 3 days, expiry day, and overdue follow-ups.
+            </p>
+            <input
+              type="hidden"
+              name="template_{{ template.pk }}_schedule_json"
+              id="{{ row.hidden_id }}"
+              value="{{ row.schedule_json|escape }}"
+            >
+            {% include "includes/reminder_schedule_builder.html" with builder_id=row.builder_id hidden_id=row.hidden_id show_presets=False %}
+            {% endif %}
+          </div>
+        </section>
+        {% endwith %}
+        {% endfor %}
+      </div>
 
       <div class="expiry-stop-grid">
         <div>
@@ -83,14 +412,85 @@
           <ul class="expiry-stop-list">
             <li>Outgoing email must be set up in Company profile, otherwise nothing sends.</li>
             <li>Automatic sending is checked every minute locally (every 15 minutes in production) between 8:00 AM and 6:45 PM IST.</li>
-            <li>A client never gets the same reminder twice on the same day.</li>
+            <li>Each scheduled slot is sent once per day; missed same-day slots catch up while the server is running.</li>
             <li>One client with several expiring products gets a single combined email.</li>
           </ul>
         </div>
       </div>
-    </div>
   </form>
+  </div>
 </div>
 {{ reminder_presets|json_script:"reminder-presets-json" }}
 {% include "includes/reminder_schedule_builder_js.html" %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll(".reminder-cycle-tab[data-template-id]");
+  var panels = document.querySelectorAll(".reminder-template-panel[data-template-id]");
+  var activeInput = document.getElementById("active-template-id");
+  var addPanel = document.getElementById("add-cycle-panel");
+  var toggleAdd = document.getElementById("toggle-add-cycle");
+  var cancelAdd = document.getElementById("cancel-add-cycle");
+
+  function showTemplate(templateId) {
+    tabs.forEach(function (tab) {
+      var active = tab.getAttribute("data-template-id") === String(templateId);
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    panels.forEach(function (panel) {
+      var active = panel.getAttribute("data-template-id") === String(templateId);
+      panel.hidden = !active;
+    });
+    if (activeInput) activeInput.value = templateId;
+    if (addPanel) addPanel.hidden = true;
+    if (history.replaceState) {
+      history.replaceState(null, "", "?active=" + encodeURIComponent(templateId));
+    }
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      showTemplate(tab.getAttribute("data-template-id"));
+    });
+  });
+
+  document.querySelectorAll(".js-template-name-input").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var tab = document.getElementById(input.getAttribute("data-tab-label"));
+      if (!tab) return;
+      var label = tab.querySelector(".js-tab-label");
+      if (label) label.textContent = input.value.trim() || "Untitled cycle";
+    });
+  });
+
+  document.querySelectorAll(".js-client-assign").forEach(function (checkbox) {
+    checkbox.addEventListener("change", function () {
+      if (!checkbox.checked) return;
+      var clientId = checkbox.getAttribute("data-client-id");
+      var currentTemplateId = checkbox.closest(".js-client-grid").getAttribute("data-template-id");
+      document.querySelectorAll(".js-client-assign").forEach(function (other) {
+        if (other === checkbox) return;
+        if (other.getAttribute("data-client-id") !== clientId) return;
+        var otherTemplateId = other.closest(".js-client-grid").getAttribute("data-template-id");
+        if (otherTemplateId !== currentTemplateId) other.checked = false;
+      });
+    });
+  });
+
+  if (toggleAdd && addPanel) {
+    toggleAdd.addEventListener("click", function () {
+      addPanel.hidden = !addPanel.hidden;
+      if (!addPanel.hidden) {
+        var field = addPanel.querySelector('input[name="new_template_name"]');
+        if (field) field.focus();
+      }
+    });
+  }
+  if (cancelAdd && addPanel) {
+    cancelAdd.addEventListener("click", function () {
+      addPanel.hidden = true;
+    });
+  }
+})();
+</script>
 {% endblock %}

@@ -91,6 +91,44 @@ def recommended_schedule() -> list[dict[str, Any]]:
     ]
 
 
+DEFAULT_REMINDER_CYCLE_NAME = "Default Renewal"
+
+
+def default_reminder_cycle_schedule() -> list[dict[str, Any]]:
+    """Locked schedule for the company default reminder cycle."""
+    return clone_schedule(recommended_schedule())
+
+
+def default_reminder_cycle_steps() -> list[dict[str, str]]:
+    """Human-readable summary rows for the locked default cycle."""
+    return [
+        {
+            "title": "30 Days Remaining",
+            "detail": "Weekly reminders",
+        },
+        {
+            "title": "15 to 7 Days Remaining",
+            "detail": "Alternate day reminders",
+        },
+        {
+            "title": "6 to 4 Days Remaining",
+            "detail": "Daily reminders",
+        },
+        {
+            "title": "Last 3 Days",
+            "detail": "3 reminders/day (9 AM, 2 PM, 6 PM)",
+        },
+        {
+            "title": "Expiry Day",
+            "detail": "3 reminders/day (9 AM, 2 PM, 6 PM)",
+        },
+        {
+            "title": "1–7 Days Overdue",
+            "detail": "Daily overdue reminder",
+        },
+    ]
+
+
 def light_schedule(days: list[int] | tuple[int, ...] | None = None) -> list[dict[str, Any]]:
     values = sorted({int(d) for d in (days or (30, 15, 7)) if int(d) > 0}, reverse=True)
     if not values:
@@ -335,27 +373,27 @@ def preset_schedule(preset: str, *, notify_days: str = "") -> list[dict[str, Any
     return recommended_schedule()
 
 
+def resolve_reminder_template(company, client=None):
+    from business.models import ReminderTemplate
+    from business.reminder_templates import ensure_default_reminder_template
+
+    if client is not None:
+        template = getattr(client, "reminder_template", None)
+        if template is not None:
+            return template
+    return ensure_default_reminder_template(company)
+
+
 def resolve_schedule(company, client=None) -> list[dict[str, Any]]:
-    if client is not None and getattr(client, "use_custom_reminder", False):
-        custom = getattr(client, "reminder_schedule", None)
-        if custom:
-            try:
-                return normalize_schedule(custom)
-            except ValidationError:
-                pass
-    stored = getattr(company, "expiry_reminder_schedule", None)
-    if stored:
+    template = resolve_reminder_template(company, client)
+    if template and template.is_default:
+        return default_reminder_cycle_schedule()
+    if template and template.schedule:
         try:
-            return normalize_schedule(stored)
+            return normalize_schedule(template.schedule)
         except ValidationError:
             pass
-    preset = getattr(company, "expiry_reminder_preset", "") or PRESET_RECOMMENDED
-    if preset == PRESET_LIGHT:
-        return light_schedule(
-            parse_day_list(getattr(company, "expiry_notify_at_days", "") or "")
-            or [30, 15, 7]
-        )
-    return recommended_schedule()
+    return default_reminder_cycle_schedule()
 
 
 def resolve_email_copy(company, client=None) -> dict[str, str]:
@@ -368,20 +406,6 @@ def resolve_email_copy(company, client=None) -> dict[str, str]:
     end = (
         getattr(company, "expiry_email_end_paragraph", "") or ""
     ).strip() or DEFAULT_END_PARAGRAPH
-    if client is not None and getattr(client, "use_custom_reminder", False):
-        custom_subject = (getattr(client, "reminder_email_subject", "") or "").strip()
-        custom_initial = (
-            getattr(client, "reminder_email_initial_paragraph", "") or ""
-        ).strip()
-        custom_end = (
-            getattr(client, "reminder_email_end_paragraph", "") or ""
-        ).strip()
-        if custom_subject:
-            subject = custom_subject
-        if custom_initial:
-            initial = custom_initial
-        if custom_end:
-            end = custom_end
     return {"subject": subject, "initial": initial, "end": end}
 
 

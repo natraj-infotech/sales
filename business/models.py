@@ -31,6 +31,42 @@ class Vendor(models.Model):
         return self.name
 
 
+class ReminderTemplate(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="reminder_templates",
+    )
+    name = models.CharField(max_length=120)
+    schedule = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of reminder phases (from/to days, send mode, times).",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Clients with no template assigned use the company default template.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company"],
+                condition=models.Q(is_default=True),
+                name="unique_default_reminder_template_per_company",
+            ),
+        ]
+
+    def __str__(self):
+        label = self.name
+        if self.is_default:
+            label = f"{label} (Default)"
+        return label
+
+
 class Client(models.Model):
     company = models.ForeignKey(
         CompanyProfile, on_delete=models.CASCADE, related_name="clients"
@@ -49,19 +85,14 @@ class Client(models.Model):
         default=True,
         help_text="When off, this client is not sent expiry or renewal reminder emails.",
     )
-    use_custom_reminder = models.BooleanField(
-        "use custom reminder",
-        default=False,
-        help_text="When on, this client uses its own reminder schedule and/or email wording.",
-    )
-    reminder_schedule = models.JSONField(
-        blank=True,
+    reminder_template = models.ForeignKey(
+        ReminderTemplate,
+        on_delete=models.SET_NULL,
         null=True,
-        help_text="Custom reminder phases for this client. Blank fields inherit company default.",
+        blank=True,
+        related_name="clients",
+        help_text="When blank, the company default reminder template is used.",
     )
-    reminder_email_subject = models.CharField(max_length=255, blank=True)
-    reminder_email_initial_paragraph = models.TextField(blank=True)
-    reminder_email_end_paragraph = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
