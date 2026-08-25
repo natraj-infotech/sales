@@ -242,7 +242,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "send-expiry-notifications-daytime": {
         "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(minute="*/15", hour="8-18"),
+        "schedule": crontab(minute="*/15"),
     },
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",

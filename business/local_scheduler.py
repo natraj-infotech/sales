@@ -1,7 +1,7 @@
 """Send scheduled expiry reminder emails while using Django runserver.
 
 Production uses Celery beat. Locally, only `runserver` is usually running,
-so this daemon thread checks due reminder slots every minute.
+so this daemon thread checks due reminder slots every minute, all day.
 """
 
 from __future__ import annotations
@@ -11,14 +11,11 @@ import os
 import sys
 import threading
 import time
-from datetime import time as dt_time
 
 logger = logging.getLogger(__name__)
 
 TICK_SECONDS = 60
 START_DELAY_SECONDS = 8
-WINDOW_START = dt_time(8, 0)
-WINDOW_END = dt_time(18, 45)
 
 _started = False
 _start_lock = threading.Lock()
@@ -51,15 +48,10 @@ def start_if_runserver() -> None:
     )
     thread.start()
     logger.warning(
-        "Local expiry mail scheduler started (every %ss, 08:00–18:45 IST). "
+        "Local expiry mail scheduler started (every %ss, all day IST). "
         "Scheduled reminder times send automatically while runserver is running.",
         TICK_SECONDS,
     )
-
-
-def _in_send_window(now) -> bool:
-    current = now.time().replace(second=0, microsecond=0)
-    return WINDOW_START <= current <= WINDOW_END
 
 
 def _loop() -> None:
@@ -73,13 +65,9 @@ def _tick() -> None:
     if not _tick_lock.acquire(blocking=False):
         return
     from django.db import close_old_connections
-    from django.utils import timezone
 
     close_old_connections()
     try:
-        now = timezone.localtime()
-        if not _in_send_window(now):
-            return
         from business.expiry_notifications import (
             send_expiry_notifications_for_all_companies,
         )

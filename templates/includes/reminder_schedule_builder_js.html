@@ -14,15 +14,16 @@
     ["overdue", "After expiry (payment is late)"]
   ];
 
-  // Automatic sending only runs between 08:00 and 18:45, so times outside that
-  // range would never fire. Any minute inside the range is allowed.
-  var MIN_TIME = "08:00";
-  var MAX_TIME = "18:00";
+  // Any clock time is allowed; automatic sending runs all day.
+  var MIN_TIME = "00:00";
+  var MAX_TIME = "23:59";
 
   // Used only to fill in extra slots when someone asks for more emails a day.
   var TIME_CHOICES = [
-    "08:00", "09:00", "10:00", "11:00", "12:00",
-    "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
+    "00:00", "01:00", "02:00", "03:00", "04:00", "05:00",
+    "06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
+    "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
+    "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"
   ];
 
   var MAX_TIMES_PER_DAY = 8;
