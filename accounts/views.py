@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -141,7 +143,6 @@ def reminder_template(request):
             return redirect("reminder_template")
 
         template_payloads = []
-        client_assignments: dict[int, list[int]] = {}
         for template in ReminderTemplate.objects.filter(company=company):
             template_payloads.append(
                 {
@@ -152,17 +153,10 @@ def reminder_template(request):
                     ),
                 }
             )
-            raw_ids = request.POST.getlist(f"template_{template.pk}_clients")
-            client_assignments[template.pk] = [
-                int(value)
-                for value in raw_ids
-                if str(value).isdigit()
-            ]
         try:
             save_reminder_templates(
                 company,
                 template_payloads=template_payloads,
-                client_assignments=client_assignments,
             )
             messages.success(request, "Reminder templates saved.")
         except ValidationError as exc:
@@ -186,16 +180,13 @@ def reminder_template(request):
                 for client in all_clients
                 if client.reminder_template_id in (None, template.pk)
             ]
-            assigned_client_ids = {client.pk for client in assigned_clients}
         else:
             assigned_clients = list(template.clients.all())
-            assigned_client_ids = {client.pk for client in assigned_clients}
         template_rows.append(
             {
                 "template": template,
                 "schedule_json": json.dumps(template.schedule or []),
                 "assigned_clients": assigned_clients,
-                "assigned_client_ids": assigned_client_ids,
                 "builder_id": f"template-builder-{template.pk}",
                 "hidden_id": f"template-{template.pk}-schedule-json",
             }
@@ -221,6 +212,135 @@ def reminder_template(request):
             "reminder_presets": {
                 "recommended": recommended_schedule(),
             },
+        },
+    )
+
+
+def _format_price_input(value) -> str:
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+    try:
+        amount = Decimal(value if value is not None else "0")
+    except (InvalidOperation, TypeError, ValueError):
+        amount = Decimal("0")
+    return format(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+
+
+def _parse_unit_price(raw: str):
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+    text = (raw or "").strip().replace(",", "").replace("₹", "").replace("Rs.", "")
+    if not text:
+        return Decimal("0.00"), None
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        return None, "Enter a valid price."
+    if value < 0:
+        return None, "Price cannot be negative."
+    quantized = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if quantized >= Decimal("10000000000"):
+        return None, "Price is too large."
+    return quantized, None
+
+
+def _product_price_rows(products, posted=None):
+    rows = []
+    for product in products:
+        if posted is not None:
+            price_input = posted.get(f"price_{product.pk}", "")
+        else:
+            price_input = _format_price_input(product.unit_price)
+        rows.append({"product": product, "price_input": price_input})
+    return rows
+
+
+@company_owner_required
+def company_product_prices(request):
+    from django.db.models import Q
+
+    from business.models import Product
+
+    company = get_company_for_user(request.user)
+    q = (request.POST.get("q") or request.GET.get("q") or "").strip()
+    products = company.products.all().order_by("name")
+    if q:
+        products = products.filter(
+            Q(name__icontains=q)
+            | Q(company_name__icontains=q)
+            | Q(sku__icontains=q)
+            | Q(category__icontains=q)
+        )
+    products = list(products)
+
+    if request.method == "POST":
+        errors = []
+        changed = []
+        id_set = {product.pk for product in products}
+        for product in products:
+            value, err = _parse_unit_price(request.POST.get(f"price_{product.pk}", ""))
+            if err:
+                errors.append(f"{product.name}: {err}")
+                continue
+            if product.unit_price != value:
+                product.unit_price = value
+                changed.append(product)
+        extra_ids = [
+            key[6:]
+            for key in request.POST
+            if key.startswith("price_") and key[6:].isdigit()
+        ]
+        missing_ids = [
+            int(raw) for raw in extra_ids if int(raw) not in id_set
+        ]
+        if missing_ids:
+            extra_products = list(
+                Product.objects.filter(company=company, pk__in=missing_ids)
+            )
+            for product in extra_products:
+                value, err = _parse_unit_price(
+                    request.POST.get(f"price_{product.pk}", "")
+                )
+                if err:
+                    errors.append(f"{product.name}: {err}")
+                    continue
+                if product.unit_price != value:
+                    product.unit_price = value
+                    changed.append(product)
+
+        if errors:
+            messages.error(request, " ".join(errors))
+            return render(
+                request,
+                "accounts/product_prices.html",
+                {
+                    "company": company,
+                    "rows": _product_price_rows(products, request.POST),
+                    "q": q,
+                },
+            )
+
+        if changed:
+            Product.objects.bulk_update(changed, ["unit_price"])
+            messages.success(
+                request,
+                f"Saved list prices for {len(changed)} product(s).",
+            )
+        else:
+            messages.info(request, "No price changes to save.")
+        if q:
+            return redirect(
+                f"{reverse('company_product_prices')}?{urlencode({'q': q})}"
+            )
+        return redirect("company_product_prices")
+
+    return render(
+        request,
+        "accounts/product_prices.html",
+        {
+            "company": company,
+            "rows": _product_price_rows(products),
+            "q": q,
         },
     )
 

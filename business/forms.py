@@ -182,7 +182,7 @@ class ClientForm(forms.ModelForm):
         else:
             self.fields["reminder_template"].queryset = ReminderTemplate.objects.none()
         self.fields["reminder_template"].required = False
-        self.fields["reminder_template"].label = "Reminder template"
+        self.fields["reminder_template"].label = "Reminder cycle"
         self.fields["reminder_template"].empty_label = "Use company default"
         self.fields["reminder_template"].help_text = (
             "Choose which renewal reminder schedule this client follows."

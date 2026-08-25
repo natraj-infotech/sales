@@ -10,6 +10,11 @@ urlpatterns = [
         views.reminder_template,
         name="reminder_template",
     ),
+    path(
+        "company/product-prices/",
+        views.company_product_prices,
+        name="company_product_prices",
+    ),
     path("company/zoho/connect/", views.zoho_connect, name="zoho_connect"),
     path("company/zoho/callback/", views.zoho_callback, name="zoho_callback"),
     path("company/zoho/disconnect/", views.zoho_disconnect, name="zoho_disconnect"),

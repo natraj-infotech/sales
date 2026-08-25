@@ -174,11 +174,15 @@
     border-radius: 0.65rem;
     background: rgba(248, 250, 252, 0.9);
   }
-  .reminder-client-option {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
+  .reminder-client-name {
+    display: block;
     font-size: 0.8125rem;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+  .reminder-client-name:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
   }
   .reminder-default-cycle-name {
     margin: 0;
@@ -228,7 +232,7 @@
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
     <div>
       <h1 class="tracker-page-title">Reminder schedule cycles</h1>
-      <p class="tracker-page-subtitle">Create cycles, assign clients, and set reminder windows for {{ company.company_name }}</p>
+      <p class="tracker-page-subtitle">Create cycles and set reminder windows for {{ company.company_name }}</p>
     </div>
   </div>
   <div class="tracker-page-actions">
@@ -246,8 +250,8 @@
   <div class="expiry-schedule">
     <h4 class="tracker-card-section-title" style="margin-top:0;">Schedule cycles</h4>
     <p class="muted" style="margin:-0.2rem 0 1rem;font-size:0.8125rem;">
-      Pick a cycle at the top. Assign clients to it, then set the reminder windows and send times below.
-      Each client follows only one cycle. Unassigned clients stay on the default cycle.
+      Pick a cycle at the top, then set the reminder windows and send times below.
+      Assign a client to a cycle from that client's edit page. Unassigned clients stay on the default cycle.
     </p>
 
     <div class="reminder-cycle-tabs" role="tablist" aria-label="Schedule cycles">
@@ -273,7 +277,7 @@
     </div>
 
     <div class="reminder-add-cycle" id="add-cycle-panel" hidden>
-      <p class="reminder-add-cycle__hint">Create another schedule cycle with its own reminder windows and client list.</p>
+      <p class="reminder-add-cycle__hint">Create another schedule cycle with its own reminder windows.</p>
       <form method="post" style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center;width:100%;">
         {% csrf_token %}
         <input type="hidden" name="action" value="create">
@@ -341,27 +345,20 @@
               {% if template.is_default %}
               Clients here use the default cycle. Anyone not assigned to another cycle stays here automatically.
               {% else %}
-              Tick the clients who should follow this cycle's reminder schedule.
+              These clients follow this cycle's reminder schedule.
               {% endif %}
+              Change a client's cycle from their edit page.
             </p>
-            {% if all_clients %}
-            <div class="reminder-client-grid js-client-grid" data-template-id="{{ template.pk }}">
-              {% for client in all_clients %}
-              <label class="reminder-client-option">
-                <input
-                  type="checkbox"
-                  class="js-client-assign"
-                  name="template_{{ template.pk }}_clients"
-                  value="{{ client.pk }}"
-                  data-client-id="{{ client.pk }}"
-                  {% if client.pk in row.assigned_client_ids %}checked{% endif %}
-                >
-                <span>{{ client.name }}</span>
-              </label>
+            {% if not all_clients %}
+            <p class="muted" style="font-size:0.8125rem;">No clients yet. Add a client, then choose their cycle on the client edit page.</p>
+            {% elif row.assigned_clients %}
+            <div class="reminder-client-grid">
+              {% for client in row.assigned_clients %}
+              <a class="reminder-client-name" href="{% url 'client_edit' client.pk %}">{{ client.name }}</a>
               {% endfor %}
             </div>
             {% else %}
-            <p class="muted" style="font-size:0.8125rem;">No clients yet. Add clients first, then assign them here or from the client page.</p>
+            <p class="muted" style="font-size:0.8125rem;">No clients on this cycle yet. Assign one from the client's edit page.</p>
             {% endif %}
           </div>
 
@@ -460,20 +457,6 @@
       if (!tab) return;
       var label = tab.querySelector(".js-tab-label");
       if (label) label.textContent = input.value.trim() || "Untitled cycle";
-    });
-  });
-
-  document.querySelectorAll(".js-client-assign").forEach(function (checkbox) {
-    checkbox.addEventListener("change", function () {
-      if (!checkbox.checked) return;
-      var clientId = checkbox.getAttribute("data-client-id");
-      var currentTemplateId = checkbox.closest(".js-client-grid").getAttribute("data-template-id");
-      document.querySelectorAll(".js-client-assign").forEach(function (other) {
-        if (other === checkbox) return;
-        if (other.getAttribute("data-client-id") !== clientId) return;
-        var otherTemplateId = other.closest(".js-client-grid").getAttribute("data-template-id");
-        if (otherTemplateId !== currentTemplateId) other.checked = false;
-      });
     });
   });
 

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Product prices{% endblock %}
+
+{% block extra_css %}
+<style>
+  .price-input {
+    width: 9rem;
+    max-width: 100%;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: right;
+    background: #fff;
+  }
+  .price-input:focus {
+    outline: none;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+  }
+  .price-prefix {
+    color: var(--muted);
+    font-size: 0.8125rem;
+    margin-right: 0.35rem;
+  }
+  .price-cell {
+    white-space: nowrap;
+  }
+  .price-empty {
+    padding: 1.25rem 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-box"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Product prices</h1>
+      <p class="tracker-page-subtitle">Set list prices for {{ company.company_name }}</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a href="{% url 'company_setup' %}" class="btn-tracker-header btn-tracker-ghost">Company profile</a>
+    <button type="submit" form="product-prices-form" class="btn-tracker-header">
+      <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+      Save prices
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card tracker-card--flush-bottom">
+  <p class="muted" style="margin:0 0 1rem;font-size:0.8125rem;line-height:1.5;">
+    These list prices are used in the automatic quotation email after a client confirms
+    renewal quantities. Products with quantity 0 or price 0 are left out of that email.
+  </p>
+
+  <div class="toolbar toolbar--in-card">
+    <form method="get">
+      <input type="search" class="input-inline" name="q" value="{{ q }}" placeholder="Search by name, category, SKU…">
+      <button type="submit" class="btn btn-ghost">Search</button>
+    </form>
+  </div>
+
+  <form method="post" id="product-prices-form">
+    {% csrf_token %}
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {% if rows %}
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Company</th>
+            <th>Part number</th>
+            <th>List price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{{ row.product.name }}</td>
+            <td>{{ row.product.company_name|default:"—" }}</td>
+            <td>{{ row.product.sku|default:"—" }}</td>
+            <td class="price-cell">
+              <span class="price-prefix">₹</span>
+              <input
+                class="price-input"
+                type="text"
+                inputmode="decimal"
+                name="price_{{ row.product.pk }}"
+                id="price-{{ row.product.pk }}"
+                value="{{ row.price_input }}"
+                aria-label="List price for {{ row.product.name }}"
+                autocomplete="off"
+              >
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="price-empty">
+      {% if q %}
+      No products match “{{ q }}”.
+      {% else %}
+      No products yet. Add products first, then set their list prices here.
+      {% endif %}
+    </p>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

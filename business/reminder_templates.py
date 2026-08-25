@@ -120,7 +120,7 @@ def save_reminder_templates(
     company: CompanyProfile,
     *,
     template_payloads: list[dict],
-    client_assignments: dict[int, list[int]],
+    client_assignments: dict[int, list[int]] | None = None,
 ) -> None:
     ensure_default_reminder_template(company)
     templates = {
@@ -142,47 +142,48 @@ def save_reminder_templates(
         template.schedule = parse_template_schedule(payload.get("schedule") or "[]")
         template.save(update_fields=["name", "schedule", "updated_at"])
 
-    claimed: set[int] = set()
-    default_template = ensure_default_reminder_template(company)
-    ordered_templates = sorted(
-        templates.values(),
-        key=lambda item: (item.is_default, item.name.lower()),
-    )
-
-    for template in ordered_templates:
-        if template.is_default:
-            continue
-        template_id = template.pk
-        client_ids = client_assignments.get(template_id, [])
-        valid_ids = list(
-            Client.objects.filter(company=company, pk__in=client_ids).values_list(
-                "pk", flat=True
-            )
+    if client_assignments is not None:
+        claimed: set[int] = set()
+        default_template = ensure_default_reminder_template(company)
+        ordered_templates = sorted(
+            templates.values(),
+            key=lambda item: (item.is_default, item.name.lower()),
         )
-        for client_id in valid_ids:
-            if client_id in claimed:
-                continue
-            claimed.add(client_id)
-            Client.objects.filter(pk=client_id).update(reminder_template=template)
 
-    default_ids = client_assignments.get(default_template.pk, [])
-    if default_ids:
-        valid_default_ids = list(
-            Client.objects.filter(company=company, pk__in=default_ids).values_list(
-                "pk", flat=True
+        for template in ordered_templates:
+            if template.is_default:
+                continue
+            template_id = template.pk
+            client_ids = client_assignments.get(template_id, [])
+            valid_ids = list(
+                Client.objects.filter(company=company, pk__in=client_ids).values_list(
+                    "pk", flat=True
+                )
             )
+            for client_id in valid_ids:
+                if client_id in claimed:
+                    continue
+                claimed.add(client_id)
+                Client.objects.filter(pk=client_id).update(reminder_template=template)
+
+        default_ids = client_assignments.get(default_template.pk, [])
+        if default_ids:
+            valid_default_ids = list(
+                Client.objects.filter(company=company, pk__in=default_ids).values_list(
+                    "pk", flat=True
+                )
+            )
+            for client_id in valid_default_ids:
+                if client_id in claimed:
+                    continue
+                claimed.add(client_id)
+                Client.objects.filter(pk=client_id).update(
+                    reminder_template=default_template
+                )
+
+        Client.objects.filter(company=company).exclude(pk__in=claimed).update(
+            reminder_template=default_template
         )
-        for client_id in valid_default_ids:
-            if client_id in claimed:
-                continue
-            claimed.add(client_id)
-            Client.objects.filter(pk=client_id).update(
-                reminder_template=default_template
-            )
-
-    Client.objects.filter(company=company).exclude(pk__in=claimed).update(
-        reminder_template=default_template
-    )
 
     sync_company_notify_days(company)
 
