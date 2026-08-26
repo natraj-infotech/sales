@@ -2223,17 +2223,13 @@ def _save_renewal_confirmation(
         ClientSubscription.objects.bulk_update(
             stopped, ["expiry_reminder_stopped_for_end_date"]
         )
-    from business.expiry_notifications import (
-        send_renewal_confirmation_email,
-        send_renewal_quotation_email,
-    )
+    from business.expiry_notifications import send_renewal_confirmation_email
 
     lines = list(
         invite.lines.select_related("subscription__product").order_by("id")
     )
     new_products = list(invite.new_products.select_related("product").order_by("id"))
     send_renewal_confirmation_email(invite, lines, new_products=new_products)
-    send_renewal_quotation_email(invite, lines, new_products=new_products)
     return new_products
 
 

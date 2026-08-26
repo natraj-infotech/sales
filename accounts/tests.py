@@ -70,9 +70,9 @@ class ProductPricesViewTests(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.unit_price, Decimal("1200.50"))
 
-    def test_company_setup_has_product_prices_button(self):
+    def test_company_setup_hides_product_prices_button(self):
         response = self.client.get(reverse("company_setup"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("company_product_prices"))
-        self.assertContains(response, "Product prices")
+        self.assertNotContains(response, reverse("company_product_prices"))
+        self.assertNotContains(response, "Product prices")
 
