@@ -158,7 +158,7 @@ def reminder_template(request):
                 company,
                 template_payloads=template_payloads,
             )
-            messages.success(request, "Reminder templates saved.")
+            messages.success(request, "Reminder profile saved.")
         except ValidationError as exc:
             messages.error(request, str(exc))
         active = (request.POST.get("active_template_id") or "").strip()

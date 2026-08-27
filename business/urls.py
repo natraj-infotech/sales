@@ -11,6 +11,11 @@ urlpatterns = [
     path(
         "renewal/confirm/<uuid:invite_id>/",
         views.renewal_confirm_public,
+        name="renewal_confirm_public_legacy",
+    ),
+    path(
+        "renewal/confirm/<uuid:invite_id>/<str:token>/",
+        views.renewal_confirm_public,
         name="renewal_confirm_public",
     ),
     path(

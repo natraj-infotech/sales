@@ -204,11 +204,193 @@
     color: #b91c1c;
     font-size: 0.75rem;
   }
+  .cr-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    margin: -1.5rem -1.75rem 0;
+    padding: 0.7rem 0.85rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f4f6f9;
+    border-radius: var(--radius, 12px) var(--radius, 12px) 0 0;
+  }
+  .cr-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: 1px solid #d0d7e2;
+    background: #fff;
+    padding: 0.7rem 0.75rem;
+    font-weight: 650;
+    font-size: 0.875rem;
+    color: #334155;
+    cursor: pointer;
+    border-radius: 10px;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .cr-tab:hover {
+    border-color: #93c5fd;
+    color: #0f172a;
+  }
+  .cr-tab.is-active,
+  .cr-tab.is-active:hover {
+    background: #1656b8;
+    border-color: #1656b8;
+    color: #fff;
+  }
+  .cr-tab-count {
+    display: inline-block;
+    margin-left: 0.35rem;
+    min-width: 1.25rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .cr-tab.is-active .cr-tab-count {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+  }
+  .cr-tab-panel[hidden] {
+    display: none;
+  }
+  .cr-qty-changed {
+    color: #1d4ed8;
+    font-weight: 700;
+  }
+  .cr-grid-table.tracker-table-pro {
+    min-width: 100%;
+  }
+  .cr-grid-table.tracker-table-pro--wide {
+    min-width: 1520px;
+  }
+  .cr-grid-table.tracker-table-pro thead th,
+  .cr-grid-table.tracker-table-pro tbody td {
+    border: 1px solid #d0d7e2;
+  }
+  .cr-grid-table.tracker-table-pro thead th {
+    border-color: rgba(255, 255, 255, 0.38);
+  }
+  .cr-grid-table .cr-col-qty {
+    text-align: center;
+    white-space: nowrap;
+  }
 </style>
 
 <div class="tracker-card tracker-card--flush-bottom">
+  <div class="cr-tabs" role="tablist" aria-label="Client renewal views">
+    <button type="button" class="cr-tab is-active" role="tab" id="cr-tab-new" data-tab="new" aria-selected="true" aria-controls="cr-panel-new">
+      New subscriptions <span class="cr-tab-count" id="cr-count-new">{{ new_subscription_rows|length }}</span>
+    </button>
+    <button type="button" class="cr-tab" role="tab" id="cr-tab-existing" data-tab="existing" aria-selected="false" aria-controls="cr-panel-existing">
+      Renewal requests <span class="cr-tab-count" id="cr-count-existing">{{ existing_expiry_rows|length }}</span>
+    </button>
+    <button type="button" class="cr-tab" role="tab" id="cr-tab-all" data-tab="all" aria-selected="false" aria-controls="cr-panel-all">
+      All emails <span class="cr-tab-count" id="cr-count-all">{{ object_list|length }}</span>
+    </button>
+  </div>
+
+  <div class="cr-tab-panel" id="cr-panel-new" data-panel="new" role="tabpanel" aria-labelledby="cr-tab-new">
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro cr-grid-table" id="cr-new-table">
+        <thead>
+          <tr>
+            <th>Client email</th>
+            <th>Company</th>
+            <th>Product</th>
+            <th class="cr-col-qty">Quantity</th>
+          </tr>
+        </thead>
+        <tbody id="cr-new-tbody">
+          {% for row in new_subscription_rows %}
+          <tr
+            data-id="{{ row.id }}"
+            class="cr-row--clickable"
+            data-href="{{ row.detail_url }}"
+            role="link"
+            tabindex="0"
+          >
+            <td>
+              {% for email in row.recipient_emails %}
+                {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
+              {% empty %}
+                {{ row.client_email }}
+              {% endfor %}
+            </td>
+            <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
+            <td>{{ row.product_name }}</td>
+            <td class="cr-col-qty"><strong>{{ row.quantity }}</strong></td>
+          </tr>
+          {% empty %}
+          <tr id="cr-new-empty-row">
+            <td colspan="4" class="muted" style="padding:1.25rem;text-align:center;">
+              No new subscriptions yet. They appear here after a client uses Add on the renewal form.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="cr-tab-panel" id="cr-panel-existing" data-panel="existing" role="tabpanel" aria-labelledby="cr-tab-existing" hidden>
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro cr-grid-table" id="cr-existing-table">
+        <thead>
+          <tr>
+            <th>Client email</th>
+            <th>Company</th>
+            <th>Product</th>
+            <th class="cr-col-qty">Previous quantity</th>
+            <th class="cr-col-qty">New quantity</th>
+          </tr>
+        </thead>
+        <tbody id="cr-existing-tbody">
+          {% for row in existing_expiry_rows %}
+          <tr
+            data-id="{{ row.id }}"
+            class="cr-row--clickable"
+            data-href="{{ row.detail_url }}"
+            role="link"
+            tabindex="0"
+          >
+            <td>
+              {% for email in row.recipient_emails %}
+                {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
+              {% empty %}
+                {{ row.client_email }}
+              {% endfor %}
+            </td>
+            <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
+            <td>{{ row.product_name }}</td>
+            <td class="cr-col-qty">{{ row.previous_quantity }}</td>
+            <td class="cr-col-qty">
+              {% if row.new_quantity is None %}
+              —
+              {% elif row.new_quantity != row.previous_quantity %}
+              <span class="cr-qty-changed">{{ row.new_quantity }}</span>
+              {% else %}
+              {{ row.new_quantity }}
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr id="cr-existing-empty-row">
+            <td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">
+              No renewal requests yet. They appear here after a client submits renewal quantities.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="cr-tab-panel" id="cr-panel-all" data-panel="all" role="tabpanel" aria-labelledby="cr-tab-all" hidden>
   <div class="tracker-table-scroll">
-    <table class="tracker-table-pro tracker-table-pro--wide" id="cr-table">
+    <table class="tracker-table-pro tracker-table-pro--wide cr-grid-table" id="cr-table">
       <thead>
         <tr>
           <th>Client email</th>
@@ -231,7 +413,13 @@
           tabindex="0"
           {% endif %}
         >
-          <td>{{ invite.client_email }}</td>
+          <td data-col="email">
+            {% for email in invite.sent_to_emails %}
+              {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
+            {% empty %}
+              {{ invite.client_email }}
+            {% endfor %}
+          </td>
           <td>
             {% if invite.email_sent_at %}
             <span class="cr-status cr-status--yes">Sent</span>
@@ -305,6 +493,7 @@
       </tbody>
     </table>
   </div>
+  </div>
 </div>
 
 <div id="cr-deal-modal" class="cr-modal" hidden>
@@ -328,10 +517,43 @@
   var LIVE_URL = "{% url 'client_renewal_live' %}";
   var POLL_MS = 15000;
   var tbody = document.getElementById("cr-tbody");
+  var newTbody = document.getElementById("cr-new-tbody");
+  var existingTbody = document.getElementById("cr-existing-tbody");
   var meta = document.getElementById("cr-live-meta");
   var refreshBtn = document.getElementById("cr-refresh-btn");
   var timer = null;
   var inFlight = false;
+  var VALID_TABS = { new: true, existing: true, all: true };
+
+  function currentTab() {
+    var hash = (window.location.hash || "").replace("#", "");
+    return VALID_TABS[hash] ? hash : "new";
+  }
+
+  function setActiveTab(name) {
+    var tabName = VALID_TABS[name] ? name : "new";
+    document.querySelectorAll(".cr-tab").forEach(function (btn) {
+      var active = btn.getAttribute("data-tab") === tabName;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    document.querySelectorAll(".cr-tab-panel").forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-panel") !== tabName;
+    });
+    if (window.location.hash.replace("#", "") !== tabName) {
+      history.replaceState(null, "", "#" + tabName);
+    }
+  }
+
+  document.querySelectorAll(".cr-tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      setActiveTab(btn.getAttribute("data-tab"));
+    });
+  });
+  window.addEventListener("hashchange", function () {
+    setActiveTab(currentTab());
+  });
+  setActiveTab(currentTab());
 
   function bindRow(row) {
     if (!row || !row.classList.contains("cr-row--clickable")) return;
@@ -359,6 +581,21 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function clientEmailHtml(row) {
+    var emails = row.recipient_emails && row.recipient_emails.length
+      ? row.recipient_emails
+      : [row.client_email];
+    var html = "";
+    emails.forEach(function (email, index) {
+      if (index === 0) {
+        html += escapeHtml(email || "");
+      } else {
+        html += '<span class="cr-meta">' + escapeHtml(email) + "</span>";
+      }
+    });
+    return html || escapeHtml(row.client_email || "");
   }
 
   function readHtml(row) {
@@ -457,7 +694,7 @@
       tr.setAttribute("tabindex", "0");
     }
     tr.innerHTML =
-      "<td>" + escapeHtml(row.client_email) + "</td>" +
+      "<td data-col=\"email\">" + clientEmailHtml(row) + "</td>" +
       "<td>" + sentHtml(row) + "</td>" +
       '<td data-col="read">' + readHtml(row) + "</td>" +
       '<td data-col="response">' + responseHtml(row) + "</td>" +
@@ -467,6 +704,101 @@
     bindRow(tr);
     bindDealButton(tr.querySelector(".cr-deal-btn"));
     return tr;
+  }
+
+  function emptyRowHtml(id, colspan, message) {
+    return (
+      '<tr id="' + id + '"><td colspan="' + colspan +
+      '" class="muted" style="padding:1.25rem;text-align:center;">' +
+      message + "</td></tr>"
+    );
+  }
+
+  function makeClickableRow(row) {
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-id", row.id);
+    if (row.detail_url) {
+      tr.className = "cr-row--clickable";
+      tr.setAttribute("data-href", row.detail_url);
+      tr.setAttribute("role", "link");
+      tr.setAttribute("tabindex", "0");
+    }
+    return tr;
+  }
+
+  function dash(value) {
+    return value ? escapeHtml(value) : "—";
+  }
+
+  function createNewRow(row) {
+    var tr = makeClickableRow(row);
+    tr.innerHTML =
+      "<td>" + clientEmailHtml(row) + "</td>" +
+      "<td>" + dash(row.company_name) + "</td>" +
+      "<td>" + escapeHtml(row.product_name || "") + "</td>" +
+      '<td class="cr-col-qty"><strong>' + escapeHtml(row.quantity) + "</strong></td>";
+    bindRow(tr);
+    return tr;
+  }
+
+  function createExistingRow(row) {
+    var tr = makeClickableRow(row);
+    var newQty = row.new_quantity;
+    var newHtml = "—";
+    if (newQty !== null && newQty !== undefined && newQty !== "") {
+      if (Number(newQty) !== Number(row.previous_quantity)) {
+        newHtml = '<span class="cr-qty-changed">' + escapeHtml(newQty) + "</span>";
+      } else {
+        newHtml = escapeHtml(newQty);
+      }
+    }
+    tr.innerHTML =
+      "<td>" + clientEmailHtml(row) + "</td>" +
+      "<td>" + dash(row.company_name) + "</td>" +
+      "<td>" + escapeHtml(row.product_name || "") + "</td>" +
+      '<td class="cr-col-qty">' + escapeHtml(row.previous_quantity) + "</td>" +
+      '<td class="cr-col-qty">' + newHtml + "</td>";
+    bindRow(tr);
+    return tr;
+  }
+
+  function fillSimpleTable(tbodyEl, emptyId, colspan, emptyMsg, rows, createFn) {
+    if (!tbodyEl) return;
+    tbodyEl.innerHTML = "";
+    if (!rows.length) {
+      tbodyEl.innerHTML = emptyRowHtml(emptyId, colspan, emptyMsg);
+      return;
+    }
+    rows.forEach(function (row) {
+      tbodyEl.appendChild(createFn(row));
+    });
+  }
+
+  function setCount(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = String(value);
+  }
+
+  function applyTabRows(data) {
+    fillSimpleTable(
+      newTbody,
+      "cr-new-empty-row",
+      4,
+      "No new subscriptions yet. They appear here after a client uses Add on the renewal form.",
+      data.new_subscription_rows || [],
+      createNewRow
+    );
+    fillSimpleTable(
+      existingTbody,
+      "cr-existing-empty-row",
+      5,
+      "No renewal requests yet. They appear here after a client submits renewal quantities.",
+      data.existing_expiry_rows || [],
+      createExistingRow
+    );
+    setCount("cr-count-new", (data.new_subscription_rows || []).length);
+    setCount("cr-count-existing", (data.existing_expiry_rows || []).length);
+    setCount("cr-count-all", (data.rows || []).length);
   }
 
   function applyRows(rows) {
@@ -502,11 +834,13 @@
         return;
       }
 
+      var nextEmail = clientEmailHtml(row);
       var nextRead = readHtml(row);
       var nextResponse = responseHtml(row);
       var nextQuote = quoteHtml(row);
       var nextDeal = dealHtml(row);
       var nextItems = String(row.line_count);
+      var emailCell = tr.querySelector('[data-col="email"]');
       var readCell = tr.querySelector('[data-col="read"]');
       var responseCell = tr.querySelector('[data-col="response"]');
       var quoteCell = tr.querySelector('[data-col="quote"]');
@@ -514,6 +848,10 @@
       var dealCell = tr.querySelector('[data-col="deal"]');
       var changed = false;
 
+      if (emailCell && emailCell.innerHTML !== nextEmail) {
+        emailCell.innerHTML = nextEmail;
+        changed = true;
+      }
       if (readCell && readCell.innerHTML !== nextRead) {
         readCell.innerHTML = nextRead;
         changed = true;
@@ -817,6 +1155,7 @@
       })
       .then(function (data) {
         applyRows(data.rows || []);
+        applyTabRows(data);
         var suffix = data.updated ? " · " + data.updated + " updated" : "";
         setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
         if (data.logs && data.logs.length) {

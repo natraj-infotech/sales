@@ -397,6 +397,53 @@ class SubscriptionRenewalInvite(models.Model):
         sub.deal_status = status
         sub.save(update_fields=["deal_status"])
 
+    @property
+    def sent_to_emails(self) -> list[str]:
+        recipients = list(self.recipients.all())
+        if recipients:
+            return [row.email for row in recipients]
+        addr = (self.client_email or "").strip()
+        return [addr] if addr else []
+
+    def mark_recipient_opened(self, email: str) -> None:
+        key = (email or "").strip().lower()
+        if not key:
+            return
+        recipient = next(
+            (row for row in self.recipients.all() if row.email.lower() == key),
+            None,
+        )
+        if recipient is None or recipient.opened_at:
+            return
+        recipient.opened_at = timezone.now()
+        recipient.save(update_fields=["opened_at"])
+
+
+class SubscriptionRenewalInviteRecipient(models.Model):
+    """One client inbox that received this renewal invite, with its own signed link."""
+
+    invite = models.ForeignKey(
+        SubscriptionRenewalInvite,
+        on_delete=models.CASCADE,
+        related_name="recipients",
+    )
+    email = models.EmailField()
+    sent_at = models.DateTimeField(null=True, blank=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    internet_message_id = models.CharField(max_length=998, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invite", "email"],
+                name="uniq_renewal_invite_recipient_email",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.email} ← invite {self.invite_id}"
+
 
 class SubscriptionRenewalInviteLine(models.Model):
     invite = models.ForeignKey(

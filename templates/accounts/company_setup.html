@@ -304,7 +304,7 @@
       Saving a time does not send immediately — mail goes out automatically at that time.
       Locally this runs every minute while <code>runserver</code> is up, any time of day.
       Production still uses Celery every 15 minutes, all day.
-      Set the reminder cadence from Reminder template.
+      Set the reminder cadence from Reminder profile.
     </p>
 
     <div class="expiry-panel">
@@ -385,7 +385,7 @@
       {% if editing and company %}
       <div class="expiry-cta-actions">
         <a href="{% url 'reminder_template' %}" class="expiry-action-btn expiry-action-btn--primary">
-          Reminder templates
+          Reminder profile
         </a>
       </div>
       <p class="expiry-action-note" style="margin:0;">
@@ -393,7 +393,7 @@
       </p>
       {% else %}
       <p class="expiry-action-note" style="margin:0;">
-        Save your company profile first to open reminder templates.
+        Save your company profile first to open reminder profile.
       </p>
       {% endif %}
     </div>

@@ -11,6 +11,7 @@ from .models import (
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
+    SubscriptionRenewalInviteRecipient,
     SupportTicket,
     SupportTicketComment,
     SupportTicketMeta,
@@ -111,6 +112,12 @@ class ClientSubscriptionAdmin(admin.ModelAdmin):
     )
 
 
+class SubscriptionRenewalInviteRecipientInline(admin.TabularInline):
+    model = SubscriptionRenewalInviteRecipient
+    extra = 0
+    readonly_fields = ("email", "sent_at", "opened_at", "internet_message_id")
+
+
 @admin.register(SubscriptionRenewalInvite)
 class SubscriptionRenewalInviteAdmin(admin.ModelAdmin):
     list_display = (
@@ -129,7 +136,8 @@ class SubscriptionRenewalInviteAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("company",)
-    search_fields = ("client_email", "submitted_by_email")
+    search_fields = ("client_email", "submitted_by_email", "recipients__email")
+    inlines = (SubscriptionRenewalInviteRecipientInline,)
 
 
 @admin.register(SubscriptionRenewalInviteLine)

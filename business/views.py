@@ -27,8 +27,6 @@ from .forms import (
     ClientForm,
     ClientSubscriptionForm,
     RenewalConfirmLineFormSet,
-    RenewalConfirmOtpForm,
-    RenewalConfirmSubmitterForm,
     RenewalNewProductFormSet,
     SubscriptionRenewForm,
     ProductForm,
@@ -233,6 +231,22 @@ def _renewal_invite_line_prefetch():
     )
 
 
+def _renewal_invite_queryset(company):
+    return (
+        SubscriptionRenewalInvite.objects.filter(
+            company=company,
+            email_sent_at__isnull=False,
+        )
+        .annotate(line_count=Count("lines"))
+        .prefetch_related(
+            _renewal_invite_line_prefetch(),
+            "recipients",
+            "new_products",
+        )
+        .order_by("-email_sent_at", "-created_at")
+    )
+
+
 def _invite_deal_payload(invite):
     state = invite.deal_table_state()
     return {
@@ -244,6 +258,96 @@ def _invite_deal_payload(invite):
     }
 
 
+def _format_dt(value):
+    if not value:
+        return ""
+    return date_format(timezone.localtime(value), "d M Y, H:i:s")
+
+
+def _invite_detail_url(invite):
+    if not invite.submitted_at:
+        return ""
+    return reverse("client_renewal_detail", kwargs={"pk": invite.pk})
+
+
+def _new_subscription_rows(invites):
+    """Rows for clients who added catalog products via the renewal Add button."""
+    rows = []
+    for invite in invites:
+        if not invite.submitted_at:
+            continue
+        emails = invite.sent_to_emails or [invite.client_email]
+        detail_url = _invite_detail_url(invite)
+        for item in invite.new_products.all():
+            rows.append(
+                {
+                    "id": f"{invite.pk}-{item.pk}",
+                    "client_email": invite.client_email,
+                    "recipient_emails": emails,
+                    "company_name": item.company_name or "",
+                    "product_name": item.product_name,
+                    "quantity": item.quantity,
+                    "submitted_at": invite.submitted_at,
+                    "submitted_by_email": invite.submitted_by_email or "",
+                    "detail_url": detail_url,
+                }
+            )
+    return rows
+
+
+def _existing_expiry_rows(invites):
+    """Rows for existing expiry products with previous vs submitted quantity."""
+    rows = []
+    for invite in invites:
+        if not invite.submitted_at:
+            continue
+        emails = invite.sent_to_emails or [invite.client_email]
+        detail_url = _invite_detail_url(invite)
+        for line in invite.lines.all():
+            rows.append(
+                {
+                    "id": f"{invite.pk}-{line.pk}",
+                    "client_email": invite.client_email,
+                    "recipient_emails": emails,
+                    "company_name": line.company_name or "",
+                    "product_name": line.product_name,
+                    "previous_quantity": line.current_quantity,
+                    "new_quantity": line.renewal_count,
+                    "submitted_at": invite.submitted_at,
+                    "submitted_by_email": invite.submitted_by_email or "",
+                    "detail_url": detail_url,
+                }
+            )
+    return rows
+
+
+def _jsonify_tab_rows(rows):
+    formatted = []
+    for row in rows:
+        item = dict(row)
+        item["submitted_at"] = _format_dt(row.get("submitted_at"))
+        formatted.append(item)
+    return formatted
+
+
+def _invite_status_row(invite):
+    row = {
+        "id": str(invite.pk),
+        "client_email": invite.client_email,
+        "recipient_emails": invite.sent_to_emails,
+        "email_sent_at": _format_dt(invite.email_sent_at),
+        "read_at": _format_dt(invite.read_at),
+        "read_source": invite.read_source or "",
+        "submitted_at": _format_dt(invite.submitted_at),
+        "submitted_by_email": invite.submitted_by_email or "",
+        "quotation_sent_at": _format_dt(invite.quotation_sent_at),
+        "line_count": invite.line_count,
+        "detail_url": _invite_detail_url(invite),
+    }
+    row.update(_invite_deal_payload(invite))
+    return row
+
+
 @sales_module_required
 def client_renewal_list(request):
     company = _company(request)
@@ -253,26 +357,17 @@ def client_renewal_list(request):
     for message in poll_logs:
         if "failed" in message.lower():
             messages.warning(request, message)
-    qs = (
-        SubscriptionRenewalInvite.objects.filter(
-            company=company,
-            email_sent_at__isnull=False,
-        )
-        .annotate(line_count=Count("lines"))
-        .prefetch_related(_renewal_invite_line_prefetch())
-        .order_by("-email_sent_at", "-created_at")
-    )
+    invites = list(_renewal_invite_queryset(company))
     return render(
         request,
         "business/client_renewal_list.html",
-        {"company": company, "object_list": qs},
+        {
+            "company": company,
+            "object_list": invites,
+            "new_subscription_rows": _new_subscription_rows(invites),
+            "existing_expiry_rows": _existing_expiry_rows(invites),
+        },
     )
-
-
-def _format_dt(value):
-    if not value:
-        return ""
-    return date_format(timezone.localtime(value), "d M Y, H:i:s")
 
 
 @sales_module_required
@@ -282,41 +377,20 @@ def client_renewal_live(request):
     from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
 
     updated, poll_logs = poll_outlook_read_receipts_for_company(company)
-    qs = (
-        SubscriptionRenewalInvite.objects.filter(
-            company=company,
-            email_sent_at__isnull=False,
-        )
-        .annotate(line_count=Count("lines"))
-        .prefetch_related(_renewal_invite_line_prefetch())
-        .order_by("-email_sent_at", "-created_at")
-    )
-    rows = []
-    for invite in qs:
-        detail_url = ""
-        if invite.submitted_at:
-            detail_url = reverse("client_renewal_detail", kwargs={"pk": invite.pk})
-        row = {
-            "id": str(invite.pk),
-            "client_email": invite.client_email,
-            "email_sent_at": _format_dt(invite.email_sent_at),
-            "read_at": _format_dt(invite.read_at),
-            "read_source": invite.read_source or "",
-            "submitted_at": _format_dt(invite.submitted_at),
-            "submitted_by_email": invite.submitted_by_email or "",
-            "quotation_sent_at": _format_dt(invite.quotation_sent_at),
-            "line_count": invite.line_count,
-            "detail_url": detail_url,
-        }
-        row.update(_invite_deal_payload(invite))
-        rows.append(row)
+    invites = list(_renewal_invite_queryset(company))
     return JsonResponse(
         {
             "ok": True,
             "updated": updated,
             "polled_at": _format_dt(timezone.now()),
             "logs": poll_logs,
-            "rows": rows,
+            "rows": [_invite_status_row(invite) for invite in invites],
+            "new_subscription_rows": _jsonify_tab_rows(
+                _new_subscription_rows(invites)
+            ),
+            "existing_expiry_rows": _jsonify_tab_rows(
+                _existing_expiry_rows(invites)
+            ),
         }
     )
 
@@ -411,6 +485,7 @@ def client_renewal_detail(request, pk):
             "lines",
             "lines__subscription",
             "new_products",
+            "recipients",
         ),
         pk=pk,
         company=company,
@@ -2077,34 +2152,37 @@ def renewal_track_open(request, invite_id):
     return HttpResponse(TRANSPARENT_GIF, content_type="image/gif")
 
 
-def _renewal_otp_page(
-    request,
-    invite,
-    lines,
-    *,
-    otp_step="email",
-    otp_email="",
-    email_form=None,
-    otp_form=None,
-    otp_notice="",
-):
+def _renewal_invalid_link_page(request, invite=None):
     return render(
         request,
-        "business/renewal_confirm_otp_guest.html",
-        {
-            "invite": invite,
-            "lines": lines,
-            "public_page": True,
-            "otp_step": otp_step,
-            "otp_email": otp_email,
-            "otp_notice": otp_notice,
-            "email_form": email_form
-            or RenewalConfirmSubmitterForm(
-                initial={"submitter_email": otp_email} if otp_email else None
-            ),
-            "otp_form": otp_form or RenewalConfirmOtpForm(),
-        },
+        "business/renewal_confirm_invalid_guest.html",
+        {"invite": invite, "public_page": True},
+        status=403,
     )
+
+
+def _renewal_submitter_from_token(invite, token: str) -> str:
+    from business.renewal_tokens import unsign_renewal_confirm_token
+
+    recipient_emails = {
+        (row.email or "").strip().lower()
+        for row in invite.recipients.all()
+        if (row.email or "").strip()
+    }
+    token = (token or "").strip()
+    if token:
+        parsed = unsign_renewal_confirm_token(token)
+        if parsed is None:
+            return ""
+        invite_id, email = parsed
+        if str(invite.pk) != invite_id or not email:
+            return ""
+        if recipient_emails:
+            return email if email in recipient_emails else ""
+        return email if invite.is_allowed_submitter(email) else ""
+    if recipient_emails:
+        return ""
+    return (invite.client_email or "").strip().lower()
 
 
 def _invite_excluded_product_ids(lines):
@@ -2139,7 +2217,7 @@ def _annotate_new_product_forms(formset, name_by_id):
 
 
 def _renewal_quantity_page(
-    request, invite, lines, formset, verified_email, new_product_formset=None
+    request, invite, lines, formset, new_product_formset=None
 ):
     excluded_ids = _invite_excluded_product_ids(lines)
     available_products = _available_renewal_products(invite.company, excluded_ids)
@@ -2159,7 +2237,6 @@ def _renewal_quantity_page(
             "rows": list(zip(formset.forms, lines)),
             "new_product_formset": new_product_formset,
             "available_products": available_products,
-            "verified_email": verified_email,
             "public_page": True,
         },
     )
@@ -2234,26 +2311,25 @@ def _save_renewal_confirmation(
 
 
 @require_http_methods(["GET", "POST"])
-def renewal_confirm_public(request, invite_id):
-    from business.renewal_otp import (
-        clear_otp_state,
-        get_otp_state,
-        issue_and_send_otp,
-        verified_submitter_email,
-        verify_otp,
-    )
-
+def renewal_confirm_public(request, invite_id, token=""):
     invite = get_object_or_404(
         SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
             "lines",
             "lines__subscription__client",
             "lines__subscription__product",
             "new_products",
+            "recipients",
         ),
         pk=invite_id,
     )
     lines = list(invite.lines.order_by("id"))
     new_products = list(invite.new_products.order_by("id"))
+    submitter_email = _renewal_submitter_from_token(invite, token)
+    if not submitter_email:
+        return _renewal_invalid_link_page(request, invite)
+
+    invite.mark_recipient_opened(submitter_email)
+
     if invite.is_submitted:
         return render(
             request,
@@ -2266,78 +2342,31 @@ def renewal_confirm_public(request, invite_id):
             },
         )
 
-    action = (request.POST.get("action") or "").strip() if request.method == "POST" else ""
-    if request.method == "POST" and action == "change_email":
-        clear_otp_state(request, invite)
-        return redirect("renewal_confirm_public", invite_id=invite.pk)
-
-    if request.method == "POST" and action == "request_otp":
-        email_form = RenewalConfirmSubmitterForm(request.POST)
-        if email_form.is_valid():
-            email = email_form.cleaned_data["submitter_email"].strip()
-            ok, err = issue_and_send_otp(request, invite, email)
-            if ok:
-                return _renewal_otp_page(
-                    request,
-                    invite,
-                    lines,
-                    otp_step="code",
-                    otp_email=email,
-                )
-            email_form.add_error("submitter_email", err)
-        return _renewal_otp_page(request, invite, lines, email_form=email_form)
-
-    if request.method == "POST" and action in {"verify_otp", "resend_otp"}:
-        state = get_otp_state(request, invite)
-        otp_email = (state.get("email") or "").strip()
-        if not otp_email:
-            return _renewal_otp_page(request, invite, lines)
-        if action == "resend_otp":
-            ok, err = issue_and_send_otp(request, invite, otp_email)
-            otp_form = RenewalConfirmOtpForm()
-            if not ok:
-                otp_form.add_error(None, err)
-            return _renewal_otp_page(
-                request,
-                invite,
-                lines,
-                otp_step="code",
-                otp_email=otp_email,
-                otp_form=otp_form,
-                otp_notice="A new code was sent." if ok else "",
-            )
-        otp_form = RenewalConfirmOtpForm(request.POST)
-        if otp_form.is_valid():
-            ok, err = verify_otp(request, invite, otp_form.cleaned_data["otp_code"])
-            if ok:
-                return redirect("renewal_confirm_public", invite_id=invite.pk)
-            otp_form.add_error("otp_code", err)
-        return _renewal_otp_page(
-            request,
-            invite,
-            lines,
-            otp_step="code",
-            otp_email=otp_email,
-            otp_form=otp_form,
-        )
-
-    verified_email = verified_submitter_email(request, invite)
     if request.method == "POST":
-        if not verified_email:
-            return _renewal_otp_page(request, invite, lines)
         formset = RenewalConfirmLineFormSet(request.POST)
         new_product_formset = RenewalNewProductFormSet(
             request.POST, **_new_product_formset_kwargs(invite, lines)
         )
         if formset.is_valid() and new_product_formset.is_valid():
+            invite.refresh_from_db()
+            if invite.is_submitted:
+                return render(
+                    request,
+                    "business/renewal_confirm_done_guest.html",
+                    {
+                        "invite": invite,
+                        "lines": lines,
+                        "new_products": list(invite.new_products.order_by("id")),
+                        "public_page": True,
+                    },
+                )
             saved_new = _save_renewal_confirmation(
                 invite,
                 lines,
                 formset,
-                verified_email,
+                submitter_email,
                 new_product_formset=new_product_formset,
             )
-            clear_otp_state(request, invite)
             return render(
                 request,
                 "business/renewal_confirm_thanks_guest.html",
@@ -2353,27 +2382,11 @@ def renewal_confirm_public(request, invite_id):
             invite,
             lines,
             formset,
-            verified_email,
             new_product_formset=new_product_formset,
         )
 
-    if not verified_email:
-        state = get_otp_state(request, invite)
-        otp_email = (state.get("email") or "").strip()
-        expires_at = float(state.get("expires_at") or 0)
-        pending_code = bool(otp_email and state.get("code_hash") and timezone.now().timestamp() <= expires_at)
-        if pending_code:
-            return _renewal_otp_page(
-                request,
-                invite,
-                lines,
-                otp_step="code",
-                otp_email=otp_email,
-            )
-        return _renewal_otp_page(request, invite, lines)
-
     formset = RenewalConfirmLineFormSet(initial=[{"line_id": line.pk} for line in lines])
-    return _renewal_quantity_page(request, invite, lines, formset, verified_email)
+    return _renewal_quantity_page(request, invite, lines, formset)
 
 
 @require_http_methods(["GET", "POST"])

@@ -507,43 +507,6 @@ class RenewalConfirmLineForm(forms.Form):
     )
 
 
-class RenewalConfirmSubmitterForm(forms.Form):
-    submitter_email = forms.EmailField(
-        label="Your email",
-        help_text="Use Email 1, Email 2, or Email 3 from the client record. "
-        "A verification code will be sent to this address.",
-        widget=forms.EmailInput(
-            attrs={
-                "placeholder": "you@example.com",
-                "autocomplete": "email",
-            }
-        ),
-    )
-
-
-class RenewalConfirmOtpForm(forms.Form):
-    otp_code = forms.CharField(
-        label="Verification code",
-        min_length=6,
-        max_length=8,
-        widget=forms.TextInput(
-            attrs={
-                "inputmode": "numeric",
-                "autocomplete": "one-time-code",
-                "placeholder": "6-digit code",
-                "pattern": "[0-9]*",
-            }
-        ),
-    )
-
-    def clean_otp_code(self):
-        raw = self.cleaned_data.get("otp_code") or ""
-        code = "".join(ch for ch in raw if ch.isdigit())
-        if len(code) != 6:
-            raise forms.ValidationError("Enter the 6-digit code sent to your email.")
-        return code
-
-
 RenewalConfirmLineFormSet = formset_factory(RenewalConfirmLineForm, extra=0)
 
 

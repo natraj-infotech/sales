@@ -92,8 +92,19 @@
   <h3 class="tracker-card-section-title" style="margin-top:0;">Email timeline</h3>
   <div class="tracker-mock-grid">
     <div class="tracker-mock-field">
-      <span class="tracker-mock-label">Client email</span>
-      <div class="tracker-mock-readonly">{{ invite.client_email }}</div>
+      <span class="tracker-mock-label">Sent to</span>
+      <div class="tracker-mock-readonly">
+        {% for row in invite.recipients.all %}
+          <div>
+            {{ row.email }}
+            {% if row.opened_at %}
+              — link opened {{ row.opened_at|date:"d M Y, H:i" }}
+            {% endif %}
+          </div>
+        {% empty %}
+          {{ invite.client_email }}
+        {% endfor %}
+      </div>
     </div>
     <div class="tracker-mock-field">
       <span class="tracker-mock-label">Email sent</span>
