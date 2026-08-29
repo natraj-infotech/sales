@@ -302,14 +302,6 @@ def _days_remaining_label(days_remaining: int | None) -> str:
     return f"{days_remaining} days remaining"
 
 
-def _form_stopped(sub: ClientSubscription) -> bool:
-    return bool(
-        sub.end_date
-        and sub.expiry_reminder_stopped_for_end_date
-        and sub.expiry_reminder_stopped_for_end_date == sub.end_date
-    )
-
-
 def _next_manual_send_number(sub: ClientSubscription, threshold: int, today) -> int:
     """Next slot number for a manual send, counted separately from automatic ones."""
     highest = SubscriptionExpiryDispatch.objects.filter(
@@ -335,11 +327,8 @@ def _manual_skip_reason(client, subs, phases, today) -> str | None:
         sub
         for sub in subs
         if (sub.deal_status or "") not in _BLOCKING_DEAL_STATUSES
-        and not _form_stopped(sub)
     ]
     if not open_subs:
-        if all(_form_stopped(sub) for sub in subs):
-            return "renewal form already submitted for the current expiry"
         statuses = sorted(
             {
                 (sub.get_deal_status_display() or sub.deal_status)
@@ -1825,8 +1814,6 @@ def send_client_expiry_emails(
             for sub in subs:
                 if (sub.deal_status or "") in _BLOCKING_DEAL_STATUSES:
                     continue
-                if _form_stopped(sub):
-                    continue
                 days_remaining = (sub.end_date - today).days
                 if not client.contact_emails():
                     if client.pk not in skipped_no_email:
@@ -1861,8 +1848,6 @@ def send_client_expiry_emails(
         for sub in qs:
             client = sub.client
             if not getattr(client, "renewal_emails_enabled", True):
-                continue
-            if _form_stopped(sub):
                 continue
             days_remaining = (sub.end_date - today).days if sub.end_date else None
             if days_remaining is None:

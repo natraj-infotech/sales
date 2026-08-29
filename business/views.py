@@ -2287,19 +2287,6 @@ def _save_renewal_confirmation(
     invite.submitted_at = timezone.now()
     invite.submitted_by_email = submitter_email
     invite.save(update_fields=["submitted_at", "submitted_by_email"])
-    stopped = []
-    for line in lines:
-        sub = getattr(line, "subscription", None)
-        if sub is None or not sub.end_date:
-            continue
-        if sub.expiry_reminder_stopped_for_end_date == sub.end_date:
-            continue
-        sub.expiry_reminder_stopped_for_end_date = sub.end_date
-        stopped.append(sub)
-    if stopped:
-        ClientSubscription.objects.bulk_update(
-            stopped, ["expiry_reminder_stopped_for_end_date"]
-        )
     from business.expiry_notifications import send_renewal_confirmation_email
 
     lines = list(
