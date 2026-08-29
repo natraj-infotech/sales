@@ -10,7 +10,7 @@ from business.expiry_notifications import send_expiry_notifications_for_all_comp
 class Command(BaseCommand):
     help = (
         "Send enabled client expiry reminders and team digests for all companies. "
-        "Normally scheduled daily via Celery beat."
+        "Normally scheduled every minute via Celery beat."
     )
 
     def add_arguments(self, parser):
