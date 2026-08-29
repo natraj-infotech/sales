@@ -139,7 +139,11 @@ def save_reminder_templates(
         name = (payload.get("name") or "").strip()
         if name:
             template.name = name[:120]
-        template.schedule = parse_template_schedule(payload.get("schedule") or "[]")
+        try:
+            template.schedule = parse_template_schedule(payload.get("schedule") or "[]")
+        except ValidationError as exc:
+            detail = " ".join(exc.messages) if getattr(exc, "messages", None) else str(exc)
+            raise ValidationError(f"{template.name}: {detail}") from exc
         template.save(update_fields=["name", "schedule", "updated_at"])
 
     if client_assignments is not None:

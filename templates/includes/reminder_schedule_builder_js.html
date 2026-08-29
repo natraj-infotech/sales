@@ -282,6 +282,113 @@
     return whenSentence(phase) + ", send " + modeSentence(phase) + ".";
   }
 
+  function formatOverlapSpan(days, kind) {
+    if (kind === "expiry" || (days.length === 1 && days[0] === 0)) return "expiry day";
+    if (kind === "before") {
+      var high = Math.max.apply(null, days);
+      var low = Math.min.apply(null, days);
+      if (high === low) return "day " + high + " left";
+      return "days " + high + "–" + low + " left";
+    }
+    var lateHigh = Math.max.apply(null, days);
+    var lateLow = Math.min.apply(null, days);
+    var early = Math.abs(lateHigh);
+    var late = Math.abs(lateLow);
+    if (early === late) return "day " + early + " late";
+    return "days " + early + "–" + late + " late";
+  }
+
+  function overlapHint(left, right, kind) {
+    if (kind === "expiry") return "Keep only one expiry-day window.";
+    var leftDays = windowDays(Number(left.from_days), Number(left.to_days));
+    var rightDays = windowDays(Number(right.from_days), Number(right.to_days));
+    var first = left;
+    var firstDays = leftDays;
+    var secondDays = rightDays;
+    if (Math.max.apply(null, leftDays) < Math.max.apply(null, rightDays)) {
+      first = right;
+      firstDays = rightDays;
+      secondDays = leftDays;
+    }
+    var firstFrom = Math.max.apply(null, firstDays);
+    var newTo = Math.max.apply(null, secondDays) + 1;
+    if (kind === "before" && newTo <= firstFrom) {
+      return "For example, change " + first.name + " to " + firstFrom + " to " + newTo + " days left.";
+    }
+    if (kind === "overdue" && newTo < 0 && newTo <= firstFrom) {
+      return "For example, change " + first.name + " to " + Math.abs(firstFrom) +
+        " to " + Math.abs(newTo) + " days late.";
+    }
+    return "Change the From/until days so the ranges sit one after another, with no shared days.";
+  }
+
+  function findOverlaps(phases) {
+    var groups = { before: [], expiry: [], overdue: [] };
+    phases.forEach(function (phase, index) {
+      groups[kindOf(phase)].push({
+        index: index,
+        phase: phase,
+        days: windowDays(Number(phase.from_days), Number(phase.to_days))
+      });
+    });
+    var pairs = [];
+    Object.keys(groups).forEach(function (kind) {
+      var items = groups[kind];
+      for (var i = 0; i < items.length; i++) {
+        for (var j = i + 1; j < items.length; j++) {
+          var overlap = items[i].days.filter(function (day) {
+            return items[j].days.indexOf(day) !== -1;
+          });
+          if (!overlap.length) continue;
+          var left = items[i].phase;
+          var right = items[j].phase;
+          pairs.push({
+            indexes: [items[i].index, items[j].index],
+            message: left.name + " and " + right.name + " overlap on " +
+              formatOverlapSpan(overlap, kind) +
+              ". Each day can belong to only one window. " +
+              overlapHint(left, right, kind)
+          });
+        }
+      }
+    });
+    return pairs;
+  }
+
+  function applyOverlapState(builder, phases) {
+    var pairs = findOverlaps(phases);
+    var flagged = {};
+    var messages = [];
+    pairs.forEach(function (pair) {
+      messages.push(pair.message);
+      pair.indexes.forEach(function (idx) { flagged[idx] = true; });
+    });
+    builder.querySelectorAll(".reminder-step").forEach(function (step, index) {
+      step.classList.toggle("is-overlap", !!flagged[index]);
+      var note = step.querySelector(".js-step-overlap");
+      if (!note) return;
+      if (flagged[index]) {
+        note.hidden = false;
+        note.textContent = "This window overlaps another window. Each day can belong to only one window.";
+      } else {
+        note.hidden = true;
+        note.textContent = "";
+      }
+    });
+    var banner = builder.querySelector(".js-overlap-error");
+    if (banner) {
+      if (messages.length) {
+        banner.hidden = false;
+        banner.textContent = messages.join(" ");
+      } else {
+        banner.hidden = true;
+        banner.textContent = "";
+      }
+    }
+    builder.classList.toggle("has-overlap", messages.length > 0);
+    return pairs;
+  }
+
   function summarySentence(phases) {
     if (!phases.length) return "Add at least one step so reminders can be sent.";
     var total = phases.reduce(function (sum, phase) { return sum + mailCount(phase); }, 0);
@@ -398,6 +505,7 @@
       "</div>" +
       "</div>" +
       '<p class="reminder-step__plain js-step-plain">' + escapeAttr(plainPhase(phase)) + "</p>" +
+      '<p class="reminder-step__overlap js-step-overlap" hidden></p>' +
       "</div>";
   }
 
@@ -492,6 +600,7 @@
     });
     var summary = builder.querySelector(".js-reminder-plain");
     if (summary) summary.textContent = summarySentence(phases);
+    applyOverlapState(builder, phases);
   }
 
   function render(builder) {
@@ -540,6 +649,17 @@
       } else {
         refreshDerived(builder, phases);
       }
+    });
+
+    builder.addEventListener("input", function (event) {
+      var target = event.target;
+      if (!target.closest(".reminder-step")) return;
+      if (builder.classList.contains("is-locked")) return;
+      var key = target.getAttribute("data-k");
+      if (key !== "from" && key !== "to") return;
+      var phases = collectAll(builder);
+      commit(builder, phases, presetInput);
+      refreshDerived(builder, phases);
     });
 
     builder.addEventListener("click", function (event) {
@@ -602,6 +722,30 @@
   }
 
   document.querySelectorAll(".reminder-builder").forEach(bind);
+
+  var saveForm = document.getElementById("reminder-templates-form");
+  if (saveForm) {
+    saveForm.addEventListener("submit", function (event) {
+      var blocked = null;
+      document.querySelectorAll(".reminder-builder").forEach(function (builder) {
+        if (builder.classList.contains("is-locked")) return;
+        var phases = collectAll(builder);
+        var pairs = applyOverlapState(builder, phases);
+        if (pairs.length && !blocked) blocked = { builder: builder, pairs: pairs };
+      });
+      if (!blocked) return;
+      event.preventDefault();
+      var panel = blocked.builder.closest(".reminder-template-panel");
+      if (panel) {
+        var tab = document.getElementById("template-tab-" + panel.getAttribute("data-template-id"));
+        if (tab) tab.click();
+      }
+      var banner = blocked.builder.querySelector(".js-overlap-error");
+      if (banner && banner.scrollIntoView) {
+        banner.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }
 
   document.querySelectorAll("[data-merge-target]").forEach(function (chip) {
     chip.addEventListener("click", function () {

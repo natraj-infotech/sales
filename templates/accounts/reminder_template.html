@@ -125,6 +125,13 @@
     gap: 0.65rem;
     flex: 1 1 16rem;
   }
+  .reminder-template-name-label {
+    flex: 0 0 auto;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
   .reminder-template-name {
     min-width: 14rem;
     flex: 1 1 14rem;
@@ -314,7 +321,7 @@
               </div>
               <span class="reminder-template-badge">Default</span>
               {% else %}
-              <label for="template-heading-{{ template.pk }}" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">Cycle name</label>
+              <label for="template-heading-{{ template.pk }}" class="reminder-template-name-label">Cycle Name:</label>
               <input
                 type="text"
                 class="reminder-template-name js-template-name-input"

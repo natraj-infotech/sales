@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -23,6 +24,12 @@ from business.expiry_notifications import (
     build_renewal_quote_items,
     send_renewal_confirmation_email,
     send_renewal_quotation_email,
+)
+from business.reminder_schedule import (
+    MODE_DAILY,
+    _phase,
+    normalize_schedule,
+    recommended_schedule,
 )
 from business.renewal_tokens import (
     sign_renewal_confirm_token,
@@ -356,3 +363,65 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(data["existing_expiry_rows"][0]["previous_quantity"], 5)
         self.assertEqual(data["existing_expiry_rows"][0]["new_quantity"], 8)
         self.assertEqual(len(data["rows"]), 2)
+
+
+class ReminderScheduleOverlapTests(SimpleTestCase):
+    def test_recommended_schedule_has_no_overlap(self):
+        normalize_schedule(recommended_schedule())
+
+    def test_overlapping_before_expiry_windows_are_rejected(self):
+        raw = [
+            _phase("Early window", 90, 1, MODE_DAILY, ["09:00"]),
+            _phase("Final days", 7, 1, MODE_DAILY, ["09:00"]),
+        ]
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_schedule(raw)
+        msg = " ".join(ctx.exception.messages)
+        self.assertIn("overlap", msg.lower())
+        self.assertIn("days 7–1 left", msg)
+        self.assertIn("90 to 8 days left", msg)
+
+    def test_adjacent_before_expiry_windows_are_allowed(self):
+        raw = [
+            _phase("Early window", 90, 8, MODE_DAILY, ["09:00"]),
+            _phase("Final days", 7, 1, MODE_DAILY, ["09:00"]),
+        ]
+        normalize_schedule(raw)
+
+    def test_three_overlapping_before_windows_are_rejected(self):
+        raw = [
+            _phase("Early window", 90, 1, MODE_DAILY, ["09:00"]),
+            _phase("Mid window", 30, 1, MODE_DAILY, ["09:00"]),
+            _phase("Final days", 7, 1, MODE_DAILY, ["09:00"]),
+        ]
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_schedule(raw)
+        self.assertGreaterEqual(len(ctx.exception.messages), 2)
+
+    def test_overdue_overlap_is_rejected(self):
+        raw = [
+            _phase("Overdue", -1, -7, MODE_DAILY, ["09:00"]),
+            _phase("Late push", -4, -10, MODE_DAILY, ["09:00"]),
+        ]
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_schedule(raw)
+        msg = " ".join(ctx.exception.messages)
+        self.assertIn("overlap", msg.lower())
+        self.assertIn("days 4–7 late", msg)
+        self.assertIn("1 to 3 days late", msg)
+
+    def test_before_and_overdue_windows_do_not_conflict(self):
+        raw = [
+            _phase("Early window", 90, 1, MODE_DAILY, ["09:00"]),
+            _phase("Overdue", -1, -7, MODE_DAILY, ["09:00"]),
+        ]
+        normalize_schedule(raw)
+
+    def test_two_expiry_day_windows_are_rejected(self):
+        raw = [
+            _phase("Expiry day", 0, 0, MODE_DAILY, ["09:00"]),
+            _phase("Expiry again", 0, 0, MODE_DAILY, ["09:00"]),
+        ]
+        with self.assertRaises(ValidationError) as ctx:
+            normalize_schedule(raw)
+        self.assertIn("expiry day", " ".join(ctx.exception.messages).lower())

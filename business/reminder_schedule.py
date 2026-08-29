@@ -182,6 +182,93 @@ def window_days(from_days: int, to_days: int) -> list[int]:
     return list(range(start, end + 1))
 
 
+def _phase_kind(phase: dict[str, Any]) -> str:
+    from_days = int(phase["from_days"])
+    to_days = int(phase["to_days"])
+    if from_days > 0:
+        return "before"
+    if from_days == 0 and to_days == 0:
+        return "expiry"
+    if from_days <= 0 and to_days <= 0:
+        return "overdue"
+    return "before"
+
+
+def _format_overlap_span(days: set[int], kind: str) -> str:
+    if kind == "expiry" or days == {0}:
+        return "expiry day"
+    if kind == "before":
+        high, low = max(days), min(days)
+        if high == low:
+            return f"day {high} left"
+        return f"days {high}–{low} left"
+    high, low = max(days), min(days)
+    early, late = abs(high), abs(low)
+    if early == late:
+        return f"day {early} late"
+    return f"days {early}–{late} late"
+
+
+def _overlap_hint(left: dict[str, Any], right: dict[str, Any], kind: str) -> str:
+    if kind == "expiry":
+        return "Keep only one expiry-day window."
+    left_days = window_days(int(left["from_days"]), int(left["to_days"]))
+    right_days = window_days(int(right["from_days"]), int(right["to_days"]))
+    if max(left_days) >= max(right_days):
+        first, first_days, second_days = left, left_days, right_days
+    else:
+        first, first_days, second_days = right, right_days, left_days
+    first_from = max(first_days)
+    new_to = max(second_days) + 1
+    if kind == "before" and new_to <= first_from:
+        return (
+            f"For example, change {first['name']} to {first_from} to {new_to} days left."
+        )
+    if kind == "overdue" and new_to < 0 and new_to <= first_from:
+        return (
+            f"For example, change {first['name']} to {abs(first_from)} to "
+            f"{abs(new_to)} days late."
+        )
+    return (
+        "Change the From/until days so the ranges sit one after another, "
+        "with no shared days."
+    )
+
+
+def overlapping_phase_messages(phases: list[dict[str, Any]]) -> list[str]:
+    """User-facing errors when two windows of the same kind share a day."""
+    grouped: dict[str, list[tuple[dict[str, Any], set[int]]]] = {
+        "before": [],
+        "expiry": [],
+        "overdue": [],
+    }
+    for phase in phases:
+        kind = _phase_kind(phase)
+        days = set(window_days(int(phase["from_days"]), int(phase["to_days"])))
+        grouped[kind].append((phase, days))
+
+    messages: list[str] = []
+    for kind, items in grouped.items():
+        for index, (left, left_days) in enumerate(items):
+            for right, right_days in items[index + 1 :]:
+                overlap = left_days & right_days
+                if not overlap:
+                    continue
+                span = _format_overlap_span(overlap, kind)
+                hint = _overlap_hint(left, right, kind)
+                messages.append(
+                    f"{left['name']} and {right['name']} overlap on {span}. "
+                    f"Each day can belong to only one window. {hint}"
+                )
+    return messages
+
+
+def _reject_overlapping_phases(phases: list[dict[str, Any]]) -> None:
+    messages = overlapping_phase_messages(phases)
+    if messages:
+        raise ValidationError(messages)
+
+
 def send_days_for_phase(phase: dict[str, Any]) -> list[int]:
     days = window_days(int(phase["from_days"]), int(phase["to_days"]))
     mode = phase.get("mode") or MODE_DAILY
@@ -362,6 +449,7 @@ def normalize_schedule(raw: Any, *, required: bool = True) -> list[dict[str, Any
         cleaned.append(
             _phase(name, from_days, to_days, mode, times, count)
         )
+    _reject_overlapping_phases(cleaned)
     return cleaned
 
 

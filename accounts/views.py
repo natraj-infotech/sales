@@ -160,7 +160,10 @@ def reminder_template(request):
             )
             messages.success(request, "Reminder profile saved.")
         except ValidationError as exc:
-            messages.error(request, str(exc))
+            detail = (
+                " ".join(exc.messages) if getattr(exc, "messages", None) else str(exc)
+            )
+            messages.error(request, detail)
         active = (request.POST.get("active_template_id") or "").strip()
         if active.isdigit():
             return redirect(f"{reverse('reminder_template')}?active={active}")

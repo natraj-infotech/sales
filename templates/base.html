@@ -1991,6 +1991,38 @@
       cursor: default;
       background: rgba(255, 255, 255, 0.55);
     }
+    .reminder-step.is-overlap {
+      border-color: rgba(220, 38, 38, 0.45);
+      box-shadow:
+        0 12px 28px rgba(220, 38, 38, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    }
+    .reminder-step.is-overlap::before {
+      background: #dc2626;
+    }
+    .reminder-overlap-error {
+      margin: 0 0 1rem;
+      padding: 0.75rem 0.95rem;
+      border: 1px solid rgba(220, 38, 38, 0.35);
+      border-radius: 0.65rem;
+      background: #fef2f2;
+      color: #991b1b;
+      font-size: 0.8125rem;
+      line-height: 1.55;
+    }
+    .reminder-overlap-error[hidden] {
+      display: none !important;
+    }
+    .reminder-step__overlap {
+      margin: 0;
+      padding: 0.55rem 1.25rem 0.75rem 1.35rem;
+      font-size: 0.78rem;
+      color: #be123c;
+      background: #fef2f2;
+    }
+    .reminder-step__overlap[hidden] {
+      display: none !important;
+    }
     .reminder-step-list {
       display: flex;
       flex-direction: column;
