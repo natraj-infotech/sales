@@ -260,22 +260,66 @@
     color: #1d4ed8;
     font-weight: 700;
   }
-  .cr-grid-table.tracker-table-pro {
-    min-width: 100%;
-  }
+  .cr-grid-table.tracker-table-pro,
   .cr-grid-table.tracker-table-pro--wide {
-    min-width: 1520px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    table-layout: fixed;
   }
   .cr-grid-table.tracker-table-pro thead th,
   .cr-grid-table.tracker-table-pro tbody td {
     border: 1px solid #d0d7e2;
+    padding: 0.55rem 0.7rem;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    vertical-align: middle;
   }
   .cr-grid-table.tracker-table-pro thead th {
     border-color: rgba(255, 255, 255, 0.38);
   }
+  #cr-new-table th:nth-child(1),
+  #cr-new-table td:nth-child(1) { width: 26%; }
+  #cr-new-table th:nth-child(2),
+  #cr-new-table td:nth-child(2) { width: 22%; }
+  #cr-new-table th:nth-child(3),
+  #cr-new-table td:nth-child(3) { width: 42%; }
+  #cr-new-table th:nth-child(4),
+  #cr-new-table td:nth-child(4) { width: 10%; }
+  #cr-existing-table th:nth-child(1),
+  #cr-existing-table td:nth-child(1) { width: 24%; }
+  #cr-existing-table th:nth-child(2),
+  #cr-existing-table td:nth-child(2) { width: 20%; }
+  #cr-existing-table th:nth-child(3),
+  #cr-existing-table td:nth-child(3) { width: 32%; }
+  #cr-existing-table th:nth-child(4),
+  #cr-existing-table td:nth-child(4) { width: 12%; }
+  #cr-existing-table th:nth-child(5),
+  #cr-existing-table td:nth-child(5) { width: 12%; }
+  #cr-table th:nth-child(1),
+  #cr-table td:nth-child(1) { width: 18%; }
+  #cr-table th:nth-child(2),
+  #cr-table td:nth-child(2) { width: 14%; }
+  #cr-table th:nth-child(3),
+  #cr-table td:nth-child(3) { width: 14%; }
+  #cr-table th:nth-child(4),
+  #cr-table td:nth-child(4) { width: 22%; }
+  #cr-table th:nth-child(5),
+  #cr-table td:nth-child(5) { width: 12%; }
+  #cr-table th:nth-child(6),
+  #cr-table td:nth-child(6) { width: 6%; text-align: center; }
+  #cr-table th:nth-child(7),
+  #cr-table td:nth-child(7) { width: 14%; }
   .cr-grid-table .cr-col-qty {
     text-align: center;
     white-space: nowrap;
+  }
+  .cr-grid-table .cr-col-response .cr-meta,
+  .cr-grid-table td[data-col="response"] .cr-meta {
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
   }
 </style>
 
@@ -396,7 +440,7 @@
           <th>Client email</th>
           <th>Email sent</th>
           <th>Email read</th>
-          <th>Response received</th>
+          <th class="cr-col-response">Response received</th>
           <th>Quotation</th>
           <th>Items</th>
           <th>Deal Status</th>
@@ -441,7 +485,7 @@
             <span class="cr-status cr-status--pending">Not read</span>
             {% endif %}
           </td>
-          <td data-col="response">
+          <td data-col="response" class="cr-col-response">
             {% if invite.submitted_at %}
             <span class="cr-status cr-status--yes">Received</span>
             <span class="cr-meta">{{ invite.submitted_at|date:"d M Y, H:i:s" }}</span>
@@ -697,7 +741,7 @@
       "<td data-col=\"email\">" + clientEmailHtml(row) + "</td>" +
       "<td>" + sentHtml(row) + "</td>" +
       '<td data-col="read">' + readHtml(row) + "</td>" +
-      '<td data-col="response">' + responseHtml(row) + "</td>" +
+      '<td data-col="response" class="cr-col-response">' + responseHtml(row) + "</td>" +
       '<td data-col="quote">' + quoteHtml(row) + "</td>" +
       '<td data-col="items">' + escapeHtml(row.line_count) + "</td>" +
       '<td data-col="deal" class="cr-deal-cell">' + dealHtml(row) + "</td>";
