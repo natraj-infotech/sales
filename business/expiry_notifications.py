@@ -1094,13 +1094,13 @@ def _renewal_confirmation_html(
 def send_renewal_confirmation_email(
     invite: SubscriptionRenewalInvite, lines=None, new_products=None
 ) -> bool:
-    """Email the client a copy of the quantities they just confirmed."""
+    """Email only the submitter a copy of the quantities they just confirmed."""
     try:
         company = invite.company
-        to_email = (invite.client_email or "").strip()
+        to_email = (invite.submitted_by_email or "").strip()
         if not to_email:
             logger.warning(
-                "Skipped renewal confirmation email for invite %s: missing client email.",
+                "Skipped renewal confirmation email for invite %s: missing submitter email.",
                 invite.pk,
             )
             return False
@@ -1124,7 +1124,6 @@ def send_renewal_confirmation_email(
             logo_cid=logo_inline[0] if logo_inline else "",
             new_products=new_products,
         )
-        cc_addresses = _renewal_confirmation_cc_recipients(invite, to_email)
         ok, err, _internet_message_id = send_renewal_email(
             company,
             invite,
@@ -1132,7 +1131,6 @@ def send_renewal_confirmation_email(
             RENEWAL_CONFIRMATION_SUBJECT,
             body,
             html_body,
-            cc_addresses=cc_addresses,
             inline_images=[logo_inline] if logo_inline else None,
         )
     except Exception:

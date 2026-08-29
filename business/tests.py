@@ -21,6 +21,7 @@ from business.models import (
 
 from business.expiry_notifications import (
     build_renewal_quote_items,
+    send_renewal_confirmation_email,
     send_renewal_quotation_email,
 )
 from business.renewal_tokens import (
@@ -109,6 +110,52 @@ class RenewalQuoteItemsTests(SimpleTestCase):
         names = [item["product_name"] for item in items]
         self.assertEqual(names, ["Antivirus", "VPN"])
         self.assertEqual(sum((item["amount"] for item in items), Decimal("0")), Decimal("13500.00"))
+
+
+class SendRenewalConfirmationEmailTests(SimpleTestCase):
+    def _invite(self, **overrides):
+        data = {
+            "pk": "invite-1",
+            "company": SimpleNamespace(
+                pk=1,
+                company_name="Co",
+                outgoing_email="sales@example.com",
+                outgoing_email_app_password="secret",
+                company_logo=None,
+                regards_contact="",
+                regards_email="",
+            ),
+            "client_email": "one@example.com",
+            "submitted_by_email": "two@example.com",
+        }
+        data.update(overrides)
+        return SimpleNamespace(**data)
+
+    def test_sends_only_to_submitter_without_cc(self):
+        invite = self._invite()
+        with patch(
+            "business.expiry_notifications.send_renewal_email"
+        ) as send_mail:
+            send_mail.return_value = (True, "", None)
+            sent = send_renewal_confirmation_email(
+                invite, lines=[], new_products=[]
+            )
+        self.assertTrue(sent)
+        send_mail.assert_called_once()
+        args, kwargs = send_mail.call_args
+        self.assertEqual(args[2], ["two@example.com"])
+        self.assertFalse(kwargs.get("cc_addresses"))
+
+    def test_skips_when_submitter_missing(self):
+        invite = self._invite(submitted_by_email="")
+        with patch(
+            "business.expiry_notifications.send_renewal_email"
+        ) as send_mail:
+            sent = send_renewal_confirmation_email(
+                invite, lines=[], new_products=[]
+            )
+        self.assertFalse(sent)
+        send_mail.assert_not_called()
 
 
 class SendRenewalQuotationEmailTests(SimpleTestCase):
