@@ -31,6 +31,8 @@ class CompanyProfileForm(forms.ModelForm):
             "cin_number",
             "support_email",
             "support_email_app_password",
+            "caselock_email",
+            "caselock_email_app_password",
             "outgoing_email",
             "outgoing_email_app_password",
             "regards_email",
@@ -59,6 +61,9 @@ class CompanyProfileForm(forms.ModelForm):
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
+            "caselock_email_app_password": forms.PasswordInput(
+                render_value=False, attrs={"autocomplete": "new-password"}
+            ),
             "outgoing_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
@@ -68,6 +73,9 @@ class CompanyProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self._original_support_email_app_password = (
             self.instance.support_email_app_password if self.instance.pk else ""
+        )
+        self._original_caselock_email_app_password = (
+            self.instance.caselock_email_app_password if self.instance.pk else ""
         )
         self._original_outgoing_email_app_password = (
             self.instance.outgoing_email_app_password if self.instance.pk else ""
@@ -121,6 +129,7 @@ class CompanyProfileForm(forms.ModelForm):
         if self.instance.pk:
             for name in (
                 "support_email_app_password",
+                "caselock_email_app_password",
                 "outgoing_email_app_password",
             ):
                 self.fields[name].required = False
@@ -147,6 +156,10 @@ class CompanyProfileForm(forms.ModelForm):
             if not self.cleaned_data.get("support_email_app_password"):
                 instance.support_email_app_password = (
                     self._original_support_email_app_password
+                )
+            if not self.cleaned_data.get("caselock_email_app_password"):
+                instance.caselock_email_app_password = (
+                    self._original_caselock_email_app_password
                 )
             if not self.cleaned_data.get("outgoing_email_app_password"):
                 instance.outgoing_email_app_password = (

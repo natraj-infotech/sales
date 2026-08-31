@@ -58,6 +58,8 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "cin_number",
         "support_email",
         "support_email_app_password",
+        "caselock_email",
+        "caselock_email_app_password",
         "outgoing_email",
         "outgoing_email_app_password",
         "regards_email",

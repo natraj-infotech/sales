@@ -280,6 +280,17 @@
       {% include "includes/form_field_tracker.html" with field=form.support_email_app_password icon="lock" %}
     </div>
 
+    <h3 class="tracker-card-section-title">Case lock email</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Mail to this address receives a Case lock form link. Microsoft 365 uses Graph;
+      other providers use IMAP. Run Celery worker + beat, or open the Case lock page
+      to poll (throttled).
+    </p>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.caselock_email icon="mail" %}
+      {% include "includes/form_field_tracker.html" with field=form.caselock_email_app_password icon="lock" %}
+    </div>
+
     <h3 class="tracker-card-section-title">Outgoing email (SMTP)</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
       Required for client expiry reminders and the daily team digest. Use the same app password approach as support mail.
