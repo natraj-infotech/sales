@@ -4,7 +4,7 @@ from io import StringIO
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,7 +22,7 @@ from accounts.permissions import (
 )
 
 from .forms import (
-    CaseLockInboxForm,
+    CaseLockProductForm,
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
@@ -38,9 +38,10 @@ from .forms import (
 )
 from . import helpdesk_bridge
 from .models import (
-    CaseLockInbox,
     CaseLockInvite,
+    CaseLockProduct,
     CaseLockSubmission,
+    annotate_internal_case_locks,
     Client,
     ClientSubscription,
     Product,
@@ -50,7 +51,7 @@ from .models import (
     TicketPriorityRule,
     Vendor,
 )
-from .caselock_inbox import send_caselock_decision_email
+from .caselock_inbox import maybe_fetch_on_dashboard, send_caselock_decision_email
 from .import_stash import product_import_stash, subscription_import_stash
 from .subscription_import import (
     IMPORT_HEADERS,
@@ -2379,131 +2380,153 @@ def renewal_confirm_public(request, invite_id, token=""):
 @require_http_methods(["GET", "POST"])
 def caselock_public_form(request, invite_id):
     invite = get_object_or_404(
-        CaseLockInvite.objects.select_related("inbox", "inbox__product", "inbox__company"),
+        CaseLockInvite.objects.select_related("company", "inbox", "inbox__company"),
         pk=invite_id,
     )
+    company = invite.company
+    if company is None and invite.inbox_id:
+        company = invite.inbox.company
     if CaseLockSubmission.objects.filter(invite=invite).exists():
         return render(
             request,
             "business/caselock_public_done_guest.html",
-            {"invite": invite},
+            {"invite": invite, "public_page": True},
         )
     if request.method == "POST":
-        form = CaseLockPublicForm(request.POST)
+        form = CaseLockPublicForm(request.POST, company=company)
         if form.is_valid():
             sub = form.save(commit=False)
             sub.invite = invite
+            product = form.cleaned_data["product"]
+            sub.product = product
+            sub.product_name = product.name
             sub.save()
             return render(
                 request,
                 "business/caselock_public_thanks_guest.html",
-                {"invite": invite},
+                {"invite": invite, "public_page": True},
             )
     else:
-        form = CaseLockPublicForm(
-            initial={
-                "product_name": invite.inbox.product.name,
-                "product_quantity": 1,
-            }
-        )
+        form = CaseLockPublicForm(company=company)
     return render(
         request,
         "business/caselock_public_form_guest.html",
-        {"form": form, "invite": invite},
+        {
+            "form": form,
+            "invite": invite,
+            "company": company,
+            "public_page": True,
+        },
     )
 
 
 @company_owner_required
 def caselock_inbox_list(request):
     company = _company(request)
-    qs = (
-        company.caselock_inboxes.select_related("product")
-        .annotate(submission_count=Count("invites__submission", distinct=True))
-        .order_by("product__name")
+    fetch_result = maybe_fetch_on_dashboard(company) or {}
+    created = int(fetch_result.get("created") or 0)
+    if created:
+        messages.success(
+            request,
+            f"Imported {created} new Case lock mail(s) and sent form links.",
+        )
+
+    tab = (request.GET.get("tab") or "dashboard").strip().lower()
+    if tab not in ("dashboard", "mails"):
+        tab = "dashboard"
+
+    submissions = list(
+        CaseLockSubmission.objects.filter(invite__company=company)
+        .select_related("invite", "product")
+        .order_by("-timestamp")
     )
+    # Include legacy rows that still point at per-product inboxes.
+    extra = list(
+        CaseLockSubmission.objects.filter(
+            invite__company__isnull=True, invite__inbox__company=company
+        )
+        .select_related("invite", "product")
+        .order_by("-timestamp")
+    )
+    if extra:
+        seen = {s.pk for s in submissions}
+        submissions.extend(s for s in extra if s.pk not in seen)
+        submissions.sort(key=lambda s: s.timestamp, reverse=True)
+    annotate_internal_case_locks(submissions)
+
+    invites = (
+        CaseLockInvite.objects.filter(Q(company=company) | Q(inbox__company=company))
+        .select_related("company", "inbox")
+        .annotate(
+            has_submission=Exists(
+                CaseLockSubmission.objects.filter(invite_id=OuterRef("pk"))
+            )
+        )
+        .order_by("-received_at", "-created_at")
+        .distinct()
+    )
+
+    product_form = CaseLockProductForm(company=company)
+    products = company.caselock_products.order_by("name")
+
     return render(
         request,
         "business/caselock_inbox_list.html",
-        {"company": company, "object_list": qs},
+        {
+            "company": company,
+            "active_tab": tab,
+            "submissions": submissions,
+            "invites": invites,
+            "products": products,
+            "product_form": product_form,
+            "mailbox_email": (company.caselock_email or "").strip(),
+        },
     )
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def caselock_product_add(request):
+    company = _company(request)
+    form = CaseLockProductForm(request.POST, company=company)
+    if form.is_valid():
+        obj = form.save(commit=False)
+        obj.company = company
+        obj.save()
+        messages.success(request, f'Product "{obj.name}" added.')
+    else:
+        messages.error(request, " ".join(form.errors.get("name", ["Could not add product."])))
+    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def caselock_product_delete(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(CaseLockProduct, pk=pk, company=company)
+    name = obj.name
+    obj.delete()
+    messages.success(request, f'Product "{name}" removed.')
+    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
 
 
 @company_owner_required
 def caselock_inbox_add(request):
-    company = _company(request)
-    if request.method == "POST":
-        form = CaseLockInboxForm(request.POST, company=company)
-        if form.is_valid():
-            obj = form.save(commit=False)
-            obj.company = company
-            obj.save()
-            messages.success(
-                request,
-                "Case lock mailbox saved. Ensure Celery beat is running to poll inboxes.",
-            )
-            return redirect("caselock_inbox_list")
-    else:
-        form = CaseLockInboxForm(company=company)
-    return render(
+    messages.info(
         request,
-        "business/caselock_inbox_form.html",
-        {
-            "company": company,
-            "form": form,
-            "title": "Add Case lock mailbox",
-        },
+        "Set the Case lock email on Company profile. Products are created on the Case lock dashboard.",
     )
+    return redirect("caselock_inbox_list")
 
 
 @company_owner_required
 def caselock_inbox_edit(request, pk):
-    company = _company(request)
-    obj = get_object_or_404(CaseLockInbox, pk=pk, company=company)
-    if request.method == "POST":
-        form = CaseLockInboxForm(request.POST, instance=obj, company=company)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Case lock mailbox updated.")
-            return redirect("caselock_inbox_list")
-    else:
-        form = CaseLockInboxForm(instance=obj, company=company)
-    return render(
-        request,
-        "business/caselock_inbox_form.html",
-        {
-            "company": company,
-            "form": form,
-            "title": "Edit Case lock mailbox",
-            "object": obj,
-        },
-    )
+    return redirect("caselock_inbox_list")
 
 
 @company_owner_required
 def caselock_submissions(request):
-    company = _company(request)
-    qs = (
-        CaseLockSubmission.objects.filter(invite__inbox__company=company)
-        .select_related("invite", "invite__inbox", "invite__inbox__product")
-        .order_by("-timestamp")
-    )
-    inbox_pk = request.GET.get("inbox", "").strip()
-    selected_inbox = None
-    if inbox_pk.isdigit():
-        selected_inbox = company.caselock_inboxes.filter(pk=int(inbox_pk)).first()
-        if selected_inbox:
-            qs = qs.filter(invite__inbox=selected_inbox)
-        else:
-            messages.warning(request, "Unknown mailbox; showing all submissions.")
-    return render(
-        request,
-        "business/caselock_submissions.html",
-        {
-            "company": company,
-            "object_list": qs,
-            "selected_inbox": selected_inbox,
-        },
-    )
+    return redirect("caselock_inbox_list")
 
 
 @company_owner_required
@@ -2511,18 +2534,23 @@ def caselock_submissions(request):
 def caselock_submission_status_update(request, pk):
     company = _company(request)
     sub = get_object_or_404(
-        CaseLockSubmission.objects.select_related("invite__inbox"),
+        CaseLockSubmission.objects.select_related("invite", "invite__inbox", "invite__company"),
         pk=pk,
-        invite__inbox__company=company,
     )
+    invite_company_id = sub.invite.company_id
+    if invite_company_id is None and sub.invite.inbox_id:
+        invite_company_id = sub.invite.inbox.company_id
+    if invite_company_id != company.pk:
+        messages.error(request, "Submission not found.")
+        return redirect("caselock_inbox_list")
     action = (request.POST.get("action") or "").strip().lower()
-    if action == "approve":
+    if action == "approve" or action == "final":
         sub.status = CaseLockSubmission.Status.APPROVED
         sub.save(update_fields=["status"])
         if send_caselock_decision_email(sub):
-            messages.success(request, "Case lock approved and email sent.")
+            messages.success(request, "Final case lock email sent.")
         else:
-            messages.warning(request, "Case lock approved, but notification email failed.")
+            messages.warning(request, "Marked final, but notification email failed.")
     elif action == "decline":
         sub.status = CaseLockSubmission.Status.DECLINED
         sub.save(update_fields=["status"])
@@ -2533,8 +2561,4 @@ def caselock_submission_status_update(request, pk):
     else:
         messages.error(request, "Invalid action.")
 
-    inbox_pk = (request.POST.get("inbox") or "").strip()
-    url = reverse("caselock_submissions")
-    if inbox_pk.isdigit():
-        url = f"{url}?inbox={inbox_pk}"
-    return redirect(url)
+    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")

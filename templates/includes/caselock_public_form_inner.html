@@ -1,13 +1,52 @@
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>Case lock details</h2>
-<p class="muted">You were sent this link after emailing about <strong>{{ invite.inbox.product.name }}</strong>. Please complete the fields below.</p>
+<p class="muted">Please complete the fields below. Use the search box to find a product.</p>
 <form method="post">
   {% csrf_token %}
-  {% for field in form %}
   <div class="form-row">
-    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-    {{ field }}
-    {{ field.errors }}
+    <label for="cl-product-search">Product</label>
+    <input type="search" id="cl-product-search" placeholder="Search products" autocomplete="off">
+    {{ form.product }}
+    {{ form.product.errors }}
   </div>
-  {% endfor %}
+  <div class="form-row">
+    <label for="{{ form.client_name.id_for_label }}">{{ form.client_name.label }}</label>
+    {{ form.client_name }}
+    {{ form.client_name.errors }}
+  </div>
+  <div class="form-row">
+    <label for="{{ form.client_gst.id_for_label }}">{{ form.client_gst.label }}</label>
+    {{ form.client_gst }}
+    {{ form.client_gst.errors }}
+  </div>
+  <div class="form-row">
+    <label for="{{ form.product_quantity.id_for_label }}">{{ form.product_quantity.label }}</label>
+    {{ form.product_quantity }}
+    {{ form.product_quantity.errors }}
+  </div>
   <button type="submit" class="btn btn-primary">Submit</button>
 </form>
+<script>
+(function () {
+  var search = document.getElementById("cl-product-search");
+  var select = document.getElementById("{{ form.product.id_for_label }}");
+  if (!search || !select) return;
+  var options = Array.prototype.slice.call(select.options).map(function (opt) {
+    return { value: opt.value, text: opt.text, disabled: opt.disabled };
+  });
+  function render(filter) {
+    var q = (filter || "").toLowerCase();
+    var current = select.value;
+    select.innerHTML = "";
+    options.forEach(function (opt) {
+      if (q && opt.text.toLowerCase().indexOf(q) === -1 && opt.value) return;
+      var el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.text;
+      el.disabled = opt.disabled;
+      select.appendChild(el);
+    });
+    if (current) select.value = current;
+  }
+  search.addEventListener("input", function () { render(search.value); });
+})();
+</script>

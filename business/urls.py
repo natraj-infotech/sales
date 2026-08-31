@@ -30,6 +30,12 @@ urlpatterns = [
         views.caselock_inbox_edit,
         name="caselock_inbox_edit",
     ),
+    path("caselock/products/add/", views.caselock_product_add, name="caselock_product_add"),
+    path(
+        "caselock/products/<int:pk>/delete/",
+        views.caselock_product_delete,
+        name="caselock_product_delete",
+    ),
     path(
         "caselock/submissions/",
         views.caselock_submissions,

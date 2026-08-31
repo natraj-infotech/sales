@@ -11,6 +11,9 @@ from django.utils import timezone
 
 from accounts.models import CompanyProfile
 from business.models import (
+    CaseLockInvite,
+    CaseLockProduct,
+    CaseLockSubmission,
     Client,
     ClientSubscription,
     Product,
@@ -18,6 +21,7 @@ from business.models import (
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
     SubscriptionRenewalInviteRecipient,
+    annotate_internal_case_locks,
 )
 
 from business.expiry_notifications import (
@@ -425,3 +429,159 @@ class ReminderScheduleOverlapTests(SimpleTestCase):
         with self.assertRaises(ValidationError) as ctx:
             normalize_schedule(raw)
         self.assertIn("expiry day", " ".join(ctx.exception.messages).lower())
+
+
+class CaseLockFeatureTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="owner@example.com", password="pass12345"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user,
+            company_name="Acme",
+            caselock_email="caselock@example.com",
+        )
+        self.client.login(email="owner@example.com", password="pass12345")
+
+    def test_company_setup_shows_caselock_email(self):
+        response = self.client.get(reverse("company_setup"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Case lock email")
+        self.assertContains(response, "caselock_email")
+
+    def test_dashboard_has_tabs(self):
+        response = self.client.get(reverse("caselock_inbox_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Dashboard")
+        self.assertContains(response, "Incoming mails")
+        self.assertContains(response, "caselock@example.com")
+
+    def test_incoming_mails_tab(self):
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<one@test>",
+            sender_email="buyer@example.com",
+            mail_subject="Need lock",
+            received_at=timezone.now(),
+        )
+        response = self.client.get(reverse("caselock_inbox_list") + "?tab=mails")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "buyer@example.com")
+        self.assertContains(response, "Need lock")
+        self.assertContains(response, invite.sender_email)
+
+    def test_product_add_and_public_form(self):
+        add = self.client.post(
+            reverse("caselock_product_add"),
+            {"name": "Firewall"},
+            follow=True,
+        )
+        self.assertEqual(add.status_code, 200)
+        product = CaseLockProduct.objects.get(company=self.company, name="Firewall")
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<two@test>",
+            sender_email="buyer@example.com",
+        )
+        url = reverse("caselock_public_form", kwargs={"invite_id": invite.pk})
+        get = self.client.get(url)
+        self.assertEqual(get.status_code, 200)
+        self.assertContains(get, "Search products")
+        self.assertContains(get, "Firewall")
+        post = self.client.post(
+            url,
+            {
+                "product": product.pk,
+                "client_name": "Buyer Co",
+                "client_gst": "22AAAAA0000A1Z5",
+                "product_quantity": 3,
+            },
+        )
+        self.assertEqual(post.status_code, 200)
+        sub = CaseLockSubmission.objects.get(invite=invite)
+        self.assertEqual(sub.client_name, "Buyer Co")
+        self.assertEqual(sub.product_name, "Firewall")
+        self.assertEqual(sub.product_quantity, 3)
+
+        dash = self.client.get(reverse("caselock_inbox_list"))
+        self.assertContains(dash, "Buyer Co")
+        self.assertContains(dash, "Case lock")
+
+    def test_internal_lock_goes_to_first_submitter(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Antivirus")
+        first_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<a@test>",
+            sender_email="first@example.com",
+        )
+        second_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<b@test>",
+            sender_email="second@example.com",
+        )
+        first = CaseLockSubmission.objects.create(
+            invite=first_invite,
+            client_name="First",
+            client_gst="GST1",
+            product=product,
+            product_name="Antivirus",
+            product_quantity=5,
+        )
+        second = CaseLockSubmission.objects.create(
+            invite=second_invite,
+            client_name="Second",
+            client_gst="GST2",
+            product=product,
+            product_name="Antivirus",
+            product_quantity=5,
+        )
+        annotate_internal_case_locks([first, second])
+        self.assertTrue(first.has_internal_case_lock)
+        self.assertFalse(second.has_internal_case_lock)
+
+    def test_final_and_decline_send_mail(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Backup")
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<c@test>",
+            sender_email="buyer@example.com",
+        )
+        sub = CaseLockSubmission.objects.create(
+            invite=invite,
+            client_name="Buyer",
+            product=product,
+            product_name="Backup",
+            product_quantity=1,
+        )
+        with patch("business.views.send_caselock_decision_email", return_value=True) as send:
+            response = self.client.post(
+                reverse("caselock_submission_status_update", args=[sub.pk]),
+                {"action": "final"},
+            )
+            self.assertEqual(response.status_code, 302)
+            send.assert_called_once()
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, CaseLockSubmission.Status.APPROVED)
+
+        invite2 = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<d@test>",
+            sender_email="buyer2@example.com",
+        )
+        sub2 = CaseLockSubmission.objects.create(
+            invite=invite2,
+            client_name="Other",
+            product=product,
+            product_name="Backup",
+            product_quantity=2,
+        )
+        with patch("business.views.send_caselock_decision_email", return_value=True) as send:
+            response = self.client.post(
+                reverse("caselock_submission_status_update", args=[sub2.pk]),
+                {"action": "decline"},
+            )
+            self.assertEqual(response.status_code, 302)
+            send.assert_called_once()
+        sub2.refresh_from_db()
+        self.assertEqual(sub2.status, CaseLockSubmission.Status.DECLINED)

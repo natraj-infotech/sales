@@ -3,82 +3,91 @@
 
 {% block extra_css %}
 <style>
-  .caselock-mailbox-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-  }
-  .caselock-mailbox-tile {
-    position: relative;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-soft);
-    overflow: hidden;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
-  }
-  .caselock-mailbox-tile:hover {
-    border-color: #93c5fd;
-    box-shadow: 0 4px 20px rgba(43, 111, 214, 0.12);
-  }
-  .caselock-mailbox-tile__link {
-    display: block;
-    padding: 1.1rem 1.15rem 2.65rem;
-    text-decoration: none !important;
-    color: inherit;
-  }
-  .caselock-mailbox-tile__link:hover {
-    color: inherit;
-  }
-  .caselock-mailbox-tile__product {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--header-blue-deep);
-    margin: 0 0 0.35rem;
-    letter-spacing: -0.02em;
-  }
-  .caselock-mailbox-tile__email {
-    font-size: 0.8125rem;
-    color: var(--muted);
-    word-break: break-all;
-    margin-bottom: 0.75rem;
-  }
-  .caselock-mailbox-tile__meta {
+  .cl-tabs {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.5rem;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
+    margin-bottom: 1rem;
   }
-  .caselock-badge {
+  .cl-tab {
+    flex: 1 1 0;
+    border: 1px solid #d0d7e2;
+    background: #fff;
+    padding: 0.7rem 0.75rem;
+    font-weight: 650;
+    font-size: 0.875rem;
+    color: #334155;
+    cursor: pointer;
+    border-radius: 10px;
+    text-align: center;
+    text-decoration: none !important;
+  }
+  .cl-tab:hover { border-color: #93c5fd; color: #0f172a; }
+  .cl-tab.is-active,
+  .cl-tab.is-active:hover {
+    background: #1656b8;
+    border-color: #1656b8;
+    color: #fff;
+  }
+  .cl-status {
     display: inline-block;
     padding: 0.2rem 0.5rem;
     border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.68rem;
+    font-size: 0.7rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
   }
-  .caselock-badge--on { background: #d1fae5; color: #065f46; }
-  .caselock-badge--off { background: #f3f4f6; color: #6b7280; }
-  .caselock-mailbox-tile__edit {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 0.5rem 1rem;
+  .cl-status--pending { background: #fef3c7; color: #92400e; }
+  .cl-status--approved { background: #d1fae5; color: #065f46; }
+  .cl-status--declined { background: #fee2e2; color: #991b1b; }
+  .cl-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .cl-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 0.25rem 0.52rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .cl-btn--approve { background: #16a34a; color: #fff; }
+  .cl-btn--decline { background: #dc2626; color: #fff; }
+  .cl-product-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .cl-product-row .form-row { margin: 0; flex: 1 1 16rem; }
+  .cl-product-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .cl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1e40af;
     font-size: 0.78rem;
     font-weight: 600;
-    text-align: center;
-    background: #f8fafc;
-    border-top: 1px solid var(--border);
-    color: var(--header-blue) !important;
-    text-decoration: none !important;
   }
-  .caselock-mailbox-tile__edit:hover {
-    background: #eff6ff;
+  .cl-chip button {
+    border: none;
+    background: transparent;
+    color: #1e40af;
+    cursor: pointer;
+    font-weight: 700;
+    padding: 0;
+  }
+  .cl-lock {
+    font-weight: 700;
+    color: #065f46;
   }
 </style>
 {% endblock %}
@@ -89,45 +98,141 @@
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-lock"/></svg>
     <div>
       <h1 class="tracker-page-title">Case lock</h1>
-      <p class="tracker-page-subtitle">Click a mailbox to view its submissions; new mail there emails a secure form link to the sender</p>
+      <p class="tracker-page-subtitle">
+        {% if mailbox_email %}
+        Mailbox: <strong>{{ mailbox_email }}</strong>
+        {% else %}
+        Set the Case lock email on Company profile to receive requests
+        {% endif %}
+      </p>
     </div>
-  </div>
-  <div class="tracker-page-actions">
-    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'caselock_submissions' %}">All submissions</a>
-    <a class="btn-tracker-header" href="{% url 'caselock_inbox_add' %}">
-      <svg aria-hidden="true"><use href="#i-plus"/></svg>
-      Add mailbox
-    </a>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
-<p class="muted" style="margin-top:0;">Set <strong>Company profile → outgoing email</strong> so the app can send form links. In production set env <code>PUBLIC_BASE_URL</code> to your site URL. Run Celery worker + beat to poll mailboxes.</p>
+<div class="cl-tabs" role="tablist">
+  <a class="cl-tab {% if active_tab == 'dashboard' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=dashboard">Dashboard</a>
+  <a class="cl-tab {% if active_tab == 'mails' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=mails">Incoming mails</a>
+</div>
 
-{% if object_list %}
-<div class="caselock-mailbox-grid">
-  {% for row in object_list %}
-  <div class="caselock-mailbox-tile">
-    <a class="caselock-mailbox-tile__link" href="{% url 'caselock_submissions' %}?inbox={{ row.pk }}">
-      <div class="caselock-mailbox-tile__product">{{ row.product.name }}</div>
-      <div class="caselock-mailbox-tile__email">{{ row.mailbox_email }}</div>
-      <div class="caselock-mailbox-tile__meta">
-        <span><strong>{{ row.submission_count }}</strong> submission{% if row.submission_count != 1 %}s{% endif %}</span>
-        {% if row.is_active %}
-        <span class="caselock-badge caselock-badge--on">Active</span>
-        {% else %}
-        <span class="caselock-badge caselock-badge--off">Off</span>
-        {% endif %}
-      </div>
-    </a>
-    <a class="caselock-mailbox-tile__edit" href="{% url 'caselock_inbox_edit' row.pk %}">Edit mailbox</a>
+{% if active_tab == 'dashboard' %}
+<div class="tracker-card">
+  <h2 class="tracker-card-section-title">Case lock products</h2>
+  <p class="muted" style="margin-top:-0.35rem;">These names appear in the customer form search dropdown.</p>
+  <form method="post" action="{% url 'caselock_product_add' %}" class="cl-product-row">
+    {% csrf_token %}
+    <div class="form-row">
+      <label for="{{ product_form.name.id_for_label }}">{{ product_form.name.label }}</label>
+      {{ product_form.name }}
+    </div>
+    <button type="submit" class="btn btn-primary">Add product</button>
+  </form>
+  {% if products %}
+  <div class="cl-product-chips">
+    {% for p in products %}
+    <span class="cl-chip">
+      {{ p.name }}
+      <form method="post" action="{% url 'caselock_product_delete' p.pk %}" onsubmit="return confirm('Remove this product?');">
+        {% csrf_token %}
+        <button type="submit" aria-label="Remove {{ p.name }}">&times;</button>
+      </form>
+    </span>
+    {% endfor %}
   </div>
-  {% endfor %}
+  {% else %}
+  <p class="muted">No products yet. Add at least one so customers can choose it on the form.</p>
+  {% endif %}
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide">
+      <thead>
+        <tr>
+          <th>Mail sent</th>
+          <th>Submitted</th>
+          <th>Product</th>
+          <th>Customer</th>
+          <th>GST</th>
+          <th>Qty</th>
+          <th>Submitted by</th>
+          <th>Internal case lock</th>
+          <th>Final / Decline</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in submissions %}
+        <tr>
+          <td>{{ s.invite.email_sent_at|date:"d/m/Y H:i:s"|default:"—" }}</td>
+          <td>{{ s.timestamp|date:"d/m/Y H:i:s" }}</td>
+          <td>{{ s.product_name }}</td>
+          <td>{{ s.client_name }}</td>
+          <td>{{ s.client_gst|default:"—" }}</td>
+          <td>{{ s.product_quantity }}</td>
+          <td>{{ s.invite.sender_email }}</td>
+          <td>
+            {% if s.has_internal_case_lock %}
+            <span class="cl-lock">Case lock</span>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {% if s.status == 'pending' %}
+            <form method="post" action="{% url 'caselock_submission_status_update' s.pk %}" class="cl-actions">
+              {% csrf_token %}
+              <button type="submit" class="cl-btn cl-btn--approve" name="action" value="final">Final</button>
+              <button type="submit" class="cl-btn cl-btn--decline" name="action" value="decline">Decline</button>
+            </form>
+            {% else %}
+            <span class="cl-status cl-status--{{ s.status }}">{{ s.get_status_display }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" class="muted" style="padding:1.25rem;text-align:center;">
+            No submissions yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% else %}
-<div class="tracker-card">
-  <p class="muted" style="margin:0;">No mailboxes yet. Add one for each product inbox you want to monitor.</p>
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro tracker-table-pro--wide">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>Subject</th>
+          <th>Mail received</th>
+          <th>Form link sent</th>
+          <th>Form submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for invite in invites %}
+        <tr>
+          <td>{{ invite.sender_email }}</td>
+          <td>{{ invite.mail_subject|default:"—" }}</td>
+          <td>{{ invite.inbound_at|date:"d/m/Y H:i:s"|default:"—" }}</td>
+          <td>{{ invite.email_sent_at|date:"d/m/Y H:i:s"|default:"—" }}</td>
+          <td>{% if invite.has_submission %}Yes{% else %}No{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">
+            No incoming Case lock mails yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

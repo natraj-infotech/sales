@@ -7,6 +7,7 @@ from .models import (
     Vendor,
     Client,
     CaseLockInbox,
+    CaseLockProduct,
     CaseLockSubmission,
     ClientSubscription,
     Product,
@@ -464,32 +465,62 @@ class CaseLockPublicForm(forms.ModelForm):
     class Meta:
         model = CaseLockSubmission
         fields = (
-            "vendor_name",
-            "vendor_gst",
+            "product",
             "client_name",
-            "client_phone",
-            "client_email",
-            "client_email_2",
             "client_gst",
-            "product_name",
             "product_quantity",
         )
+        labels = {
+            "product": "Product",
+            "client_name": "Customer name",
+            "client_gst": "GST number",
+            "product_quantity": "Quantity",
+        }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["client_phone"].widget.attrs.setdefault(
-            "placeholder",
-            "Client phone number",
+        products = CaseLockProduct.objects.none()
+        if company is not None:
+            products = company.caselock_products.order_by("name")
+        self.fields["product"] = forms.ModelChoiceField(
+            queryset=products,
+            required=True,
+            empty_label="Select a product",
+            widget=forms.Select(attrs={"size": "6"}),
         )
-        self.fields["client_email"].widget.attrs.setdefault(
-            "placeholder",
-            "Client email",
+        self.fields["client_name"].required = True
+        self.fields["client_gst"].required = True
+        self.fields["product_quantity"].widget.attrs.setdefault("min", "1")
+        self.fields["product_quantity"].initial = 1
+        self.fields["client_name"].widget.attrs.setdefault("placeholder", "Customer name")
+        self.fields["client_gst"].widget.attrs.setdefault("placeholder", "GST number")
+
+
+class CaseLockProductForm(forms.ModelForm):
+    class Meta:
+        model = CaseLockProduct
+        fields = ("name",)
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Product name"}),
+        }
+
+    def __init__(self, *args, company=None, **kwargs):
+        self.company = company
+        super().__init__(*args, **kwargs)
+        self.fields["name"].label = "Product name"
+
+    def clean_name(self):
+        name = (self.cleaned_data.get("name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter a product name.")
+        qs = CaseLockProduct.objects.filter(
+            company=self.company, name__iexact=name
         )
-        self.fields["client_email_2"].label = "Client email 2 (optional)"
-        self.fields["client_email_2"].widget.attrs.setdefault(
-            "placeholder",
-            "Additional client email",
-        )
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if self.company and qs.exists():
+            raise forms.ValidationError("This product already exists.")
+        return name
 
 
 class RenewalConfirmLineForm(forms.Form):
