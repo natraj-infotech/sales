@@ -5,6 +5,7 @@ from .models import (
     Client,
     CaseLockInbox,
     CaseLockInvite,
+    CaseLockProduct,
     CaseLockSubmission,
     Product,
     ClientSubscription,
@@ -249,17 +250,26 @@ class CaseLockInboxAdmin(admin.ModelAdmin):
     search_fields = ("mailbox_email", "product__name", "notes")
 
 
+@admin.register(CaseLockProduct)
+class CaseLockProductAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "created_at")
+    list_filter = ("company",)
+    search_fields = ("name",)
+
+
 @admin.register(CaseLockInvite)
 class CaseLockInviteAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "company",
         "inbox",
         "sender_email",
         "mail_subject",
+        "received_at",
         "email_sent_at",
         "created_at",
     )
-    list_filter = ("inbox__company",)
+    list_filter = ("company",)
     search_fields = ("sender_email", "mail_subject", "source_message_id")
 
 

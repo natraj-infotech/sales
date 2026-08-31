@@ -540,10 +540,33 @@ class SubscriptionExpiryDispatch(models.Model):
         )
 
 
+class CaseLockProduct(models.Model):
+    """Product names offered on the Case lock public form."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="caselock_products",
+    )
+    name = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name"],
+                name="unique_caselock_product_per_company",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class CaseLockInbox(models.Model):
     """
-    Inbound mailbox tied to a product; unread mail triggers a Case lock form link
-    emailed to the sender.
+    Legacy per-product mailbox. New Case lock mail uses company.caselock_email.
     """
 
     company = models.ForeignKey(
@@ -587,34 +610,52 @@ class CaseLockInvite(models.Model):
     """One inbound message → one secure link to the case lock form."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="caselock_invites",
+        null=True,
+        blank=True,
+    )
     inbox = models.ForeignKey(
         CaseLockInbox,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="invites",
+        null=True,
+        blank=True,
     )
     source_message_id = models.CharField(max_length=998)
     sender_email = models.CharField(max_length=254)
     mail_subject = models.CharField(max_length=255, blank=True)
+    received_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the inbound mail arrived.",
+    )
     email_sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-received_at", "-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["inbox", "source_message_id"],
-                name="unique_caselock_invite_message_per_inbox",
+                fields=["company", "source_message_id"],
+                name="unique_caselock_invite_message_per_company",
             ),
         ]
 
     def __str__(self):
         return f"Invite {self.id} from {self.sender_email}"
 
+    @property
+    def inbound_at(self):
+        return self.received_at or self.created_at
+
 
 class CaseLockSubmission(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
-        APPROVED = "approved", "Approved"
+        APPROVED = "approved", "Final"
         DECLINED = "declined", "Declined"
 
     invite = models.OneToOneField(
@@ -622,16 +663,23 @@ class CaseLockSubmission(models.Model):
         on_delete=models.CASCADE,
         related_name="submission",
     )
-    vendor_name = models.CharField(max_length=255)
+    vendor_name = models.CharField(max_length=255, blank=True)
     vendor_gst = models.CharField("vendor GST", max_length=32, blank=True)
-    client_name = models.CharField(max_length=255)
+    client_name = models.CharField("customer name", max_length=255)
     client_contact_info = models.CharField("client contact info", max_length=255, blank=True)
     client_phone = models.CharField("client phone", max_length=64, blank=True)
     client_email = models.EmailField("client email 1", blank=True)
     client_email_2 = models.EmailField("client email 2", blank=True)
-    client_gst = models.CharField("client GST", max_length=32, blank=True)
+    client_gst = models.CharField("GST number", max_length=32, blank=True)
+    product = models.ForeignKey(
+        CaseLockProduct,
+        on_delete=models.SET_NULL,
+        related_name="submissions",
+        null=True,
+        blank=True,
+    )
     product_name = models.CharField(max_length=255)
-    product_quantity = models.PositiveIntegerField("product quantity required", default=1)
+    product_quantity = models.PositiveIntegerField("quantity", default=1)
     timestamp = models.DateTimeField(
         auto_now_add=True,
         help_text="When the form was submitted.",
@@ -646,7 +694,25 @@ class CaseLockSubmission(models.Model):
         ordering = ["-timestamp"]
 
     def __str__(self):
-        return f"Case lock {self.vendor_name} / {self.client_name}"
+        return f"Case lock {self.client_name}"
+
+    def lock_key(self):
+        if self.product_id:
+            return ("id", self.product_id, self.product_quantity)
+        return ("name", (self.product_name or "").strip().lower(), self.product_quantity)
+
+
+def annotate_internal_case_locks(submissions):
+    """Mark first submitter per product + quantity with has_internal_case_lock."""
+    winners = {}
+    ordered = sorted(submissions, key=lambda s: (s.timestamp, s.pk))
+    for submission in ordered:
+        key = submission.lock_key()
+        if key not in winners:
+            winners[key] = submission.pk
+    for submission in submissions:
+        submission.has_internal_case_lock = winners.get(submission.lock_key()) == submission.pk
+    return submissions
 
 
 class SupportTicket(models.Model):
