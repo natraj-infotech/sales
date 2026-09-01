@@ -486,7 +486,7 @@ class CaseLockPublicForm(forms.ModelForm):
             queryset=products,
             required=True,
             empty_label="Select a product",
-            widget=forms.Select(attrs={"size": "6"}),
+            widget=forms.Select(attrs={"class": "cl-product-native", "aria-hidden": "true"}),
         )
         self.fields["client_name"].required = True
         self.fields["client_gst"].required = True

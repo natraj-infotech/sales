@@ -689,6 +689,11 @@ class CaseLockSubmission(models.Model):
         choices=Status.choices,
         default=Status.PENDING,
     )
+    status_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When Final or Decline was set.",
+    )
 
     class Meta:
         ordering = ["-timestamp"]
@@ -697,17 +702,45 @@ class CaseLockSubmission(models.Model):
         return f"Case lock {self.client_name}"
 
     def lock_key(self):
+        company = (self.client_name or "").strip().casefold()
+        gst = "".join((self.client_gst or "").split()).upper()
         if self.product_id:
-            return ("id", self.product_id, self.product_quantity)
-        return ("name", (self.product_name or "").strip().lower(), self.product_quantity)
+            return ("id", self.product_id, self.product_quantity, company, gst)
+        return (
+            "name",
+            (self.product_name or "").strip().lower(),
+            self.product_quantity,
+            company,
+            gst,
+        )
 
 
 def annotate_internal_case_locks(submissions):
-    """Mark first submitter per product + quantity with has_internal_case_lock."""
+    """Mark first submitter of the current round with has_internal_case_lock.
+
+    A Final on a product + quantity + company + GST round closes that round.
+    Only submissions after that Final can receive a new lock. Decline does not
+    start a new round.
+    """
+    last_final_at = {}
+    for submission in submissions:
+        if submission.status != CaseLockSubmission.Status.APPROVED:
+            continue
+        decided = submission.status_changed_at
+        if decided is None:
+            continue
+        key = submission.lock_key()
+        previous = last_final_at.get(key)
+        if previous is None or decided > previous:
+            last_final_at[key] = decided
+
     winners = {}
     ordered = sorted(submissions, key=lambda s: (s.timestamp, s.pk))
     for submission in ordered:
         key = submission.lock_key()
+        cutoff = last_final_at.get(key)
+        if cutoff is not None and submission.timestamp <= cutoff:
+            continue
         if key not in winners:
             winners[key] = submission.pk
     for submission in submissions:

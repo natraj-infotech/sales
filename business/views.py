@@ -51,7 +51,12 @@ from .models import (
     TicketPriorityRule,
     Vendor,
 )
-from .caselock_inbox import maybe_fetch_on_dashboard, send_caselock_decision_email
+from .caselock_inbox import (
+    maybe_fetch_on_dashboard,
+    poll_error_logs,
+    send_caselock_decision_email,
+    should_poll_mailbox_on_request,
+)
 from .import_stash import product_import_stash, subscription_import_stash
 from .subscription_import import (
     IMPORT_HEADERS,
@@ -2420,27 +2425,12 @@ def caselock_public_form(request, invite_id):
     )
 
 
-@company_owner_required
-def caselock_inbox_list(request):
-    company = _company(request)
-    fetch_result = maybe_fetch_on_dashboard(company) or {}
-    created = int(fetch_result.get("created") or 0)
-    if created:
-        messages.success(
-            request,
-            f"Imported {created} new Case lock mail(s) and sent form links.",
-        )
-
-    tab = (request.GET.get("tab") or "dashboard").strip().lower()
-    if tab not in ("dashboard", "mails"):
-        tab = "dashboard"
-
+def _caselock_page_data(company):
     submissions = list(
         CaseLockSubmission.objects.filter(invite__company=company)
         .select_related("invite", "product")
         .order_by("-timestamp")
     )
-    # Include legacy rows that still point at per-product inboxes.
     extra = list(
         CaseLockSubmission.objects.filter(
             invite__company__isnull=True, invite__inbox__company=company
@@ -2454,7 +2444,7 @@ def caselock_inbox_list(request):
         submissions.sort(key=lambda s: s.timestamp, reverse=True)
     annotate_internal_case_locks(submissions)
 
-    invites = (
+    invites = list(
         CaseLockInvite.objects.filter(Q(company=company) | Q(inbox__company=company))
         .select_related("company", "inbox")
         .annotate(
@@ -2465,7 +2455,79 @@ def caselock_inbox_list(request):
         .order_by("-received_at", "-created_at")
         .distinct()
     )
+    return submissions, invites
 
+
+def _caselock_live_payload(company):
+    submissions, invites = _caselock_page_data(company)
+    mail_rows = []
+    for invite in invites:
+        mail_rows.append(
+            {
+                "id": str(invite.pk),
+                "from": invite.sender_email or "",
+                "subject": invite.mail_subject or "",
+                "received_at": _format_ticket_dt(invite.inbound_at, "d/m/Y H:i:s")
+                or "—",
+                "form_sent_at": _format_ticket_dt(invite.email_sent_at, "d/m/Y H:i:s")
+                or "—",
+                "form_submitted": bool(getattr(invite, "has_submission", False)),
+            }
+        )
+    submission_rows = []
+    for sub in submissions:
+        invite = sub.invite
+        submission_rows.append(
+            {
+                "id": sub.pk,
+                "mail_sent_at": _format_ticket_dt(invite.email_sent_at, "d/m/Y H:i:s")
+                or "—",
+                "submitted_at": _format_ticket_dt(sub.timestamp, "d/m/Y H:i:s") or "—",
+                "product_name": sub.product_name or "",
+                "client_name": sub.client_name or "",
+                "client_gst": sub.client_gst or "",
+                "quantity": sub.product_quantity,
+                "submitted_by": invite.sender_email or "",
+                "has_internal_case_lock": bool(
+                    getattr(sub, "has_internal_case_lock", False)
+                ),
+                "status": sub.status,
+                "status_label": sub.get_status_display(),
+                "status_url": reverse(
+                    "caselock_submission_status_update", args=[sub.pk]
+                ),
+            }
+        )
+    return {
+        "mail_rows": mail_rows,
+        "submission_rows": submission_rows,
+        "mail_count": len(mail_rows),
+        "submission_count": len(submission_rows),
+    }
+
+
+def _maybe_poll_caselock_mailbox(company):
+    if not should_poll_mailbox_on_request():
+        return {}
+    return maybe_fetch_on_dashboard(company) or {}
+
+
+@company_owner_required
+def caselock_inbox_list(request):
+    company = _company(request)
+    fetch_result = _maybe_poll_caselock_mailbox(company)
+    created = int(fetch_result.get("created") or 0)
+    if created:
+        messages.success(
+            request,
+            f"Imported {created} new Case lock mail(s) and sent form links.",
+        )
+
+    tab = (request.GET.get("tab") or "dashboard").strip().lower()
+    if tab not in ("dashboard", "mails"):
+        tab = "dashboard"
+
+    submissions, invites = _caselock_page_data(company)
     product_form = CaseLockProductForm(company=company)
     products = company.caselock_products.order_by("name")
 
@@ -2481,6 +2543,28 @@ def caselock_inbox_list(request):
             "product_form": product_form,
             "mailbox_email": (company.caselock_email or "").strip(),
         },
+    )
+
+
+@company_owner_required
+def caselock_inbox_live(request):
+    """Return current Case lock rows as JSON. Mailbox poll is local-only; server uses Celery."""
+    company = _company(request)
+    fetch_result = _maybe_poll_caselock_mailbox(company)
+    created = int(fetch_result.get("created") or 0)
+    payload = _caselock_live_payload(company)
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "inbox_errors": poll_error_logs(fetch_result),
+            "polled_at": _format_dt(timezone.now()),
+            "mailbox_poll_on_request": should_poll_mailbox_on_request(),
+            "mail_rows": payload["mail_rows"],
+            "submission_rows": payload["submission_rows"],
+            "mail_count": payload["mail_count"],
+            "submission_count": payload["submission_count"],
+        }
     )
 
 
@@ -2546,14 +2630,16 @@ def caselock_submission_status_update(request, pk):
     action = (request.POST.get("action") or "").strip().lower()
     if action == "approve" or action == "final":
         sub.status = CaseLockSubmission.Status.APPROVED
-        sub.save(update_fields=["status"])
+        sub.status_changed_at = timezone.now()
+        sub.save(update_fields=["status", "status_changed_at"])
         if send_caselock_decision_email(sub):
             messages.success(request, "Final case lock email sent.")
         else:
             messages.warning(request, "Marked final, but notification email failed.")
     elif action == "decline":
         sub.status = CaseLockSubmission.Status.DECLINED
-        sub.save(update_fields=["status"])
+        sub.status_changed_at = timezone.now()
+        sub.save(update_fields=["status", "status_changed_at"])
         if send_caselock_decision_email(sub):
             messages.success(request, "Case lock declined and email sent.")
         else:

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -441,8 +441,16 @@ class CaseLockFeatureTests(TestCase):
             user=self.user,
             company_name="Acme",
             caselock_email="caselock@example.com",
+            outgoing_email="outgoing@example.com",
+            outgoing_email_app_password="out-secret",
         )
         self.client.login(email="owner@example.com", password="pass12345")
+        mailbox_patch = patch(
+            "business.views.maybe_fetch_on_dashboard",
+            return_value={"created": 0, "logs": []},
+        )
+        mailbox_patch.start()
+        self.addCleanup(mailbox_patch.stop)
 
     def test_company_setup_shows_caselock_email(self):
         response = self.client.get(reverse("company_setup"))
@@ -456,6 +464,58 @@ class CaseLockFeatureTests(TestCase):
         self.assertContains(response, "Dashboard")
         self.assertContains(response, "Incoming mails")
         self.assertContains(response, "caselock@example.com")
+        self.assertContains(response, "subnav-tab")
+
+    def test_invite_and_decision_emails_use_html_layout(self):
+        from business.caselock_inbox import (
+            _send_invite_email,
+            send_caselock_decision_email,
+        )
+
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<html-invite@test>",
+            sender_email="buyer@example.com",
+        )
+        with patch(
+            "business.caselock_inbox.send_outbound", return_value=(True, None)
+        ) as send:
+            _send_invite_email(self.company, invite, "buyer@example.com")
+        self.assertEqual(send.call_args.args[0], "outgoing@example.com")
+        self.assertEqual(send.call_args.args[2], ["buyer@example.com"])
+        html = send.call_args.kwargs["html_body"]
+        self.assertIn("SUBMIT CASE LOCK DETAILS", html)
+        self.assertIn("/caselock/fill/", html)
+        self.assertIn("href=", html)
+
+        product = CaseLockProduct.objects.create(company=self.company, name="Backup")
+        sub = CaseLockSubmission.objects.create(
+            invite=invite,
+            client_name="Buyer",
+            client_gst="24AAFCN2771H2ZH",
+            product=product,
+            product_name="Backup",
+            product_quantity=2,
+            status=CaseLockSubmission.Status.APPROVED,
+        )
+        with patch(
+            "business.caselock_inbox.send_outbound", return_value=(True, None)
+        ) as send:
+            self.assertTrue(send_caselock_decision_email(sub))
+        html = send.call_args.kwargs["html_body"]
+        self.assertIn("finalized", html.lower())
+        self.assertIn("24AAFCN2771H2ZH", html)
+        self.assertIn("Buyer", html)
+
+        sub.status = CaseLockSubmission.Status.DECLINED
+        sub.save(update_fields=["status"])
+        with patch(
+            "business.caselock_inbox.send_outbound", return_value=(True, None)
+        ) as send:
+            self.assertTrue(send_caselock_decision_email(sub))
+        html = send.call_args.kwargs["html_body"]
+        self.assertIn("declined", html.lower())
+        self.assertIn("Backup", html)
 
     def test_incoming_mails_tab(self):
         invite = CaseLockInvite.objects.create(
@@ -489,6 +549,7 @@ class CaseLockFeatureTests(TestCase):
         self.assertEqual(get.status_code, 200)
         self.assertContains(get, "Search products")
         self.assertContains(get, "Firewall")
+        self.assertContains(get, "cl-product-trigger")
         post = self.client.post(
             url,
             {
@@ -522,16 +583,16 @@ class CaseLockFeatureTests(TestCase):
         )
         first = CaseLockSubmission.objects.create(
             invite=first_invite,
-            client_name="First",
-            client_gst="GST1",
+            client_name="Acme Corp",
+            client_gst="22AAAAA0000A1Z5",
             product=product,
             product_name="Antivirus",
             product_quantity=5,
         )
         second = CaseLockSubmission.objects.create(
             invite=second_invite,
-            client_name="Second",
-            client_gst="GST2",
+            client_name="acme corp",
+            client_gst="22aaaaa0000a1z5",
             product=product,
             product_name="Antivirus",
             product_quantity=5,
@@ -539,6 +600,140 @@ class CaseLockFeatureTests(TestCase):
         annotate_internal_case_locks([first, second])
         self.assertTrue(first.has_internal_case_lock)
         self.assertFalse(second.has_internal_case_lock)
+
+    def test_internal_lock_is_separate_when_company_or_gst_differs(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Firewall")
+        invite_a = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<lock-a@test>",
+            sender_email="a@example.com",
+        )
+        invite_b = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<lock-b@test>",
+            sender_email="b@example.com",
+        )
+        invite_c = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<lock-c@test>",
+            sender_email="c@example.com",
+        )
+        same_product_qty = dict(
+            product=product,
+            product_name="Firewall",
+            product_quantity=2,
+        )
+        by_company = CaseLockSubmission.objects.create(
+            invite=invite_a,
+            client_name="Acme Corp",
+            client_gst="22AAAAA0000A1Z5",
+            **same_product_qty,
+        )
+        other_company = CaseLockSubmission.objects.create(
+            invite=invite_b,
+            client_name="Beta Ltd",
+            client_gst="22AAAAA0000A1Z5",
+            **same_product_qty,
+        )
+        other_gst = CaseLockSubmission.objects.create(
+            invite=invite_c,
+            client_name="Acme Corp",
+            client_gst="27BBBBB0000B1Z5",
+            **same_product_qty,
+        )
+        annotate_internal_case_locks([by_company, other_company, other_gst])
+        self.assertTrue(by_company.has_internal_case_lock)
+        self.assertTrue(other_company.has_internal_case_lock)
+        self.assertTrue(other_gst.has_internal_case_lock)
+
+    def test_final_unblocks_same_combination_for_new_request(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="VPN")
+        now = timezone.now()
+        fields = dict(
+            client_name="Acme Corp",
+            client_gst="22AAAAA0000A1Z5",
+            product=product,
+            product_name="VPN",
+            product_quantity=4,
+        )
+        first_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<final-a@test>",
+            sender_email="first@example.com",
+        )
+        waiting_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<final-b@test>",
+            sender_email="waiting@example.com",
+        )
+        new_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<final-c@test>",
+            sender_email="new@example.com",
+        )
+        first = CaseLockSubmission.objects.create(invite=first_invite, **fields)
+        waiting = CaseLockSubmission.objects.create(invite=waiting_invite, **fields)
+        CaseLockSubmission.objects.filter(pk=first.pk).update(
+            timestamp=now - timedelta(hours=2)
+        )
+        CaseLockSubmission.objects.filter(pk=waiting.pk).update(
+            timestamp=now - timedelta(hours=1)
+        )
+        first.refresh_from_db()
+        waiting.refresh_from_db()
+
+        first.status = CaseLockSubmission.Status.APPROVED
+        first.status_changed_at = now - timedelta(minutes=10)
+        first.save(update_fields=["status", "status_changed_at"])
+
+        new_sub = CaseLockSubmission.objects.create(invite=new_invite, **fields)
+        CaseLockSubmission.objects.filter(pk=new_sub.pk).update(
+            timestamp=now - timedelta(minutes=1)
+        )
+        new_sub.refresh_from_db()
+
+        annotate_internal_case_locks([first, waiting, new_sub])
+        self.assertFalse(first.has_internal_case_lock)
+        self.assertFalse(waiting.has_internal_case_lock)
+        self.assertTrue(new_sub.has_internal_case_lock)
+
+    def test_decline_does_not_unblock_combination(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Mail")
+        now = timezone.now()
+        fields = dict(
+            client_name="Acme Corp",
+            client_gst="22AAAAA0000A1Z5",
+            product=product,
+            product_name="Mail",
+            product_quantity=1,
+        )
+        first_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<decl-a@test>",
+            sender_email="first@example.com",
+        )
+        later_invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<decl-b@test>",
+            sender_email="later@example.com",
+        )
+        first = CaseLockSubmission.objects.create(invite=first_invite, **fields)
+        later = CaseLockSubmission.objects.create(invite=later_invite, **fields)
+        CaseLockSubmission.objects.filter(pk=first.pk).update(
+            timestamp=now - timedelta(hours=2)
+        )
+        CaseLockSubmission.objects.filter(pk=later.pk).update(
+            timestamp=now - timedelta(minutes=1)
+        )
+        first.refresh_from_db()
+        later.refresh_from_db()
+        first.status = CaseLockSubmission.Status.DECLINED
+        first.status_changed_at = now - timedelta(minutes=30)
+        first.save(update_fields=["status", "status_changed_at"])
+
+        annotate_internal_case_locks([first, later])
+        self.assertTrue(first.has_internal_case_lock)
+        self.assertFalse(later.has_internal_case_lock)
 
     def test_final_and_decline_send_mail(self):
         product = CaseLockProduct.objects.create(company=self.company, name="Backup")
@@ -563,6 +758,7 @@ class CaseLockFeatureTests(TestCase):
             send.assert_called_once()
         sub.refresh_from_db()
         self.assertEqual(sub.status, CaseLockSubmission.Status.APPROVED)
+        self.assertIsNotNone(sub.status_changed_at)
 
         invite2 = CaseLockInvite.objects.create(
             company=self.company,
@@ -585,3 +781,119 @@ class CaseLockFeatureTests(TestCase):
             send.assert_called_once()
         sub2.refresh_from_db()
         self.assertEqual(sub2.status, CaseLockSubmission.Status.DECLINED)
+
+    def test_live_json_returns_incoming_mails(self):
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<live@test>",
+            sender_email="buyer@example.com",
+            mail_subject="Need lock",
+            received_at=timezone.now(),
+        )
+        response = self.client.get(reverse("caselock_inbox_live"))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(len(data["mail_rows"]), 1)
+        self.assertEqual(data["mail_rows"][0]["from"], "buyer@example.com")
+        self.assertEqual(data["mail_rows"][0]["subject"], "Need lock")
+        self.assertEqual(data["mail_rows"][0]["id"], str(invite.pk))
+        self.assertFalse(data["mail_rows"][0]["form_submitted"])
+
+    def test_incoming_mails_page_has_live_script(self):
+        response = self.client.get(reverse("caselock_inbox_list") + "?tab=mails")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("caselock_inbox_live"))
+        self.assertContains(response, "cl-mails-tbody")
+        self.assertContains(response, "cl-live-meta")
+
+    @override_settings(DEBUG=False)
+    def test_production_live_does_not_poll_mailbox(self):
+        with patch("business.views.maybe_fetch_on_dashboard") as fetch:
+            response = self.client.get(reverse("caselock_inbox_live"))
+        self.assertEqual(response.status_code, 200)
+        fetch.assert_not_called()
+        self.assertFalse(response.json()["mailbox_poll_on_request"])
+
+    @override_settings(DEBUG=True)
+    def test_local_live_polls_mailbox(self):
+        with patch(
+            "business.views.maybe_fetch_on_dashboard",
+            return_value={"created": 0, "logs": []},
+        ) as fetch:
+            response = self.client.get(reverse("caselock_inbox_live"))
+        self.assertEqual(response.status_code, 200)
+        fetch.assert_called_once()
+        self.assertTrue(response.json()["mailbox_poll_on_request"])
+
+    def test_skips_exchange_bounce_inbound(self):
+        from business.caselock_inbox import (
+            _create_invite_and_notify,
+            _should_skip_inbound,
+        )
+
+        bounce = (
+            "MicrosoftExchange329e71ec88ae4615bbc36ab6ce41109e@natrajinfo.in"
+        )
+        self.assertTrue(
+            _should_skip_inbound(
+                self.company, bounce, "Undeliverable: Case lock details"
+            )
+        )
+        self.assertTrue(
+            _should_skip_inbound(
+                self.company, "caselock@example.com", "Need lock"
+            )
+        )
+        self.assertTrue(
+            _should_skip_inbound(
+                self.company, "outgoing@example.com", "Need lock"
+            )
+        )
+        self.assertFalse(
+            _should_skip_inbound(self.company, "buyer@example.com", "Need lock")
+        )
+        created = _create_invite_and_notify(
+            self.company,
+            "<bounce@test>",
+            bounce,
+            "Undeliverable: Case lock details",
+        )
+        self.assertFalse(created)
+        self.assertFalse(
+            CaseLockInvite.objects.filter(source_message_id="<bounce@test>").exists()
+        )
+
+    def test_invite_send_uses_outgoing_not_caselock_mailbox(self):
+        from business.caselock_inbox import _create_invite_and_notify
+
+        with patch(
+            "business.caselock_inbox.send_outbound", return_value=(True, None)
+        ) as send:
+            created = _create_invite_and_notify(
+                self.company,
+                "<real@test>",
+                "buyer@example.com",
+                "Need lock",
+            )
+        self.assertTrue(created)
+        self.assertEqual(send.call_args.args[0], "outgoing@example.com")
+        self.assertNotEqual(send.call_args.args[0], "caselock@example.com")
+        invite = CaseLockInvite.objects.get(source_message_id="<real@test>")
+        self.assertIsNotNone(invite.email_sent_at)
+
+    def test_no_outbound_without_outgoing_email(self):
+        from business.caselock_inbox import _send_mail_via_company
+
+        self.company.outgoing_email = ""
+        self.company.save(update_fields=["outgoing_email"])
+        with patch("business.caselock_inbox.send_outbound") as send:
+            ok = _send_mail_via_company(
+                self.company,
+                "buyer@example.com",
+                "Case lock details",
+                "body",
+                "<p>html</p>",
+            )
+        self.assertFalse(ok)
+        send.assert_not_called()

@@ -3,32 +3,7 @@
 
 {% block extra_css %}
 <style>
-  .cl-tabs {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-  .cl-tab {
-    flex: 1 1 0;
-    border: 1px solid #d0d7e2;
-    background: #fff;
-    padding: 0.7rem 0.75rem;
-    font-weight: 650;
-    font-size: 0.875rem;
-    color: #334155;
-    cursor: pointer;
-    border-radius: 10px;
-    text-align: center;
-    text-decoration: none !important;
-  }
-  .cl-tab:hover { border-color: #93c5fd; color: #0f172a; }
-  .cl-tab.is-active,
-  .cl-tab.is-active:hover {
-    background: #1656b8;
-    border-color: #1656b8;
-    color: #fff;
-  }
+  .cl-tabs { margin-bottom: 1rem; }
   .cl-status {
     display: inline-block;
     padding: 0.2rem 0.5rem;
@@ -97,7 +72,10 @@
   <div class="tracker-page-header-text">
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-lock"/></svg>
     <div>
-      <h1 class="tracker-page-title">Case lock</h1>
+      <div class="ticket360-title-row ticket360-title-row--banner">
+        <h1 class="tracker-page-title">Case lock</h1>
+        <span id="cl-live-meta" class="ticket360-live ticket360-live--banner">Live · auto-updating</span>
+      </div>
       <p class="tracker-page-subtitle">
         {% if mailbox_email %}
         Mailbox: <strong>{{ mailbox_email }}</strong>
@@ -111,9 +89,17 @@
 {% endblock %}
 
 {% block content %}
-<div class="cl-tabs" role="tablist">
-  <a class="cl-tab {% if active_tab == 'dashboard' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=dashboard">Dashboard</a>
-  <a class="cl-tab {% if active_tab == 'mails' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=mails">Incoming mails</a>
+<div class="subnav-tabs cl-tabs" role="tablist">
+  <a class="subnav-tab {% if active_tab == 'dashboard' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=dashboard">
+    <svg aria-hidden="true"><use href="#i-layout-grid"/></svg>
+    Dashboard
+    <span class="subnav-tab-count" id="cl-count-dash">{{ submissions|length }}</span>
+  </a>
+  <a class="subnav-tab {% if active_tab == 'mails' %}is-active{% endif %}" href="{% url 'caselock_inbox_list' %}?tab=mails">
+    <svg aria-hidden="true"><use href="#i-mail"/></svg>
+    Incoming mails
+    <span class="subnav-tab-count" id="cl-count-mails">{{ invites|length }}</span>
+  </a>
 </div>
 
 {% if active_tab == 'dashboard' %}
@@ -161,9 +147,9 @@
           <th>Final / Decline</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="cl-dash-tbody">
         {% for s in submissions %}
-        <tr>
+        <tr data-submission-id="{{ s.pk }}">
           <td>{{ s.invite.email_sent_at|date:"d/m/Y H:i:s"|default:"—" }}</td>
           <td>{{ s.timestamp|date:"d/m/Y H:i:s" }}</td>
           <td>{{ s.product_name }}</td>
@@ -214,9 +200,9 @@
           <th>Form submitted</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="cl-mails-tbody">
         {% for invite in invites %}
-        <tr>
+        <tr data-invite-id="{{ invite.pk }}">
           <td>{{ invite.sender_email }}</td>
           <td>{{ invite.mail_subject|default:"—" }}</td>
           <td>{{ invite.inbound_at|date:"d/m/Y H:i:s"|default:"—" }}</td>
@@ -235,4 +221,176 @@
   </div>
 </div>
 {% endif %}
+<script>
+(function () {
+  var LIVE_URL = "{% url 'caselock_inbox_live' %}";
+  var POLL_MS = 15000;
+  var CSRF = "{{ csrf_token }}";
+  var TAB = "{{ active_tab|escapejs }}";
+  var dashBody = document.getElementById("cl-dash-tbody");
+  var mailBody = document.getElementById("cl-mails-tbody");
+  var dashCount = document.getElementById("cl-count-dash");
+  var mailCount = document.getElementById("cl-count-mails");
+  var meta = document.getElementById("cl-live-meta");
+  var inFlight = false;
+  var lastSignature = "";
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function setMeta(text, isError) {
+    if (!meta) return;
+    meta.textContent = text;
+    if (isError) meta.classList.add("is-error");
+    else meta.classList.remove("is-error");
+  }
+
+  function tableBusy() {
+    var tbody = TAB === "mails" ? mailBody : dashBody;
+    var el = document.activeElement;
+    if (!el || !tbody) return false;
+    return tbody.contains(el) && (
+      el.tagName === "INPUT" ||
+      el.tagName === "SELECT" ||
+      el.tagName === "TEXTAREA" ||
+      el.tagName === "BUTTON"
+    );
+  }
+
+  function signature(data) {
+    return JSON.stringify({
+      created: data.created || 0,
+      mail: data.mail_rows || [],
+      submissions: data.submission_rows || [],
+    });
+  }
+
+  function emptyMailHtml() {
+    return (
+      '<tr><td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">' +
+        "No incoming Case lock mails yet." +
+      "</td></tr>"
+    );
+  }
+
+  function emptyDashHtml() {
+    return (
+      '<tr><td colspan="9" class="muted" style="padding:1.25rem;text-align:center;">' +
+        "No submissions yet." +
+      "</td></tr>"
+    );
+  }
+
+  function mailRowHtml(r) {
+    return (
+      '<tr data-invite-id="' + escapeHtml(r.id) + '">' +
+        "<td>" + escapeHtml(r.from) + "</td>" +
+        "<td>" + escapeHtml(r.subject || "—") + "</td>" +
+        "<td>" + escapeHtml(r.received_at || "—") + "</td>" +
+        "<td>" + escapeHtml(r.form_sent_at || "—") + "</td>" +
+        "<td>" + (r.form_submitted ? "Yes" : "No") + "</td>" +
+      "</tr>"
+    );
+  }
+
+  function dashRowHtml(r) {
+    var lockCell = r.has_internal_case_lock
+      ? '<span class="cl-lock">Case lock</span>'
+      : "—";
+    var actionCell;
+    if (r.status === "pending") {
+      actionCell =
+        '<form method="post" action="' + escapeHtml(r.status_url) + '" class="cl-actions">' +
+          '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '">' +
+          '<button type="submit" class="cl-btn cl-btn--approve" name="action" value="final">Final</button>' +
+          '<button type="submit" class="cl-btn cl-btn--decline" name="action" value="decline">Decline</button>' +
+        "</form>";
+    } else {
+      actionCell =
+        '<span class="cl-status cl-status--' + escapeHtml(r.status) + '">' +
+          escapeHtml(r.status_label) +
+        "</span>";
+    }
+    return (
+      '<tr data-submission-id="' + escapeHtml(r.id) + '">' +
+        "<td>" + escapeHtml(r.mail_sent_at || "—") + "</td>" +
+        "<td>" + escapeHtml(r.submitted_at || "—") + "</td>" +
+        "<td>" + escapeHtml(r.product_name) + "</td>" +
+        "<td>" + escapeHtml(r.client_name) + "</td>" +
+        "<td>" + escapeHtml(r.client_gst || "—") + "</td>" +
+        "<td>" + escapeHtml(r.quantity) + "</td>" +
+        "<td>" + escapeHtml(r.submitted_by) + "</td>" +
+        "<td>" + lockCell + "</td>" +
+        "<td>" + actionCell + "</td>" +
+      "</tr>"
+    );
+  }
+
+  function applyRows(data) {
+    if (mailBody) {
+      var mails = data.mail_rows || [];
+      mailBody.innerHTML = mails.length
+        ? mails.map(mailRowHtml).join("")
+        : emptyMailHtml();
+    }
+    if (dashBody) {
+      var rows = data.submission_rows || [];
+      dashBody.innerHTML = rows.length
+        ? rows.map(dashRowHtml).join("")
+        : emptyDashHtml();
+    }
+    if (dashCount) dashCount.textContent = String(data.submission_count != null ? data.submission_count : (data.submission_rows || []).length);
+    if (mailCount) mailCount.textContent = String(data.mail_count != null ? data.mail_count : (data.mail_rows || []).length);
+  }
+
+  function poll() {
+    if (inFlight) return;
+    inFlight = true;
+    fetch(LIVE_URL, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        var sig = signature(data);
+        if (sig !== lastSignature) {
+          if (tableBusy()) {
+            setMeta("Live · waiting (editing…)", false);
+            return;
+          }
+          applyRows(data);
+          lastSignature = sig;
+        }
+        var suffix = data.created ? (" · +" + data.created + " new") : "";
+        var errors = data.inbox_errors || [];
+        if (errors.length) {
+          setMeta(errors[0], true);
+        } else {
+          setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+        }
+      })
+      .catch(function (err) {
+        setMeta("Live poll failed — retrying", true);
+        console.error(err);
+      })
+      .finally(function () {
+        inFlight = false;
+      });
+  }
+
+  setMeta("Live · auto-updating", false);
+  window.setInterval(poll, POLL_MS);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) poll();
+  });
+})();
+</script>
 {% endblock %}

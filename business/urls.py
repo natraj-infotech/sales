@@ -24,6 +24,11 @@ urlpatterns = [
         name="caselock_public_form",
     ),
     path("caselock/inboxes/", views.caselock_inbox_list, name="caselock_inbox_list"),
+    path(
+        "caselock/inboxes/live/",
+        views.caselock_inbox_live,
+        name="caselock_inbox_live",
+    ),
     path("caselock/inboxes/add/", views.caselock_inbox_add, name="caselock_inbox_add"),
     path(
         "caselock/inboxes/<int:pk>/edit/",

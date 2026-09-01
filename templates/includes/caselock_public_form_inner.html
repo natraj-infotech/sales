@@ -1,10 +1,101 @@
+<style>
+  .cl-product-field { position: relative; }
+  .cl-product-native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .cl-product-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.9375rem;
+    color: var(--text, #1a1d21);
+    cursor: pointer;
+    text-align: left;
+  }
+  .cl-product-trigger.is-empty { color: #94a3b8; }
+  .cl-product-trigger:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+  .cl-product-caret {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+  }
+  .cl-product-panel {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.35rem);
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    padding: 0.75rem;
+  }
+  .cl-product-panel[hidden] { display: none; }
+  .cl-product-search {
+    width: 100%;
+    margin: 0 0 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+  }
+  .cl-product-list {
+    overflow: auto;
+    max-height: 14rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .cl-product-item {
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    color: var(--text, #1a1d21);
+  }
+  .cl-product-item:hover,
+  .cl-product-item.is-selected {
+    background: #eff6ff;
+    border-color: #93c5fd;
+  }
+  .cl-product-empty {
+    margin: 0.35rem 0 0;
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+</style>
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>Case lock details</h2>
-<p class="muted">Please complete the fields below. Use the search box to find a product.</p>
+<p class="muted">Please complete the fields below. Search and choose a product from the list.</p>
 <form method="post">
   {% csrf_token %}
-  <div class="form-row">
-    <label for="cl-product-search">Product</label>
-    <input type="search" id="cl-product-search" placeholder="Search products" autocomplete="off">
+  <div class="form-row cl-product-field">
+    <label for="cl-product-trigger">Product</label>
+    <button type="button" class="cl-product-trigger is-empty" id="cl-product-trigger">
+      <span id="cl-product-trigger-label">Select a product</span>
+      <span class="cl-product-caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="cl-product-panel" id="cl-product-panel" hidden>
+      <input type="search" class="cl-product-search" id="cl-product-search" placeholder="Search products" autocomplete="off">
+      <div class="cl-product-list" id="cl-product-list"></div>
+      <p class="cl-product-empty" id="cl-product-empty" hidden>No matching products.</p>
+    </div>
     {{ form.product }}
     {{ form.product.errors }}
   </div>
@@ -29,24 +120,74 @@
 (function () {
   var search = document.getElementById("cl-product-search");
   var select = document.getElementById("{{ form.product.id_for_label }}");
-  if (!search || !select) return;
-  var options = Array.prototype.slice.call(select.options).map(function (opt) {
-    return { value: opt.value, text: opt.text, disabled: opt.disabled };
-  });
+  var trigger = document.getElementById("cl-product-trigger");
+  var triggerLabel = document.getElementById("cl-product-trigger-label");
+  var panel = document.getElementById("cl-product-panel");
+  var list = document.getElementById("cl-product-list");
+  var empty = document.getElementById("cl-product-empty");
+  if (!search || !select || !trigger || !panel || !list) return;
+  var options = Array.prototype.slice.call(select.options)
+    .filter(function (opt) { return opt.value; })
+    .map(function (opt) {
+      return { value: opt.value, text: opt.text };
+    });
+
+  function selectedText() {
+    var opt = select.options[select.selectedIndex];
+    if (opt && opt.value) return opt.text;
+    return "Select a product";
+  }
+
+  function syncTrigger() {
+    var hasValue = Boolean(select.value);
+    triggerLabel.textContent = selectedText();
+    trigger.classList.toggle("is-empty", !hasValue);
+  }
+
   function render(filter) {
     var q = (filter || "").toLowerCase();
     var current = select.value;
-    select.innerHTML = "";
+    list.innerHTML = "";
+    var shown = 0;
     options.forEach(function (opt) {
-      if (q && opt.text.toLowerCase().indexOf(q) === -1 && opt.value) return;
-      var el = document.createElement("option");
-      el.value = opt.value;
-      el.textContent = opt.text;
-      el.disabled = opt.disabled;
-      select.appendChild(el);
+      if (q && opt.text.toLowerCase().indexOf(q) === -1) return;
+      shown += 1;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cl-product-item" + (opt.value === current ? " is-selected" : "");
+      btn.textContent = opt.text;
+      btn.addEventListener("click", function () {
+        select.value = opt.value;
+        syncTrigger();
+        closePanel();
+      });
+      list.appendChild(btn);
     });
-    if (current) select.value = current;
+    empty.hidden = shown > 0;
   }
+
+  function openPanel() {
+    panel.hidden = false;
+    search.value = "";
+    render("");
+    search.focus();
+  }
+
+  function closePanel() {
+    panel.hidden = true;
+  }
+
+  trigger.addEventListener("click", function () {
+    if (panel.hidden) openPanel();
+    else closePanel();
+  });
   search.addEventListener("input", function () { render(search.value); });
+  document.addEventListener("click", function (event) {
+    if (!panel.hidden && !event.target.closest(".cl-product-field")) closePanel();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !panel.hidden) closePanel();
+  });
+  syncTrigger();
 })();
 </script>
