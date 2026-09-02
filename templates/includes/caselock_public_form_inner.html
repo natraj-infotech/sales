@@ -80,13 +80,19 @@
     color: #64748b;
     font-size: 0.875rem;
   }
+  .cl-required { color: #dc2626; }
+  .cl-product-error {
+    margin: 0.35rem 0 0;
+    color: #b91c1c;
+    font-size: 0.875rem;
+  }
 </style>
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>Case lock details</h2>
-<p class="muted">Please complete the fields below. Search and choose a product from the list.</p>
-<form method="post">
+<p class="muted">All fields are required. Search and choose a product from the list.</p>
+<form method="post" id="cl-public-form">
   {% csrf_token %}
   <div class="form-row cl-product-field">
-    <label for="cl-product-trigger">Product</label>
+    <label for="cl-product-trigger">Product <span class="cl-required" aria-hidden="true">*</span></label>
     <button type="button" class="cl-product-trigger is-empty" id="cl-product-trigger">
       <span id="cl-product-trigger-label">Select a product</span>
       <span class="cl-product-caret" aria-hidden="true">▾</span>
@@ -98,19 +104,20 @@
     </div>
     {{ form.product }}
     {{ form.product.errors }}
+    <p class="cl-product-error" id="cl-product-required" hidden>Select a product.</p>
   </div>
   <div class="form-row">
-    <label for="{{ form.client_name.id_for_label }}">{{ form.client_name.label }}</label>
+    <label for="{{ form.client_name.id_for_label }}">{{ form.client_name.label }} <span class="cl-required" aria-hidden="true">*</span></label>
     {{ form.client_name }}
     {{ form.client_name.errors }}
   </div>
   <div class="form-row">
-    <label for="{{ form.client_gst.id_for_label }}">{{ form.client_gst.label }}</label>
+    <label for="{{ form.client_gst.id_for_label }}">{{ form.client_gst.label }} <span class="cl-required" aria-hidden="true">*</span></label>
     {{ form.client_gst }}
     {{ form.client_gst.errors }}
   </div>
   <div class="form-row">
-    <label for="{{ form.product_quantity.id_for_label }}">{{ form.product_quantity.label }}</label>
+    <label for="{{ form.product_quantity.id_for_label }}">{{ form.product_quantity.label }} <span class="cl-required" aria-hidden="true">*</span></label>
     {{ form.product_quantity }}
     {{ form.product_quantity.errors }}
   </div>
@@ -125,6 +132,8 @@
   var panel = document.getElementById("cl-product-panel");
   var list = document.getElementById("cl-product-list");
   var empty = document.getElementById("cl-product-empty");
+  var form = document.getElementById("cl-public-form");
+  var productRequired = document.getElementById("cl-product-required");
   if (!search || !select || !trigger || !panel || !list) return;
   var options = Array.prototype.slice.call(select.options)
     .filter(function (opt) { return opt.value; })
@@ -188,6 +197,26 @@
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && !panel.hidden) closePanel();
   });
+  if (form) {
+    form.addEventListener("submit", function (event) {
+      var name = form.querySelector('[name="client_name"]');
+      var gst = form.querySelector('[name="client_gst"]');
+      var qty = form.querySelector('[name="product_quantity"]');
+      var missingProduct = !select.value;
+      var missingName = !name || !(name.value || "").trim();
+      var missingGst = !gst || !(gst.value || "").trim();
+      var qtyVal = qty ? Number(qty.value) : 0;
+      var missingQty = !qty || qty.value === "" || !Number.isFinite(qtyVal) || qtyVal < 1;
+      if (productRequired) productRequired.hidden = !missingProduct;
+      if (missingProduct || missingName || missingGst || missingQty) {
+        event.preventDefault();
+        if (missingProduct) trigger.focus();
+        else if (missingName) name.focus();
+        else if (missingGst) gst.focus();
+        else if (qty) qty.focus();
+      }
+    });
+  }
   syncTrigger();
 })();
 </script>

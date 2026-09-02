@@ -569,6 +569,32 @@ class CaseLockFeatureTests(TestCase):
         self.assertContains(dash, "Buyer Co")
         self.assertContains(dash, "Case lock")
 
+    def test_public_form_requires_all_lock_fields(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Laptop")
+        invite = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<req@test>",
+            sender_email="buyer@example.com",
+        )
+        url = reverse("caselock_public_form", kwargs={"invite_id": invite.pk})
+        complete = {
+            "product": product.pk,
+            "client_name": "Acme Corp",
+            "client_gst": "22AAAAA0000A1Z5",
+            "product_quantity": 10,
+        }
+        missing_cases = [
+            {**complete, "product": ""},
+            {**complete, "client_name": "  "},
+            {**complete, "client_gst": ""},
+            {**complete, "product_quantity": ""},
+            {**complete, "product_quantity": 0},
+        ]
+        for payload in missing_cases:
+            post = self.client.post(url, payload)
+            self.assertEqual(post.status_code, 200)
+            self.assertFalse(CaseLockSubmission.objects.filter(invite=invite).exists())
+
     def test_internal_lock_goes_to_first_submitter(self):
         product = CaseLockProduct.objects.create(company=self.company, name="Antivirus")
         first_invite = CaseLockInvite.objects.create(
@@ -591,7 +617,7 @@ class CaseLockFeatureTests(TestCase):
         )
         second = CaseLockSubmission.objects.create(
             invite=second_invite,
-            client_name="acme corp",
+            client_name="Acme Pvt Ltd",
             client_gst="22aaaaa0000a1z5",
             product=product,
             product_name="Antivirus",
@@ -601,7 +627,7 @@ class CaseLockFeatureTests(TestCase):
         self.assertTrue(first.has_internal_case_lock)
         self.assertFalse(second.has_internal_case_lock)
 
-    def test_internal_lock_is_separate_when_company_or_gst_differs(self):
+    def test_internal_lock_groups_by_gst_not_company_name(self):
         product = CaseLockProduct.objects.create(company=self.company, name="Firewall")
         invite_a = CaseLockInvite.objects.create(
             company=self.company,
@@ -643,8 +669,40 @@ class CaseLockFeatureTests(TestCase):
         )
         annotate_internal_case_locks([by_company, other_company, other_gst])
         self.assertTrue(by_company.has_internal_case_lock)
-        self.assertTrue(other_company.has_internal_case_lock)
+        self.assertFalse(other_company.has_internal_case_lock)
         self.assertTrue(other_gst.has_internal_case_lock)
+
+    def test_internal_lock_without_gst_uses_company_name(self):
+        product = CaseLockProduct.objects.create(company=self.company, name="Router")
+        invite_a = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<nogst-a@test>",
+            sender_email="a@example.com",
+        )
+        invite_b = CaseLockInvite.objects.create(
+            company=self.company,
+            source_message_id="<nogst-b@test>",
+            sender_email="b@example.com",
+        )
+        first = CaseLockSubmission.objects.create(
+            invite=invite_a,
+            client_name="Acme Corp",
+            client_gst="",
+            product=product,
+            product_name="Router",
+            product_quantity=1,
+        )
+        second = CaseLockSubmission.objects.create(
+            invite=invite_b,
+            client_name="acme corp",
+            client_gst="",
+            product=product,
+            product_name="Router",
+            product_quantity=1,
+        )
+        annotate_internal_case_locks([first, second])
+        self.assertTrue(first.has_internal_case_lock)
+        self.assertFalse(second.has_internal_case_lock)
 
     def test_final_unblocks_same_combination_for_new_request(self):
         product = CaseLockProduct.objects.create(company=self.company, name="VPN")

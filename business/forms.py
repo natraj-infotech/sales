@@ -472,7 +472,7 @@ class CaseLockPublicForm(forms.ModelForm):
         )
         labels = {
             "product": "Product",
-            "client_name": "Customer name",
+            "client_name": "Company name",
             "client_gst": "GST number",
             "product_quantity": "Quantity",
         }
@@ -486,14 +486,47 @@ class CaseLockPublicForm(forms.ModelForm):
             queryset=products,
             required=True,
             empty_label="Select a product",
-            widget=forms.Select(attrs={"class": "cl-product-native", "aria-hidden": "true"}),
+            error_messages={"required": "Select a product."},
+            widget=forms.Select(
+                attrs={
+                    "class": "cl-product-native",
+                    "aria-hidden": "true",
+                    "required": True,
+                }
+            ),
         )
-        self.fields["client_name"].required = True
-        self.fields["client_gst"].required = True
-        self.fields["product_quantity"].widget.attrs.setdefault("min", "1")
-        self.fields["product_quantity"].initial = 1
-        self.fields["client_name"].widget.attrs.setdefault("placeholder", "Customer name")
-        self.fields["client_gst"].widget.attrs.setdefault("placeholder", "GST number")
+        for name in ("client_name", "client_gst", "product_quantity"):
+            self.fields[name].required = True
+        self.fields["client_name"].error_messages["required"] = "Enter the company name."
+        self.fields["client_gst"].error_messages["required"] = "Enter the GST number."
+        self.fields["product_quantity"].error_messages["required"] = "Enter the quantity."
+        self.fields["product_quantity"].widget.attrs.update(
+            {"min": "1", "required": True, "placeholder": "Quantity"}
+        )
+        self.fields["client_name"].widget.attrs.update(
+            {"required": True, "placeholder": "Company name"}
+        )
+        self.fields["client_gst"].widget.attrs.update(
+            {"required": True, "placeholder": "GST number"}
+        )
+
+    def clean_client_name(self):
+        name = (self.cleaned_data.get("client_name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter the company name.")
+        return name
+
+    def clean_client_gst(self):
+        gst = (self.cleaned_data.get("client_gst") or "").strip()
+        if not gst:
+            raise forms.ValidationError("Enter the GST number.")
+        return gst
+
+    def clean_product_quantity(self):
+        qty = self.cleaned_data.get("product_quantity")
+        if qty is None or qty < 1:
+            raise forms.ValidationError("Enter a quantity of at least 1.")
+        return qty
 
 
 class CaseLockProductForm(forms.ModelForm):
