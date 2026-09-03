@@ -19,6 +19,7 @@ from accounts.permissions import (
     company_users,
     get_company_for_user,
     sales_module_required,
+    support_ticket_access_required,
 )
 
 from .forms import (
@@ -1771,7 +1772,7 @@ def _format_ticket_dt(value, fmt: str) -> str:
     return date_format(timezone.localtime(value), fmt)
 
 
-@company_owner_required
+@support_ticket_access_required
 def support_ticket_list(request):
     company = _company(request)
     helpdesk_bridge.sync_company_queue(company)
@@ -1809,7 +1810,7 @@ def support_ticket_list(request):
     )
 
 
-@company_owner_required
+@support_ticket_access_required
 def support_ticket_live(request):
     """Poll mailbox (throttled) and return current ticket list as JSON."""
     company = _company(request)
@@ -1885,7 +1886,7 @@ def support_ticket_live(request):
     )
 
 
-@company_owner_required
+@support_ticket_access_required
 @require_http_methods(["POST"])
 def support_ticket_update(request, pk):
     company = _company(request)
@@ -1951,7 +1952,7 @@ def support_ticket_update(request, pk):
     return redirect(url)
 
 
-@company_owner_required
+@support_ticket_access_required
 def support_ticket_add(request):
     import json
 
@@ -1990,7 +1991,7 @@ def support_ticket_add(request):
     )
 
 
-@company_owner_required
+@support_ticket_access_required
 @require_http_methods(["GET", "POST"])
 def support_ticket_detail(request, pk):
     from business.sla import get_or_create_sla_settings
@@ -2070,7 +2071,7 @@ def support_ticket_detail(request, pk):
     )
 
 
-@company_owner_required
+@support_ticket_access_required
 @require_http_methods(["GET", "POST"])
 def support_sla_settings(request):
     from business.priority_rules import ensure_default_priority_rules

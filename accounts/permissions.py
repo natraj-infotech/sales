@@ -41,6 +41,13 @@ def user_can_grant_sales(user, company):
     return bool(membership and membership.can_grant_sales)
 
 
+def user_has_support_ticket_access(user, company):
+    if user_is_owner(user, company):
+        return True
+    membership = get_membership(user, company)
+    return bool(membership and membership.support_ticket_access)
+
+
 def company_users(company):
     from django.contrib.auth import get_user_model
 
@@ -94,6 +101,26 @@ def sales_grant_required(view_func):
                 "You do not have permission to manage sales module access.",
             )
             if company and user_has_sales_access(request.user, company):
+                return redirect("dashboard")
+            return redirect("access_pending")
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
+
+
+def support_ticket_access_required(view_func):
+    @login_required
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        company = get_company_for_user(request.user)
+        if company is None:
+            return redirect("company_setup")
+        if not user_has_support_ticket_access(request.user, company):
+            messages.error(
+                request,
+                "You do not have access to support tickets. Ask your company owner to grant access from Team access.",
+            )
+            if user_has_sales_access(request.user, company):
                 return redirect("dashboard")
             return redirect("access_pending")
         return view_func(request, *args, **kwargs)

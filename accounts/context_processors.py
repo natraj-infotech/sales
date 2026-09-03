@@ -4,6 +4,7 @@ from .permissions import (
     get_company_for_user,
     user_can_grant_sales,
     user_has_sales_access,
+    user_has_support_ticket_access,
     user_is_owner,
 )
 
@@ -27,5 +28,8 @@ def company_access(request):
         "user_company": company,
         "user_has_sales_access": user_has_sales_access(request.user, company),
         "user_can_grant_sales": user_can_grant_sales(request.user, company),
+        "user_has_support_ticket_access": user_has_support_ticket_access(
+            request.user, company
+        ),
         "user_is_company_owner": user_is_owner(request.user, company),
     }

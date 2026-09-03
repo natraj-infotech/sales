@@ -2,13 +2,37 @@
 
 {% block title %}Team access{% endblock %}
 
+{% block extra_css %}
+<style>
+  .team-access-flags {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .team-access-flags .form-field-tracker {
+    min-width: 0;
+  }
+  .team-access-flags .form-field-tracker label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    font-weight: 600;
+  }
+  @media (max-width: 800px) {
+    .team-access-flags { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header">
   <div class="tracker-page-header-text">
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-users"/></svg>
     <div>
       <h1 class="tracker-page-title">Team access</h1>
-      <p class="tracker-page-subtitle">Grant sales module access to teammates at {{ company.company_name }}</p>
+      <p class="tracker-page-subtitle">Grant sales and support ticket access to teammates at {{ company.company_name }}</p>
     </div>
   </div>
 </div>
@@ -27,16 +51,24 @@
       {% if add_form.email.help_text %}<span class="tracker-helptext">{{ add_form.email.help_text }}</span>{% endif %}
       {{ add_form.email.errors }}
     </div>
-    <div class="form-field-tracker">
-      <label>{{ add_form.sales_access }} {{ add_form.sales_access.label }}</label>
-      {% if add_form.sales_access.help_text %}<span class="tracker-helptext">{{ add_form.sales_access.help_text }}</span>{% endif %}
+    <div class="team-access-flags">
+      <div class="form-field-tracker">
+        <label>{{ add_form.sales_access }} {{ add_form.sales_access.label }}</label>
+        {% if add_form.sales_access.help_text %}<span class="tracker-helptext">{{ add_form.sales_access.help_text }}</span>{% endif %}
+      </div>
+      {% if add_form.can_grant_sales %}
+      <div class="form-field-tracker">
+        <label>{{ add_form.can_grant_sales }} {{ add_form.can_grant_sales.label }}</label>
+        {% if add_form.can_grant_sales.help_text %}<span class="tracker-helptext">{{ add_form.can_grant_sales.help_text }}</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if add_form.support_ticket_access %}
+      <div class="form-field-tracker">
+        <label>{{ add_form.support_ticket_access }} {{ add_form.support_ticket_access.label }}</label>
+        {% if add_form.support_ticket_access.help_text %}<span class="tracker-helptext">{{ add_form.support_ticket_access.help_text }}</span>{% endif %}
+      </div>
+      {% endif %}
     </div>
-    {% if add_form.can_grant_sales %}
-    <div class="form-field-tracker">
-      <label>{{ add_form.can_grant_sales }} {{ add_form.can_grant_sales.label }}</label>
-      {% if add_form.can_grant_sales.help_text %}<span class="tracker-helptext">{{ add_form.can_grant_sales.help_text }}</span>{% endif %}
-    </div>
-    {% endif %}
     <div class="form-field-tracker form-field-tracker--full">
       <button type="submit" class="btn btn-primary">Add teammate</button>
     </div>
@@ -53,6 +85,7 @@
           <th>Role</th>
           <th>Sales access</th>
           <th>Can grant sales</th>
+          <th>Support tickets</th>
           <th class="col-actions">Actions</th>
         </tr>
       </thead>
@@ -63,6 +96,7 @@
           <td>{{ member.get_role_display }}</td>
           <td>{% if member.sales_access %}Yes{% else %}No{% endif %}</td>
           <td>{% if member.can_grant_sales %}Yes{% else %}No{% endif %}</td>
+          <td>{% if member.support_ticket_access %}Yes{% else %}No{% endif %}</td>
           <td class="col-actions">
             {% if member.role != "owner" %}
             <form method="post" style="display:flex;flex-direction:column;gap:0.35rem;align-items:flex-start;">
@@ -79,6 +113,10 @@
                 Can grant sales
               </label>
               {% endif %}
+              <label style="font-size:0.78rem;">
+                <input type="checkbox" name="support_ticket_access" {% if member.support_ticket_access %}checked{% endif %}>
+                Support tickets
+              </label>
               <div style="display:flex;gap:0.35rem;">
                 <button type="submit" class="btn-table-edit">Save</button>
               </div>
@@ -96,7 +134,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="5" class="muted">No team members yet.</td>
+          <td colspan="6" class="muted">No team members yet.</td>
         </tr>
         {% endfor %}
       </tbody>

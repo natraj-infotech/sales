@@ -82,8 +82,9 @@ class CompanyMemberAdmin(admin.ModelAdmin):
         "role",
         "sales_access",
         "can_grant_sales",
+        "support_ticket_access",
         "joined_at",
     )
-    list_filter = ("role", "sales_access", "can_grant_sales")
+    list_filter = ("role", "sales_access", "can_grant_sales", "support_ticket_access")
     search_fields = ("company__company_name", "user__email")
     autocomplete_fields = ("company", "user")

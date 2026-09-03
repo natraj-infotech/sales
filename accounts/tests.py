@@ -48,6 +48,7 @@ class ProductPricesViewTests(TestCase):
                 "role": CompanyMember.Role.OWNER,
                 "sales_access": True,
                 "can_grant_sales": True,
+                "support_ticket_access": True,
             },
         )
         self.product = Product.objects.create(
@@ -75,4 +76,51 @@ class ProductPricesViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, reverse("company_product_prices"))
         self.assertNotContains(response, "Product prices")
+
+
+class SupportTicketAccessTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            email="owner@example.com", password="pass12345"
+        )
+        self.member = User.objects.create_user(
+            email="member@example.com", password="pass12345"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.owner, company_name="Acme"
+        )
+        CompanyMember.objects.update_or_create(
+            company=self.company,
+            user=self.owner,
+            defaults={
+                "role": CompanyMember.Role.OWNER,
+                "sales_access": True,
+                "can_grant_sales": True,
+                "support_ticket_access": True,
+            },
+        )
+        CompanyMember.objects.create(
+            company=self.company,
+            user=self.member,
+            role=CompanyMember.Role.MEMBER,
+            sales_access=True,
+            can_grant_sales=False,
+            support_ticket_access=False,
+        )
+
+    def test_member_without_flag_is_blocked(self):
+        self.client.login(email="member@example.com", password="pass12345")
+        response = self.client.get(reverse("support_ticket_list"), follow=True)
+        self.assertNotEqual(response.resolver_match.url_name, "support_ticket_list")
+
+    def test_member_with_flag_can_open_dashboard(self):
+        membership = CompanyMember.objects.get(
+            company=self.company, user=self.member
+        )
+        membership.support_ticket_access = True
+        membership.save(update_fields=["support_ticket_access"])
+        self.client.login(email="member@example.com", password="pass12345")
+        response = self.client.get(reverse("support_ticket_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Support Tickets")
 

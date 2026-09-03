@@ -193,6 +193,10 @@ class CompanyMember(models.Model):
         default=False,
         help_text="Can grant or revoke sales module access for teammates.",
     )
+    support_ticket_access = models.BooleanField(
+        default=False,
+        help_text="Can view and manage the support tickets dashboard for this company.",
+    )
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
