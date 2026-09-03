@@ -17,6 +17,7 @@ from business.models import (
     Client,
     ClientSubscription,
     Product,
+    Vendor,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
@@ -955,3 +956,104 @@ class CaseLockFeatureTests(TestCase):
             )
         self.assertFalse(ok)
         send.assert_not_called()
+
+
+class SubscriptionRenewVendorTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="OMSGuru"
+        )
+        self.product = Product.objects.create(
+            company=self.company, name="Microsoft 365"
+        )
+        self.vendor = Vendor.objects.create(
+            company=self.company, name="Redington"
+        )
+        self.other_vendor = Vendor.objects.create(
+            company=self.company, name="Ingram"
+        )
+        self.subscription = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=date(2025, 9, 4),
+            end_date=date(2026, 9, 3),
+            quantity=2,
+            billing_amount=Decimal("3137.29"),
+        )
+        self.client.force_login(self.user)
+
+    def _post(self, vendor):
+        return self.client.post(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk}),
+            {
+                "start_date": "2026-09-04",
+                "end_date": "2027-09-03",
+                "quantity": "2",
+                "billing_amount": "3137.29",
+                "vendor": vendor,
+            },
+        )
+
+    def test_form_lists_existing_vendors(self):
+        response = self.client.get(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "New vendor")
+        self.assertContains(response, "Redington")
+        self.assertContains(response, "Ingram")
+        self.assertContains(response, "+ Add new vendor")
+        self.assertNotContains(response, "New vendor name")
+        self.assertContains(
+            response,
+            f'<option value="{self.vendor.pk}" selected>',
+            html=False,
+        )
+
+    def test_select_existing_vendor(self):
+        response = self._post(str(self.other_vendor.pk))
+        self.assertEqual(response.status_code, 302)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.vendor_id, self.other_vendor.pk)
+
+    def test_add_new_vendor_redirects_to_add_page(self):
+        response = self._post("__new__")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("vendor_add"), response["Location"])
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.vendor_id, self.vendor.pk)
+        self.assertFalse(
+            Vendor.objects.filter(
+                company=self.company, name="ABC Distributors"
+            ).exists()
+        )
+
+    def test_add_vendor_returns_to_renew_with_new_vendor(self):
+        renew_url = reverse(
+            "subscription_renew", kwargs={"pk": self.subscription.pk}
+        )
+        response = self.client.post(
+            reverse("vendor_add"),
+            {"name": "ABC Distributors", "next": renew_url},
+        )
+        self.assertEqual(response.status_code, 302)
+        created = Vendor.objects.get(
+            company=self.company, name="ABC Distributors"
+        )
+        self.assertIn(renew_url, response["Location"])
+        self.assertIn(f"preselect_vendor={created.pk}", response["Location"])
+        renew = self.client.get(response["Location"])
+        self.assertEqual(renew.status_code, 200)
+        self.assertContains(
+            renew,
+            f'<option value="{created.pk}" selected>',
+            html=False,
+        )

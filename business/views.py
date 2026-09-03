@@ -1,6 +1,7 @@
 import csv
 from datetime import timedelta
 from io import StringIO
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -707,19 +708,32 @@ def vendor_import(request):
 @sales_module_required
 def vendor_add(request):
     company = _company(request)
+    next_url = _safe_next_url(
+        request.POST.get("next") or request.GET.get("next"),
+        "",
+    )
     if request.method == "POST":
         form = VendorForm(request.POST)
         if form.is_valid():
             v = form.save(commit=False)
             v.company = company
             v.save()
+            if next_url:
+                return redirect(
+                    _url_with_query(next_url, preselect_vendor=v.pk)
+                )
             return redirect("vendor_list")
     else:
         form = VendorForm()
     return render(
         request,
         "business/vendor_form.html",
-        {"company": company, "form": form, "title": "Add vendor"},
+        {
+            "company": company,
+            "form": form,
+            "title": "Add vendor",
+            "next_url": next_url,
+        },
     )
 
 
@@ -1629,6 +1643,18 @@ def _safe_next_url(raw: str, default: str) -> str:
     return default
 
 
+def _url_with_query(url: str, **extra) -> str:
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    for key, value in extra.items():
+        if value is None:
+            continue
+        query[key] = str(value)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
+
 @sales_module_required
 @require_http_methods(["GET", "POST"])
 def subscription_renew(request, pk):
@@ -1646,16 +1672,26 @@ def subscription_renew(request, pk):
     suggested_start, suggested_end = obj.renewal_dates()
 
     if request.method == "POST":
-        form = SubscriptionRenewForm(request.POST)
+        if request.POST.get("vendor") == SubscriptionRenewForm.NEW_VENDOR:
+            renew_return = reverse("subscription_renew", kwargs={"pk": pk})
+            posted_next = (request.POST.get("next") or "").strip()
+            if posted_next:
+                renew_return = _url_with_query(renew_return, next=posted_next)
+            return redirect(
+                f"{reverse('vendor_add')}?{urlencode({'next': renew_return})}"
+            )
+        form = SubscriptionRenewForm(request.POST, company=company)
         if form.is_valid():
             new_start = form.cleaned_data["start_date"]
             new_end = form.cleaned_data["end_date"]
             new_qty = form.cleaned_data["quantity"]
             new_price = form.cleaned_data["billing_amount"]
+            new_vendor = form.cleaned_data["resolved_vendor"]
             obj.start_date = new_start
             obj.end_date = new_end
             obj.quantity = new_qty
             obj.billing_amount = new_price
+            obj.vendor = new_vendor
             obj.status = ClientSubscription.Status.ACTIVE
             obj.save(
                 update_fields=[
@@ -1663,6 +1699,7 @@ def subscription_renew(request, pk):
                     "end_date",
                     "quantity",
                     "billing_amount",
+                    "vendor",
                     "status",
                 ]
             )
@@ -1675,13 +1712,19 @@ def subscription_renew(request, pk):
             )
             return redirect(next_url)
     else:
+        initial_vendor = str(obj.vendor_id) if obj.vendor_id else ""
+        preselect = (request.GET.get("preselect_vendor") or "").strip()
+        if preselect and company.vendors.filter(pk=preselect).exists():
+            initial_vendor = preselect
         form = SubscriptionRenewForm(
+            company=company,
             initial={
                 "start_date": suggested_start,
                 "end_date": suggested_end,
                 "quantity": obj.quantity,
                 "billing_amount": obj.billing_amount,
-            }
+                "vendor": initial_vendor,
+            },
         )
 
     return render(

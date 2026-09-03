@@ -147,6 +147,9 @@
     <div class="vendor-wide-body">
       <form method="post" id="vendor-form" novalidate>
         {% csrf_token %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% endif %}
         {{ form.website.as_hidden }}
         {{ form.notes.as_hidden }}
         {% if form.non_field_errors %}
@@ -224,6 +227,9 @@
             <svg aria-hidden="true"><use href="#i-plus"/></svg>
             {% if object %}Save Vendor{% else %}Create Vendor{% endif %}
           </button>
+          {% if next_url %}
+          <a class="vendor-submit" href="{{ next_url }}" style="margin-left:0.5rem;background:#5b6b82;text-decoration:none;">Cancel</a>
+          {% endif %}
         </div>
       </form>
       {% if object %}

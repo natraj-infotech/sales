@@ -658,6 +658,8 @@ class CaseLockInboxForm(forms.ModelForm):
 
 
 class SubscriptionRenewForm(forms.Form):
+    NEW_VENDOR = "__new__"
+
     start_date = forms.DateField(
         label="New start date",
         widget=forms.DateInput(
@@ -687,6 +689,22 @@ class SubscriptionRenewForm(forms.Form):
             attrs={"min": 0, "step": "0.01", "placeholder": "0.00"}
         ),
     )
+    vendor = forms.ChoiceField(
+        label="New vendor",
+        required=False,
+    )
+
+    def __init__(self, *args, company=None, **kwargs):
+        self.company = company
+        super().__init__(*args, **kwargs)
+        vendors = []
+        if company is not None:
+            vendors = list(company.vendors.all().order_by("name"))
+        choices = [("", "---------")] + [
+            (str(v.pk), v.name) for v in vendors
+        ]
+        choices.append((self.NEW_VENDOR, "+ Add new vendor"))
+        self.fields["vendor"].choices = choices
 
     def clean(self):
         cleaned = super().clean()
@@ -694,4 +712,21 @@ class SubscriptionRenewForm(forms.Form):
         end = cleaned.get("end_date")
         if start and end and end < start:
             raise forms.ValidationError("End date must be on or after the start date.")
+        choice = (cleaned.get("vendor") or "").strip()
+        cleaned["resolved_vendor"] = None
+        if choice == self.NEW_VENDOR:
+            self.add_error("vendor", "Add the vendor from the Add vendor page.")
+        elif choice:
+            try:
+                pk = int(choice)
+            except (TypeError, ValueError):
+                self.add_error("vendor", "Select a valid vendor.")
+            else:
+                vendor = None
+                if self.company is not None:
+                    vendor = self.company.vendors.filter(pk=pk).first()
+                if vendor is None:
+                    self.add_error("vendor", "Select a valid vendor.")
+                else:
+                    cleaned["resolved_vendor"] = vendor
         return cleaned
