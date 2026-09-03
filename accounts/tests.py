@@ -108,19 +108,35 @@ class SupportTicketAccessTests(TestCase):
             support_ticket_access=False,
         )
 
-    def test_member_without_flag_is_blocked(self):
-        self.client.login(email="member@example.com", password="pass12345")
-        response = self.client.get(reverse("support_ticket_list"), follow=True)
-        self.assertNotEqual(response.resolver_match.url_name, "support_ticket_list")
-
-    def test_member_with_flag_can_open_dashboard(self):
-        membership = CompanyMember.objects.get(
-            company=self.company, user=self.member
-        )
-        membership.support_ticket_access = True
-        membership.save(update_fields=["support_ticket_access"])
+    def test_team_member_can_open_dashboard_without_flag(self):
         self.client.login(email="member@example.com", password="pass12345")
         response = self.client.get(reverse("support_ticket_list"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Support Tickets")
+
+    def test_team_member_without_sales_access_can_open_tickets(self):
+        membership = CompanyMember.objects.get(
+            company=self.company, user=self.member
+        )
+        membership.sales_access = False
+        membership.save(update_fields=["sales_access"])
+        self.client.login(email="member@example.com", password="pass12345")
+        response = self.client.get(reverse("support_ticket_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Support Tickets")
+
+    def test_team_page_hides_support_ticket_checkbox(self):
+        self.client.login(email="owner@example.com", password="pass12345")
+        response = self.client.get(reverse("company_team"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "name=\"support_ticket_access\"")
+        self.assertNotContains(response, "Support tickets access")
+
+    def test_non_member_is_blocked(self):
+        User.objects.create_user(
+            email="outsider@example.com", password="pass12345"
+        )
+        self.client.login(email="outsider@example.com", password="pass12345")
+        response = self.client.get(reverse("support_ticket_list"), follow=True)
+        self.assertNotEqual(response.resolver_match.url_name, "support_ticket_list")
 

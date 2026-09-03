@@ -186,11 +186,6 @@ class AddCompanyMemberForm(forms.Form):
         required=False,
         help_text="Allow this person to grant sales module access to others.",
     )
-    support_ticket_access = forms.BooleanField(
-        label="Support tickets access",
-        required=False,
-        help_text="Allow access to the support tickets dashboard.",
-    )
 
     def __init__(self, *args, company=None, requester_is_owner=True, **kwargs):
         self.company = company
@@ -249,16 +244,13 @@ class AddCompanyMemberForm(forms.Form):
             role=CompanyMember.Role.MEMBER,
             sales_access=sales_access,
             can_grant_sales=can_grant,
-            support_ticket_access=self.cleaned_data.get(
-                "support_ticket_access", False
-            ),
+            support_ticket_access=True,
         )
 
 
 class UpdateCompanyMemberForm(forms.Form):
     sales_access = forms.BooleanField(required=False)
     can_grant_sales = forms.BooleanField(required=False)
-    support_ticket_access = forms.BooleanField(required=False)
 
     def __init__(self, *args, member=None, requester_is_owner=True, **kwargs):
         self.member = member
@@ -272,9 +264,6 @@ class UpdateCompanyMemberForm(forms.Form):
             return self.member
 
         self.member.sales_access = self.cleaned_data.get("sales_access", False)
-        self.member.support_ticket_access = self.cleaned_data.get(
-            "support_ticket_access", False
-        )
         if self.requester_is_owner:
             self.member.can_grant_sales = self.cleaned_data.get(
                 "can_grant_sales", False
@@ -283,7 +272,7 @@ class UpdateCompanyMemberForm(forms.Form):
             self.member.can_grant_sales = False
         if self.member.can_grant_sales:
             self.member.sales_access = True
-        update_fields = ["sales_access", "support_ticket_access"]
+        update_fields = ["sales_access"]
         if self.requester_is_owner:
             update_fields.append("can_grant_sales")
         self.member.save(update_fields=update_fields)

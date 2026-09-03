@@ -44,8 +44,7 @@ def user_can_grant_sales(user, company):
 def user_has_support_ticket_access(user, company):
     if user_is_owner(user, company):
         return True
-    membership = get_membership(user, company)
-    return bool(membership and membership.support_ticket_access)
+    return get_membership(user, company) is not None
 
 
 def company_users(company):
@@ -118,7 +117,7 @@ def support_ticket_access_required(view_func):
         if not user_has_support_ticket_access(request.user, company):
             messages.error(
                 request,
-                "You do not have access to support tickets. Ask your company owner to grant access from Team access.",
+                "You do not have access to support tickets. Ask your company owner to add you from Team access.",
             )
             if user_has_sales_access(request.user, company):
                 return redirect("dashboard")
