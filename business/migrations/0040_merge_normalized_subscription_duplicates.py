@@ -121,6 +121,10 @@ def merge_normalized_subscription_duplicates(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # PostgreSQL cannot create the unique index while the preceding data
+    # cleanup has pending foreign-key trigger events in the same transaction.
+    atomic = False
+
     dependencies = [
         ("business", "0039_caselocksubmission_status_changed_at"),
     ]
