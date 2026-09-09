@@ -11,11 +11,6 @@ urlpatterns = [
     path(
         "renewal/confirm/<uuid:invite_id>/",
         views.renewal_confirm_public,
-        name="renewal_confirm_public_legacy",
-    ),
-    path(
-        "renewal/confirm/<uuid:invite_id>/<str:token>/",
-        views.renewal_confirm_public,
         name="renewal_confirm_public",
     ),
     path(
@@ -24,22 +19,11 @@ urlpatterns = [
         name="caselock_public_form",
     ),
     path("caselock/inboxes/", views.caselock_inbox_list, name="caselock_inbox_list"),
-    path(
-        "caselock/inboxes/live/",
-        views.caselock_inbox_live,
-        name="caselock_inbox_live",
-    ),
     path("caselock/inboxes/add/", views.caselock_inbox_add, name="caselock_inbox_add"),
     path(
         "caselock/inboxes/<int:pk>/edit/",
         views.caselock_inbox_edit,
         name="caselock_inbox_edit",
-    ),
-    path("caselock/products/add/", views.caselock_product_add, name="caselock_product_add"),
-    path(
-        "caselock/products/<int:pk>/delete/",
-        views.caselock_product_delete,
-        name="caselock_product_delete",
     ),
     path(
         "caselock/submissions/",

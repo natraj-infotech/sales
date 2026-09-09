@@ -58,8 +58,6 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "cin_number",
         "support_email",
         "support_email_app_password",
-        "caselock_email",
-        "caselock_email_app_password",
         "outgoing_email",
         "outgoing_email_app_password",
         "regards_email",
@@ -82,9 +80,8 @@ class CompanyMemberAdmin(admin.ModelAdmin):
         "role",
         "sales_access",
         "can_grant_sales",
-        "support_ticket_access",
         "joined_at",
     )
-    list_filter = ("role", "sales_access", "can_grant_sales", "support_ticket_access")
+    list_filter = ("role", "sales_access", "can_grant_sales")
     search_fields = ("company__company_name", "user__email")
     autocomplete_fields = ("company", "user")

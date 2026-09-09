@@ -18,7 +18,6 @@ from .permissions import (
     get_company_for_user,
     sales_grant_required,
     user_has_sales_access,
-    user_has_support_ticket_access,
     user_is_owner,
 )
 
@@ -30,8 +29,6 @@ def root_redirect(request):
         company = get_company_for_user(request.user)
         if company and user_has_sales_access(request.user, company):
             return redirect("dashboard")
-        if company and user_has_support_ticket_access(request.user, company):
-            return redirect("support_ticket_list")
         if company:
             return redirect("access_pending")
         return redirect("company_setup")
@@ -45,8 +42,6 @@ def access_pending(request):
         return redirect("company_setup")
     if user_has_sales_access(request.user, company):
         return redirect("dashboard")
-    if user_has_support_ticket_access(request.user, company):
-        return redirect("support_ticket_list")
     return render(
         request,
         "accounts/access_pending.html",
@@ -83,7 +78,6 @@ def company_setup(request):
                     "role": CompanyMember.Role.OWNER,
                     "sales_access": True,
                     "can_grant_sales": True,
-                    "support_ticket_access": True,
                 },
             )
             try:
@@ -164,12 +158,9 @@ def reminder_template(request):
                 company,
                 template_payloads=template_payloads,
             )
-            messages.success(request, "Reminder profile saved.")
+            messages.success(request, "Reminder templates saved.")
         except ValidationError as exc:
-            detail = (
-                " ".join(exc.messages) if getattr(exc, "messages", None) else str(exc)
-            )
-            messages.error(request, detail)
+            messages.error(request, str(exc))
         active = (request.POST.get("active_template_id") or "").strip()
         if active.isdigit():
             return redirect(f"{reverse('reminder_template')}?active={active}")

@@ -44,18 +44,10 @@
       overflow: hidden;
     }
 
-    html, body {
-      width: 100%;
-    }
     .layout {
       display: block;
       min-height: 100vh;
-      width: 100%;
       position: relative;
-      --sidebar-width: 260px;
-    }
-    .layout.sidebar-collapsed {
-      --sidebar-width: 72px;
     }
     /* Dark sidebar — fixed in viewport; main scrolls independently */
     .sidebar {
@@ -231,13 +223,17 @@
     }
 
     .tracker-main {
-      margin-left: var(--sidebar-width);
+      margin-left: 260px;
       padding: 1.25rem 1.5rem 2rem;
       min-width: 0;
-      width: auto;
+      width: calc(100% - 260px);
       max-width: none;
       box-sizing: border-box;
-      transition: margin-left 0.28s ease;
+      transition: margin-left 0.28s ease, width 0.28s ease;
+    }
+    .layout.sidebar-collapsed .tracker-main {
+      margin-left: 72px;
+      width: calc(100% - 72px);
     }
     .sidebar-toggle-icon-expand {
       display: none;
@@ -256,7 +252,6 @@
       justify-content: space-between;
       gap: 1rem;
       flex-wrap: wrap;
-      width: 100%;
       background: var(--header-blue);
       color: #fff;
       border-radius: var(--radius);
@@ -353,8 +348,6 @@
       box-shadow: var(--shadow-card);
       padding: 1.5rem 1.75rem;
       margin-bottom: 1rem;
-      width: 100%;
-      box-sizing: border-box;
     }
     .tracker-card--flush-bottom {
       padding-bottom: 0;
@@ -416,7 +409,7 @@
       flex-shrink: 0;
       color: var(--muted);
     }
-    .form-field-tracker input:not([type="checkbox"]):not([type="radio"]),
+    .form-field-tracker input,
     .form-field-tracker select,
     .form-field-tracker textarea {
       width: 100%;
@@ -427,15 +420,7 @@
       color: var(--text);
       font-size: 0.875rem;
     }
-    .form-field-tracker input[type="checkbox"],
-    .form-field-tracker input[type="radio"] {
-      width: 1rem;
-      height: 1rem;
-      margin: 0.15rem 0.35rem 0 0;
-      flex-shrink: 0;
-      accent-color: var(--header-blue);
-    }
-    .form-field-tracker input:not([type="checkbox"]):not([type="radio"]):focus,
+    .form-field-tracker input:focus,
     .form-field-tracker select:focus,
     .form-field-tracker textarea:focus {
       outline: none;
@@ -584,12 +569,7 @@
 
     .errorlist { color: var(--danger); font-size: 0.8rem; margin: 0.25rem 0 0; padding-left: 1.1rem; }
 
-    .grid {
-      display: grid;
-      width: 100%;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 1rem;
-    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
     .stat {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -1700,80 +1680,6 @@
       color: var(--danger);
       text-decoration: underline;
     }
-    /* Underline tabs with icon + count badge (Helpdesk-style) */
-    .subnav-tabs {
-      display: flex;
-      flex-wrap: nowrap;
-      align-items: stretch;
-      width: 100%;
-      gap: 0;
-      margin: 0 0 1rem;
-      padding: 0;
-      border-bottom: 1px solid #e5e7eb;
-      background: #f8fafc;
-      overflow: hidden;
-    }
-    .subnav-tab {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      flex: 1 1 0;
-      min-width: 0;
-      width: 0;
-      margin: 0;
-      padding: 0.85rem 0.75rem;
-      border: none;
-      border-bottom: 3px solid transparent;
-      margin-bottom: -1px;
-      background: transparent;
-      color: #6b7280;
-      font-size: 0.9rem;
-      font-weight: 600;
-      text-decoration: none !important;
-      cursor: pointer;
-      line-height: 1.2;
-      white-space: nowrap;
-      font-family: inherit;
-    }
-    .subnav-tab svg {
-      width: 16px;
-      height: 16px;
-      flex-shrink: 0;
-    }
-    .subnav-tab:hover {
-      color: #475569;
-      background: #f1f5f9;
-    }
-    .subnav-tab.is-active,
-    .subnav-tab.is-active:hover {
-      color: var(--header-blue-deep);
-      background: #e8f1fc;
-      border-bottom-color: var(--header-blue);
-    }
-    .subnav-tab-count {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 1.35rem;
-      height: 1.35rem;
-      padding: 0 0.38rem;
-      border-radius: 999px;
-      background: #e2e8f0;
-      color: #64748b;
-      font-size: 0.72rem;
-      font-weight: 700;
-    }
-    .subnav-tab.is-active .subnav-tab-count {
-      background: var(--header-blue);
-      color: #fff;
-    }
-    .tracker-card > .subnav-tabs {
-      margin: -1.5rem -1.75rem 0;
-      padding: 0;
-      background: #f8fafc;
-      border-radius: var(--radius, 12px) var(--radius, 12px) 0 0;
-    }
     /* SLA settings page */
     .sla-settings-page {
       display: flex;
@@ -2095,38 +2001,6 @@
       pointer-events: none;
       cursor: default;
       background: rgba(255, 255, 255, 0.55);
-    }
-    .reminder-step.is-overlap {
-      border-color: rgba(220, 38, 38, 0.45);
-      box-shadow:
-        0 12px 28px rgba(220, 38, 38, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.75);
-    }
-    .reminder-step.is-overlap::before {
-      background: #dc2626;
-    }
-    .reminder-overlap-error {
-      margin: 0 0 1rem;
-      padding: 0.75rem 0.95rem;
-      border: 1px solid rgba(220, 38, 38, 0.35);
-      border-radius: 0.65rem;
-      background: #fef2f2;
-      color: #991b1b;
-      font-size: 0.8125rem;
-      line-height: 1.55;
-    }
-    .reminder-overlap-error[hidden] {
-      display: none !important;
-    }
-    .reminder-step__overlap {
-      margin: 0;
-      padding: 0.55rem 1.25rem 0.75rem 1.35rem;
-      font-size: 0.78rem;
-      color: #be123c;
-      background: #fef2f2;
-    }
-    .reminder-step__overlap[hidden] {
-      display: none !important;
     }
     .reminder-step-list {
       display: flex;
@@ -2641,13 +2515,11 @@
           <span class="nav-text">Team access</span>
         </a>
         {% endif %}
-        {% if user_has_support_ticket_access %}
+        {% if user_is_company_owner %}
         <a href="{% url 'support_ticket_list' %}" title="Support tickets">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-ticket"/></svg>
           <span class="nav-text">Support tickets</span>
         </a>
-        {% endif %}
-        {% if user_is_company_owner %}
         <a href="{% url 'caselock_inbox_list' %}" title="Case lock">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-lock"/></svg>
           <span class="nav-text">Case lock</span>

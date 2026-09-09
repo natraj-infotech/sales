@@ -1,11 +1,10 @@
 import csv
 from datetime import timedelta
 from io import StringIO
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -20,15 +19,16 @@ from accounts.permissions import (
     company_users,
     get_company_for_user,
     sales_module_required,
-    support_ticket_access_required,
 )
 
 from .forms import (
-    CaseLockProductForm,
+    CaseLockInboxForm,
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
     RenewalConfirmLineFormSet,
+    RenewalConfirmOtpForm,
+    RenewalConfirmSubmitterForm,
     RenewalNewProductFormSet,
     SubscriptionRenewForm,
     ProductForm,
@@ -40,10 +40,9 @@ from .forms import (
 )
 from . import helpdesk_bridge
 from .models import (
+    CaseLockInbox,
     CaseLockInvite,
-    CaseLockProduct,
     CaseLockSubmission,
-    annotate_internal_case_locks,
     Client,
     ClientSubscription,
     Product,
@@ -53,12 +52,7 @@ from .models import (
     TicketPriorityRule,
     Vendor,
 )
-from .caselock_inbox import (
-    maybe_fetch_on_dashboard,
-    poll_error_logs,
-    send_caselock_decision_email,
-    should_poll_mailbox_on_request,
-)
+from .caselock_inbox import send_caselock_decision_email
 from .import_stash import product_import_stash, subscription_import_stash
 from .subscription_import import (
     IMPORT_HEADERS,
@@ -247,22 +241,6 @@ def _renewal_invite_line_prefetch():
     )
 
 
-def _renewal_invite_queryset(company):
-    return (
-        SubscriptionRenewalInvite.objects.filter(
-            company=company,
-            email_sent_at__isnull=False,
-        )
-        .annotate(line_count=Count("lines"))
-        .prefetch_related(
-            _renewal_invite_line_prefetch(),
-            "recipients",
-            "new_products",
-        )
-        .order_by("-email_sent_at", "-created_at")
-    )
-
-
 def _invite_deal_payload(invite):
     state = invite.deal_table_state()
     return {
@@ -274,96 +252,6 @@ def _invite_deal_payload(invite):
     }
 
 
-def _format_dt(value):
-    if not value:
-        return ""
-    return date_format(timezone.localtime(value), "d M Y, H:i:s")
-
-
-def _invite_detail_url(invite):
-    if not invite.submitted_at:
-        return ""
-    return reverse("client_renewal_detail", kwargs={"pk": invite.pk})
-
-
-def _new_subscription_rows(invites):
-    """Rows for clients who added catalog products via the renewal Add button."""
-    rows = []
-    for invite in invites:
-        if not invite.submitted_at:
-            continue
-        emails = invite.sent_to_emails or [invite.client_email]
-        detail_url = _invite_detail_url(invite)
-        for item in invite.new_products.all():
-            rows.append(
-                {
-                    "id": f"{invite.pk}-{item.pk}",
-                    "client_email": invite.client_email,
-                    "recipient_emails": emails,
-                    "company_name": item.company_name or "",
-                    "product_name": item.product_name,
-                    "quantity": item.quantity,
-                    "submitted_at": invite.submitted_at,
-                    "submitted_by_email": invite.submitted_by_email or "",
-                    "detail_url": detail_url,
-                }
-            )
-    return rows
-
-
-def _existing_expiry_rows(invites):
-    """Rows for existing expiry products with previous vs submitted quantity."""
-    rows = []
-    for invite in invites:
-        if not invite.submitted_at:
-            continue
-        emails = invite.sent_to_emails or [invite.client_email]
-        detail_url = _invite_detail_url(invite)
-        for line in invite.lines.all():
-            rows.append(
-                {
-                    "id": f"{invite.pk}-{line.pk}",
-                    "client_email": invite.client_email,
-                    "recipient_emails": emails,
-                    "company_name": line.company_name or "",
-                    "product_name": line.product_name,
-                    "previous_quantity": line.current_quantity,
-                    "new_quantity": line.renewal_count,
-                    "submitted_at": invite.submitted_at,
-                    "submitted_by_email": invite.submitted_by_email or "",
-                    "detail_url": detail_url,
-                }
-            )
-    return rows
-
-
-def _jsonify_tab_rows(rows):
-    formatted = []
-    for row in rows:
-        item = dict(row)
-        item["submitted_at"] = _format_dt(row.get("submitted_at"))
-        formatted.append(item)
-    return formatted
-
-
-def _invite_status_row(invite):
-    row = {
-        "id": str(invite.pk),
-        "client_email": invite.client_email,
-        "recipient_emails": invite.sent_to_emails,
-        "email_sent_at": _format_dt(invite.email_sent_at),
-        "read_at": _format_dt(invite.read_at),
-        "read_source": invite.read_source or "",
-        "submitted_at": _format_dt(invite.submitted_at),
-        "submitted_by_email": invite.submitted_by_email or "",
-        "quotation_sent_at": _format_dt(invite.quotation_sent_at),
-        "line_count": invite.line_count,
-        "detail_url": _invite_detail_url(invite),
-    }
-    row.update(_invite_deal_payload(invite))
-    return row
-
-
 @sales_module_required
 def client_renewal_list(request):
     company = _company(request)
@@ -373,17 +261,26 @@ def client_renewal_list(request):
     for message in poll_logs:
         if "failed" in message.lower():
             messages.warning(request, message)
-    invites = list(_renewal_invite_queryset(company))
+    qs = (
+        SubscriptionRenewalInvite.objects.filter(
+            company=company,
+            email_sent_at__isnull=False,
+        )
+        .annotate(line_count=Count("lines"))
+        .prefetch_related(_renewal_invite_line_prefetch())
+        .order_by("-email_sent_at", "-created_at")
+    )
     return render(
         request,
         "business/client_renewal_list.html",
-        {
-            "company": company,
-            "object_list": invites,
-            "new_subscription_rows": _new_subscription_rows(invites),
-            "existing_expiry_rows": _existing_expiry_rows(invites),
-        },
+        {"company": company, "object_list": qs},
     )
+
+
+def _format_dt(value):
+    if not value:
+        return ""
+    return date_format(timezone.localtime(value), "d M Y, H:i:s")
 
 
 @sales_module_required
@@ -393,20 +290,41 @@ def client_renewal_live(request):
     from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
 
     updated, poll_logs = poll_outlook_read_receipts_for_company(company)
-    invites = list(_renewal_invite_queryset(company))
+    qs = (
+        SubscriptionRenewalInvite.objects.filter(
+            company=company,
+            email_sent_at__isnull=False,
+        )
+        .annotate(line_count=Count("lines"))
+        .prefetch_related(_renewal_invite_line_prefetch())
+        .order_by("-email_sent_at", "-created_at")
+    )
+    rows = []
+    for invite in qs:
+        detail_url = ""
+        if invite.submitted_at:
+            detail_url = reverse("client_renewal_detail", kwargs={"pk": invite.pk})
+        row = {
+            "id": str(invite.pk),
+            "client_email": invite.client_email,
+            "email_sent_at": _format_dt(invite.email_sent_at),
+            "read_at": _format_dt(invite.read_at),
+            "read_source": invite.read_source or "",
+            "submitted_at": _format_dt(invite.submitted_at),
+            "submitted_by_email": invite.submitted_by_email or "",
+            "quotation_sent_at": _format_dt(invite.quotation_sent_at),
+            "line_count": invite.line_count,
+            "detail_url": detail_url,
+        }
+        row.update(_invite_deal_payload(invite))
+        rows.append(row)
     return JsonResponse(
         {
             "ok": True,
             "updated": updated,
             "polled_at": _format_dt(timezone.now()),
             "logs": poll_logs,
-            "rows": [_invite_status_row(invite) for invite in invites],
-            "new_subscription_rows": _jsonify_tab_rows(
-                _new_subscription_rows(invites)
-            ),
-            "existing_expiry_rows": _jsonify_tab_rows(
-                _existing_expiry_rows(invites)
-            ),
+            "rows": rows,
         }
     )
 
@@ -501,7 +419,6 @@ def client_renewal_detail(request, pk):
             "lines",
             "lines__subscription",
             "new_products",
-            "recipients",
         ),
         pk=pk,
         company=company,
@@ -716,32 +633,19 @@ def vendor_import(request):
 @sales_module_required
 def vendor_add(request):
     company = _company(request)
-    next_url = _safe_next_url(
-        request.POST.get("next") or request.GET.get("next"),
-        "",
-    )
     if request.method == "POST":
         form = VendorForm(request.POST)
         if form.is_valid():
             v = form.save(commit=False)
             v.company = company
             v.save()
-            if next_url:
-                return redirect(
-                    _url_with_query(next_url, preselect_vendor=v.pk)
-                )
             return redirect("vendor_list")
     else:
         form = VendorForm()
     return render(
         request,
         "business/vendor_form.html",
-        {
-            "company": company,
-            "form": form,
-            "title": "Add vendor",
-            "next_url": next_url,
-        },
+        {"company": company, "form": form, "title": "Add vendor"},
     )
 
 
@@ -1675,18 +1579,6 @@ def _safe_next_url(raw: str, default: str) -> str:
     return default
 
 
-def _url_with_query(url: str, **extra) -> str:
-    parts = urlsplit(url)
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    for key, value in extra.items():
-        if value is None:
-            continue
-        query[key] = str(value)
-    return urlunsplit(
-        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
-    )
-
-
 @sales_module_required
 @require_http_methods(["GET", "POST"])
 def subscription_renew(request, pk):
@@ -1704,26 +1596,16 @@ def subscription_renew(request, pk):
     suggested_start, suggested_end = obj.renewal_dates()
 
     if request.method == "POST":
-        if request.POST.get("vendor") == SubscriptionRenewForm.NEW_VENDOR:
-            renew_return = reverse("subscription_renew", kwargs={"pk": pk})
-            posted_next = (request.POST.get("next") or "").strip()
-            if posted_next:
-                renew_return = _url_with_query(renew_return, next=posted_next)
-            return redirect(
-                f"{reverse('vendor_add')}?{urlencode({'next': renew_return})}"
-            )
-        form = SubscriptionRenewForm(request.POST, company=company)
+        form = SubscriptionRenewForm(request.POST)
         if form.is_valid():
             new_start = form.cleaned_data["start_date"]
             new_end = form.cleaned_data["end_date"]
             new_qty = form.cleaned_data["quantity"]
             new_price = form.cleaned_data["billing_amount"]
-            new_vendor = form.cleaned_data["resolved_vendor"]
             obj.start_date = new_start
             obj.end_date = new_end
             obj.quantity = new_qty
             obj.billing_amount = new_price
-            obj.vendor = new_vendor
             obj.status = ClientSubscription.Status.ACTIVE
             obj.save(
                 update_fields=[
@@ -1731,7 +1613,6 @@ def subscription_renew(request, pk):
                     "end_date",
                     "quantity",
                     "billing_amount",
-                    "vendor",
                     "status",
                 ]
             )
@@ -1744,19 +1625,13 @@ def subscription_renew(request, pk):
             )
             return redirect(next_url)
     else:
-        initial_vendor = str(obj.vendor_id) if obj.vendor_id else ""
-        preselect = (request.GET.get("preselect_vendor") or "").strip()
-        if preselect and company.vendors.filter(pk=preselect).exists():
-            initial_vendor = preselect
         form = SubscriptionRenewForm(
-            company=company,
             initial={
                 "start_date": suggested_start,
                 "end_date": suggested_end,
                 "quantity": obj.quantity,
                 "billing_amount": obj.billing_amount,
-                "vendor": initial_vendor,
-            },
+            }
         )
 
     return render(
@@ -1847,7 +1722,7 @@ def _format_ticket_dt(value, fmt: str) -> str:
     return date_format(timezone.localtime(value), fmt)
 
 
-@support_ticket_access_required
+@company_owner_required
 def support_ticket_list(request):
     company = _company(request)
     helpdesk_bridge.sync_company_queue(company)
@@ -1885,7 +1760,7 @@ def support_ticket_list(request):
     )
 
 
-@support_ticket_access_required
+@company_owner_required
 def support_ticket_live(request):
     """Poll mailbox (throttled) and return current ticket list as JSON."""
     company = _company(request)
@@ -1961,7 +1836,7 @@ def support_ticket_live(request):
     )
 
 
-@support_ticket_access_required
+@company_owner_required
 @require_http_methods(["POST"])
 def support_ticket_update(request, pk):
     company = _company(request)
@@ -2027,7 +1902,7 @@ def support_ticket_update(request, pk):
     return redirect(url)
 
 
-@support_ticket_access_required
+@company_owner_required
 def support_ticket_add(request):
     import json
 
@@ -2066,7 +1941,7 @@ def support_ticket_add(request):
     )
 
 
-@support_ticket_access_required
+@company_owner_required
 @require_http_methods(["GET", "POST"])
 def support_ticket_detail(request, pk):
     from business.sla import get_or_create_sla_settings
@@ -2146,7 +2021,7 @@ def support_ticket_detail(request, pk):
     )
 
 
-@support_ticket_access_required
+@company_owner_required
 @require_http_methods(["GET", "POST"])
 def support_sla_settings(request):
     from business.priority_rules import ensure_default_priority_rules
@@ -2234,37 +2109,34 @@ def renewal_track_open(request, invite_id):
     return HttpResponse(TRANSPARENT_GIF, content_type="image/gif")
 
 
-def _renewal_invalid_link_page(request, invite=None):
+def _renewal_otp_page(
+    request,
+    invite,
+    lines,
+    *,
+    otp_step="email",
+    otp_email="",
+    email_form=None,
+    otp_form=None,
+    otp_notice="",
+):
     return render(
         request,
-        "business/renewal_confirm_invalid_guest.html",
-        {"invite": invite, "public_page": True},
-        status=403,
+        "business/renewal_confirm_otp_guest.html",
+        {
+            "invite": invite,
+            "lines": lines,
+            "public_page": True,
+            "otp_step": otp_step,
+            "otp_email": otp_email,
+            "otp_notice": otp_notice,
+            "email_form": email_form
+            or RenewalConfirmSubmitterForm(
+                initial={"submitter_email": otp_email} if otp_email else None
+            ),
+            "otp_form": otp_form or RenewalConfirmOtpForm(),
+        },
     )
-
-
-def _renewal_submitter_from_token(invite, token: str) -> str:
-    from business.renewal_tokens import unsign_renewal_confirm_token
-
-    recipient_emails = {
-        (row.email or "").strip().lower()
-        for row in invite.recipients.all()
-        if (row.email or "").strip()
-    }
-    token = (token or "").strip()
-    if token:
-        parsed = unsign_renewal_confirm_token(token)
-        if parsed is None:
-            return ""
-        invite_id, email = parsed
-        if str(invite.pk) != invite_id or not email:
-            return ""
-        if recipient_emails:
-            return email if email in recipient_emails else ""
-        return email if invite.is_allowed_submitter(email) else ""
-    if recipient_emails:
-        return ""
-    return (invite.client_email or "").strip().lower()
 
 
 def _invite_excluded_product_ids(lines):
@@ -2299,7 +2171,7 @@ def _annotate_new_product_forms(formset, name_by_id):
 
 
 def _renewal_quantity_page(
-    request, invite, lines, formset, new_product_formset=None
+    request, invite, lines, formset, verified_email, new_product_formset=None
 ):
     excluded_ids = _invite_excluded_product_ids(lines)
     available_products = _available_renewal_products(invite.company, excluded_ids)
@@ -2319,6 +2191,7 @@ def _renewal_quantity_page(
             "rows": list(zip(formset.forms, lines)),
             "new_product_formset": new_product_formset,
             "available_products": available_products,
+            "verified_email": verified_email,
             "public_page": True,
         },
     )
@@ -2369,36 +2242,54 @@ def _save_renewal_confirmation(
     invite.submitted_at = timezone.now()
     invite.submitted_by_email = submitter_email
     invite.save(update_fields=["submitted_at", "submitted_by_email"])
-    from business.expiry_notifications import send_renewal_confirmation_email
+    stopped = []
+    for line in lines:
+        sub = getattr(line, "subscription", None)
+        if sub is None or not sub.end_date:
+            continue
+        if sub.expiry_reminder_stopped_for_end_date == sub.end_date:
+            continue
+        sub.expiry_reminder_stopped_for_end_date = sub.end_date
+        stopped.append(sub)
+    if stopped:
+        ClientSubscription.objects.bulk_update(
+            stopped, ["expiry_reminder_stopped_for_end_date"]
+        )
+    from business.expiry_notifications import (
+        send_renewal_confirmation_email,
+        send_renewal_quotation_email,
+    )
 
     lines = list(
         invite.lines.select_related("subscription__product").order_by("id")
     )
     new_products = list(invite.new_products.select_related("product").order_by("id"))
     send_renewal_confirmation_email(invite, lines, new_products=new_products)
+    send_renewal_quotation_email(invite, lines, new_products=new_products)
     return new_products
 
 
 @require_http_methods(["GET", "POST"])
-def renewal_confirm_public(request, invite_id, token=""):
+def renewal_confirm_public(request, invite_id):
+    from business.renewal_otp import (
+        clear_otp_state,
+        get_otp_state,
+        issue_and_send_otp,
+        verified_submitter_email,
+        verify_otp,
+    )
+
     invite = get_object_or_404(
         SubscriptionRenewalInvite.objects.select_related("company").prefetch_related(
             "lines",
             "lines__subscription__client",
             "lines__subscription__product",
             "new_products",
-            "recipients",
         ),
         pk=invite_id,
     )
     lines = list(invite.lines.order_by("id"))
     new_products = list(invite.new_products.order_by("id"))
-    submitter_email = _renewal_submitter_from_token(invite, token)
-    if not submitter_email:
-        return _renewal_invalid_link_page(request, invite)
-
-    invite.mark_recipient_opened(submitter_email)
-
     if invite.is_submitted:
         return render(
             request,
@@ -2411,31 +2302,78 @@ def renewal_confirm_public(request, invite_id, token=""):
             },
         )
 
+    action = (request.POST.get("action") or "").strip() if request.method == "POST" else ""
+    if request.method == "POST" and action == "change_email":
+        clear_otp_state(request, invite)
+        return redirect("renewal_confirm_public", invite_id=invite.pk)
+
+    if request.method == "POST" and action == "request_otp":
+        email_form = RenewalConfirmSubmitterForm(request.POST)
+        if email_form.is_valid():
+            email = email_form.cleaned_data["submitter_email"].strip()
+            ok, err = issue_and_send_otp(request, invite, email)
+            if ok:
+                return _renewal_otp_page(
+                    request,
+                    invite,
+                    lines,
+                    otp_step="code",
+                    otp_email=email,
+                )
+            email_form.add_error("submitter_email", err)
+        return _renewal_otp_page(request, invite, lines, email_form=email_form)
+
+    if request.method == "POST" and action in {"verify_otp", "resend_otp"}:
+        state = get_otp_state(request, invite)
+        otp_email = (state.get("email") or "").strip()
+        if not otp_email:
+            return _renewal_otp_page(request, invite, lines)
+        if action == "resend_otp":
+            ok, err = issue_and_send_otp(request, invite, otp_email)
+            otp_form = RenewalConfirmOtpForm()
+            if not ok:
+                otp_form.add_error(None, err)
+            return _renewal_otp_page(
+                request,
+                invite,
+                lines,
+                otp_step="code",
+                otp_email=otp_email,
+                otp_form=otp_form,
+                otp_notice="A new code was sent." if ok else "",
+            )
+        otp_form = RenewalConfirmOtpForm(request.POST)
+        if otp_form.is_valid():
+            ok, err = verify_otp(request, invite, otp_form.cleaned_data["otp_code"])
+            if ok:
+                return redirect("renewal_confirm_public", invite_id=invite.pk)
+            otp_form.add_error("otp_code", err)
+        return _renewal_otp_page(
+            request,
+            invite,
+            lines,
+            otp_step="code",
+            otp_email=otp_email,
+            otp_form=otp_form,
+        )
+
+    verified_email = verified_submitter_email(request, invite)
     if request.method == "POST":
+        if not verified_email:
+            return _renewal_otp_page(request, invite, lines)
         formset = RenewalConfirmLineFormSet(request.POST)
         new_product_formset = RenewalNewProductFormSet(
             request.POST, **_new_product_formset_kwargs(invite, lines)
         )
         if formset.is_valid() and new_product_formset.is_valid():
-            invite.refresh_from_db()
-            if invite.is_submitted:
-                return render(
-                    request,
-                    "business/renewal_confirm_done_guest.html",
-                    {
-                        "invite": invite,
-                        "lines": lines,
-                        "new_products": list(invite.new_products.order_by("id")),
-                        "public_page": True,
-                    },
-                )
             saved_new = _save_renewal_confirmation(
                 invite,
                 lines,
                 formset,
-                submitter_email,
+                verified_email,
                 new_product_formset=new_product_formset,
             )
+            clear_otp_state(request, invite)
             return render(
                 request,
                 "business/renewal_confirm_thanks_guest.html",
@@ -2451,242 +2389,157 @@ def renewal_confirm_public(request, invite_id, token=""):
             invite,
             lines,
             formset,
+            verified_email,
             new_product_formset=new_product_formset,
         )
 
+    if not verified_email:
+        state = get_otp_state(request, invite)
+        otp_email = (state.get("email") or "").strip()
+        expires_at = float(state.get("expires_at") or 0)
+        pending_code = bool(otp_email and state.get("code_hash") and timezone.now().timestamp() <= expires_at)
+        if pending_code:
+            return _renewal_otp_page(
+                request,
+                invite,
+                lines,
+                otp_step="code",
+                otp_email=otp_email,
+            )
+        return _renewal_otp_page(request, invite, lines)
+
     formset = RenewalConfirmLineFormSet(initial=[{"line_id": line.pk} for line in lines])
-    return _renewal_quantity_page(request, invite, lines, formset)
+    return _renewal_quantity_page(request, invite, lines, formset, verified_email)
 
 
 @require_http_methods(["GET", "POST"])
 def caselock_public_form(request, invite_id):
     invite = get_object_or_404(
-        CaseLockInvite.objects.select_related("company", "inbox", "inbox__company"),
+        CaseLockInvite.objects.select_related("inbox", "inbox__product", "inbox__company"),
         pk=invite_id,
     )
-    company = invite.company
-    if company is None and invite.inbox_id:
-        company = invite.inbox.company
     if CaseLockSubmission.objects.filter(invite=invite).exists():
         return render(
             request,
             "business/caselock_public_done_guest.html",
-            {"invite": invite, "public_page": True},
+            {"invite": invite},
         )
     if request.method == "POST":
-        form = CaseLockPublicForm(request.POST, company=company)
+        form = CaseLockPublicForm(request.POST)
         if form.is_valid():
             sub = form.save(commit=False)
             sub.invite = invite
-            product = form.cleaned_data["product"]
-            sub.product = product
-            sub.product_name = product.name
             sub.save()
             return render(
                 request,
                 "business/caselock_public_thanks_guest.html",
-                {"invite": invite, "public_page": True},
+                {"invite": invite},
             )
     else:
-        form = CaseLockPublicForm(company=company)
+        form = CaseLockPublicForm(
+            initial={
+                "product_name": invite.inbox.product.name,
+                "product_quantity": 1,
+            }
+        )
     return render(
         request,
         "business/caselock_public_form_guest.html",
-        {
-            "form": form,
-            "invite": invite,
-            "company": company,
-            "public_page": True,
-        },
+        {"form": form, "invite": invite},
     )
-
-
-def _caselock_page_data(company):
-    submissions = list(
-        CaseLockSubmission.objects.filter(invite__company=company)
-        .select_related("invite", "product")
-        .order_by("-timestamp")
-    )
-    extra = list(
-        CaseLockSubmission.objects.filter(
-            invite__company__isnull=True, invite__inbox__company=company
-        )
-        .select_related("invite", "product")
-        .order_by("-timestamp")
-    )
-    if extra:
-        seen = {s.pk for s in submissions}
-        submissions.extend(s for s in extra if s.pk not in seen)
-        submissions.sort(key=lambda s: s.timestamp, reverse=True)
-    annotate_internal_case_locks(submissions)
-
-    invites = list(
-        CaseLockInvite.objects.filter(Q(company=company) | Q(inbox__company=company))
-        .select_related("company", "inbox")
-        .annotate(
-            has_submission=Exists(
-                CaseLockSubmission.objects.filter(invite_id=OuterRef("pk"))
-            )
-        )
-        .order_by("-received_at", "-created_at")
-        .distinct()
-    )
-    return submissions, invites
-
-
-def _caselock_live_payload(company):
-    submissions, invites = _caselock_page_data(company)
-    mail_rows = []
-    for invite in invites:
-        mail_rows.append(
-            {
-                "id": str(invite.pk),
-                "from": invite.sender_email or "",
-                "subject": invite.mail_subject or "",
-                "received_at": _format_ticket_dt(invite.inbound_at, "d/m/Y H:i:s")
-                or "—",
-                "form_sent_at": _format_ticket_dt(invite.email_sent_at, "d/m/Y H:i:s")
-                or "—",
-                "form_submitted": bool(getattr(invite, "has_submission", False)),
-            }
-        )
-    submission_rows = []
-    for sub in submissions:
-        invite = sub.invite
-        submission_rows.append(
-            {
-                "id": sub.pk,
-                "mail_sent_at": _format_ticket_dt(invite.email_sent_at, "d/m/Y H:i:s")
-                or "—",
-                "submitted_at": _format_ticket_dt(sub.timestamp, "d/m/Y H:i:s") or "—",
-                "product_name": sub.product_name or "",
-                "client_name": sub.client_name or "",
-                "client_gst": sub.client_gst or "",
-                "quantity": sub.product_quantity,
-                "submitted_by": invite.sender_email or "",
-                "has_internal_case_lock": bool(
-                    getattr(sub, "has_internal_case_lock", False)
-                ),
-                "status": sub.status,
-                "status_label": sub.get_status_display(),
-                "status_url": reverse(
-                    "caselock_submission_status_update", args=[sub.pk]
-                ),
-            }
-        )
-    return {
-        "mail_rows": mail_rows,
-        "submission_rows": submission_rows,
-        "mail_count": len(mail_rows),
-        "submission_count": len(submission_rows),
-    }
-
-
-def _maybe_poll_caselock_mailbox(company):
-    if not should_poll_mailbox_on_request():
-        return {}
-    return maybe_fetch_on_dashboard(company) or {}
 
 
 @company_owner_required
 def caselock_inbox_list(request):
     company = _company(request)
-    fetch_result = _maybe_poll_caselock_mailbox(company)
-    created = int(fetch_result.get("created") or 0)
-    if created:
-        messages.success(
-            request,
-            f"Imported {created} new Case lock mail(s) and sent form links.",
-        )
-
-    tab = (request.GET.get("tab") or "dashboard").strip().lower()
-    if tab not in ("dashboard", "mails"):
-        tab = "dashboard"
-
-    submissions, invites = _caselock_page_data(company)
-    product_form = CaseLockProductForm(company=company)
-    products = company.caselock_products.order_by("name")
-
+    qs = (
+        company.caselock_inboxes.select_related("product")
+        .annotate(submission_count=Count("invites__submission", distinct=True))
+        .order_by("product__name")
+    )
     return render(
         request,
         "business/caselock_inbox_list.html",
+        {"company": company, "object_list": qs},
+    )
+
+
+@company_owner_required
+def caselock_inbox_add(request):
+    company = _company(request)
+    if request.method == "POST":
+        form = CaseLockInboxForm(request.POST, company=company)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.company = company
+            obj.save()
+            messages.success(
+                request,
+                "Case lock mailbox saved. Ensure Celery beat is running to poll inboxes.",
+            )
+            return redirect("caselock_inbox_list")
+    else:
+        form = CaseLockInboxForm(company=company)
+    return render(
+        request,
+        "business/caselock_inbox_form.html",
         {
             "company": company,
-            "active_tab": tab,
-            "submissions": submissions,
-            "invites": invites,
-            "products": products,
-            "product_form": product_form,
-            "mailbox_email": (company.caselock_email or "").strip(),
+            "form": form,
+            "title": "Add Case lock mailbox",
         },
     )
 
 
 @company_owner_required
-def caselock_inbox_live(request):
-    """Return current Case lock rows as JSON. Mailbox poll is local-only; server uses Celery."""
-    company = _company(request)
-    fetch_result = _maybe_poll_caselock_mailbox(company)
-    created = int(fetch_result.get("created") or 0)
-    payload = _caselock_live_payload(company)
-    return JsonResponse(
-        {
-            "ok": True,
-            "created": created,
-            "inbox_errors": poll_error_logs(fetch_result),
-            "polled_at": _format_dt(timezone.now()),
-            "mailbox_poll_on_request": should_poll_mailbox_on_request(),
-            "mail_rows": payload["mail_rows"],
-            "submission_rows": payload["submission_rows"],
-            "mail_count": payload["mail_count"],
-            "submission_count": payload["submission_count"],
-        }
-    )
-
-
-@company_owner_required
-@require_http_methods(["POST"])
-def caselock_product_add(request):
-    company = _company(request)
-    form = CaseLockProductForm(request.POST, company=company)
-    if form.is_valid():
-        obj = form.save(commit=False)
-        obj.company = company
-        obj.save()
-        messages.success(request, f'Product "{obj.name}" added.')
-    else:
-        messages.error(request, " ".join(form.errors.get("name", ["Could not add product."])))
-    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
-
-
-@company_owner_required
-@require_http_methods(["POST"])
-def caselock_product_delete(request, pk):
-    company = _company(request)
-    obj = get_object_or_404(CaseLockProduct, pk=pk, company=company)
-    name = obj.name
-    obj.delete()
-    messages.success(request, f'Product "{name}" removed.')
-    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
-
-
-@company_owner_required
-def caselock_inbox_add(request):
-    messages.info(
-        request,
-        "Set the Case lock email on Company profile. Products are created on the Case lock dashboard.",
-    )
-    return redirect("caselock_inbox_list")
-
-
-@company_owner_required
 def caselock_inbox_edit(request, pk):
-    return redirect("caselock_inbox_list")
+    company = _company(request)
+    obj = get_object_or_404(CaseLockInbox, pk=pk, company=company)
+    if request.method == "POST":
+        form = CaseLockInboxForm(request.POST, instance=obj, company=company)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Case lock mailbox updated.")
+            return redirect("caselock_inbox_list")
+    else:
+        form = CaseLockInboxForm(instance=obj, company=company)
+    return render(
+        request,
+        "business/caselock_inbox_form.html",
+        {
+            "company": company,
+            "form": form,
+            "title": "Edit Case lock mailbox",
+            "object": obj,
+        },
+    )
 
 
 @company_owner_required
 def caselock_submissions(request):
-    return redirect("caselock_inbox_list")
+    company = _company(request)
+    qs = (
+        CaseLockSubmission.objects.filter(invite__inbox__company=company)
+        .select_related("invite", "invite__inbox", "invite__inbox__product")
+        .order_by("-timestamp")
+    )
+    inbox_pk = request.GET.get("inbox", "").strip()
+    selected_inbox = None
+    if inbox_pk.isdigit():
+        selected_inbox = company.caselock_inboxes.filter(pk=int(inbox_pk)).first()
+        if selected_inbox:
+            qs = qs.filter(invite__inbox=selected_inbox)
+        else:
+            messages.warning(request, "Unknown mailbox; showing all submissions.")
+    return render(
+        request,
+        "business/caselock_submissions.html",
+        {
+            "company": company,
+            "object_list": qs,
+            "selected_inbox": selected_inbox,
+        },
+    )
 
 
 @company_owner_required
@@ -2694,28 +2547,21 @@ def caselock_submissions(request):
 def caselock_submission_status_update(request, pk):
     company = _company(request)
     sub = get_object_or_404(
-        CaseLockSubmission.objects.select_related("invite", "invite__inbox", "invite__company"),
+        CaseLockSubmission.objects.select_related("invite__inbox"),
         pk=pk,
+        invite__inbox__company=company,
     )
-    invite_company_id = sub.invite.company_id
-    if invite_company_id is None and sub.invite.inbox_id:
-        invite_company_id = sub.invite.inbox.company_id
-    if invite_company_id != company.pk:
-        messages.error(request, "Submission not found.")
-        return redirect("caselock_inbox_list")
     action = (request.POST.get("action") or "").strip().lower()
-    if action == "approve" or action == "final":
+    if action == "approve":
         sub.status = CaseLockSubmission.Status.APPROVED
-        sub.status_changed_at = timezone.now()
-        sub.save(update_fields=["status", "status_changed_at"])
+        sub.save(update_fields=["status"])
         if send_caselock_decision_email(sub):
-            messages.success(request, "Final case lock email sent.")
+            messages.success(request, "Case lock approved and email sent.")
         else:
-            messages.warning(request, "Marked final, but notification email failed.")
+            messages.warning(request, "Case lock approved, but notification email failed.")
     elif action == "decline":
         sub.status = CaseLockSubmission.Status.DECLINED
-        sub.status_changed_at = timezone.now()
-        sub.save(update_fields=["status", "status_changed_at"])
+        sub.save(update_fields=["status"])
         if send_caselock_decision_email(sub):
             messages.success(request, "Case lock declined and email sent.")
         else:
@@ -2723,4 +2569,8 @@ def caselock_submission_status_update(request, pk):
     else:
         messages.error(request, "Invalid action.")
 
-    return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
+    inbox_pk = (request.POST.get("inbox") or "").strip()
+    url = reverse("caselock_submissions")
+    if inbox_pk.isdigit():
+        url = f"{url}?inbox={inbox_pk}"
+    return redirect(url)

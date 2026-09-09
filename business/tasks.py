@@ -20,7 +20,7 @@ def fetch_support_inbox_task():
 
 @shared_task
 def fetch_caselock_inbox_task():
-    """Poll company Case lock mailboxes and email form links."""
+    """Poll all configured Case lock mailboxes and email form links."""
     return fetch_all_caselock_inboxes()
 
 

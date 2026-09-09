@@ -280,17 +280,6 @@
       {% include "includes/form_field_tracker.html" with field=form.support_email_app_password icon="lock" %}
     </div>
 
-    <h3 class="tracker-card-section-title">Case lock email</h3>
-    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
-      Mail to this address receives a Case lock form link. Microsoft 365 uses Graph;
-      other providers use IMAP. Run Celery worker + beat, or open the Case lock page
-      to poll (throttled).
-    </p>
-    <div class="tracker-form-grid">
-      {% include "includes/form_field_tracker.html" with field=form.caselock_email icon="mail" %}
-      {% include "includes/form_field_tracker.html" with field=form.caselock_email_app_password icon="lock" %}
-    </div>
-
     <h3 class="tracker-card-section-title">Outgoing email (SMTP)</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
       Required for client expiry reminders and the daily team digest. Use the same app password approach as support mail.
@@ -313,9 +302,9 @@
     <p class="expiry-intro">
       Choose which emails to send, and send manually anytime.
       Saving a time does not send immediately — mail goes out automatically at that time.
-      Locally this runs every minute while <code>runserver</code> is up, any time of day.
-      Production still uses Celery every minute, all day.
-      Set the reminder cadence from Reminder profile.
+      Locally this runs every minute while <code>runserver</code> is up (8:00–18:45 IST).
+      Production still uses Celery every 15 minutes in the same window.
+      Set the reminder cadence from Reminder template.
     </p>
 
     <div class="expiry-panel">
@@ -396,15 +385,19 @@
       {% if editing and company %}
       <div class="expiry-cta-actions">
         <a href="{% url 'reminder_template' %}" class="expiry-action-btn expiry-action-btn--primary">
-          Reminder profile
+          Reminder templates
+        </a>
+        <a href="{% url 'company_product_prices' %}" class="expiry-action-btn expiry-action-btn--primary">
+          Product prices
         </a>
       </div>
       <p class="expiry-action-note" style="margin:0;">
-        Create reminder schedule cycles for client expiry emails.
+        Create reminder schedule cycles, and set list prices used in the automatic
+        quotation email after a client confirms renewal quantities.
       </p>
       {% else %}
       <p class="expiry-action-note" style="margin:0;">
-        Save your company profile first to open reminder profile.
+        Save your company profile first to open reminder templates and product prices.
       </p>
       {% endif %}
     </div>

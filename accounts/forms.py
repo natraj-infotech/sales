@@ -31,8 +31,6 @@ class CompanyProfileForm(forms.ModelForm):
             "cin_number",
             "support_email",
             "support_email_app_password",
-            "caselock_email",
-            "caselock_email_app_password",
             "outgoing_email",
             "outgoing_email_app_password",
             "regards_email",
@@ -61,9 +59,6 @@ class CompanyProfileForm(forms.ModelForm):
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
-            "caselock_email_app_password": forms.PasswordInput(
-                render_value=False, attrs={"autocomplete": "new-password"}
-            ),
             "outgoing_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
@@ -73,9 +68,6 @@ class CompanyProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self._original_support_email_app_password = (
             self.instance.support_email_app_password if self.instance.pk else ""
-        )
-        self._original_caselock_email_app_password = (
-            self.instance.caselock_email_app_password if self.instance.pk else ""
         )
         self._original_outgoing_email_app_password = (
             self.instance.outgoing_email_app_password if self.instance.pk else ""
@@ -129,7 +121,6 @@ class CompanyProfileForm(forms.ModelForm):
         if self.instance.pk:
             for name in (
                 "support_email_app_password",
-                "caselock_email_app_password",
                 "outgoing_email_app_password",
             ):
                 self.fields[name].required = False
@@ -156,10 +147,6 @@ class CompanyProfileForm(forms.ModelForm):
             if not self.cleaned_data.get("support_email_app_password"):
                 instance.support_email_app_password = (
                     self._original_support_email_app_password
-                )
-            if not self.cleaned_data.get("caselock_email_app_password"):
-                instance.caselock_email_app_password = (
-                    self._original_caselock_email_app_password
                 )
             if not self.cleaned_data.get("outgoing_email_app_password"):
                 instance.outgoing_email_app_password = (
@@ -244,7 +231,6 @@ class AddCompanyMemberForm(forms.Form):
             role=CompanyMember.Role.MEMBER,
             sales_access=sales_access,
             can_grant_sales=can_grant,
-            support_ticket_access=True,
         )
 
 
@@ -272,8 +258,9 @@ class UpdateCompanyMemberForm(forms.Form):
             self.member.can_grant_sales = False
         if self.member.can_grant_sales:
             self.member.sales_access = True
-        update_fields = ["sales_access"]
-        if self.requester_is_owner:
-            update_fields.append("can_grant_sales")
-        self.member.save(update_fields=update_fields)
+        self.member.save(
+            update_fields=["sales_access", "can_grant_sales"]
+            if self.requester_is_owner
+            else ["sales_access"]
+        )
         return self.member
