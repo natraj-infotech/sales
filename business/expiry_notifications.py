@@ -23,7 +23,9 @@ from business.models import (
     SubscriptionExpiryNotice,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
+    SubscriptionRenewalInviteRecipient,
 )
+from business.renewal_tokens import sign_renewal_confirm_token
 from business.outbound_mail import send_company_outbound
 from business.reminder_schedule import (
     DEFAULT_END_PARAGRAPH,
@@ -76,9 +78,54 @@ def _public_base_url() -> str:
     return "http://127.0.0.1:8000"
 
 
-def renewal_invite_absolute_url(invite: SubscriptionRenewalInvite) -> str:
-    path = reverse("renewal_confirm_public", kwargs={"invite_id": str(invite.pk)})
+def renewal_invite_absolute_url(
+    invite: SubscriptionRenewalInvite, email: str = ""
+) -> str:
+    kwargs = {"invite_id": str(invite.pk)}
+    if email:
+        kwargs["token"] = sign_renewal_confirm_token(invite.pk, email)
+        path = reverse("renewal_confirm_public", kwargs=kwargs)
+    else:
+        path = reverse("renewal_confirm_public_legacy", kwargs=kwargs)
     return f"{_public_base_url()}{path}"
+
+
+def _client_reminder_content(
+    company: CompanyProfile,
+    client,
+    sections,
+    body_items,
+    copy: dict[str, str],
+    renewal_url: str,
+    logo_cid: str,
+) -> tuple[str, str, str]:
+    context = merge_context(
+        company=company,
+        client=client,
+        items=body_items,
+        renewal_url=renewal_url,
+    )
+    subject = apply_merge_tags(copy["subject"], context).strip() or (
+        _client_reminder_subject(body_items)
+    )
+    initial_paragraph = apply_merge_tags(copy["initial"], context)
+    end_paragraph = apply_merge_tags(copy["end"], context)
+    body = _client_email_body(
+        company,
+        sections,
+        renewal_url=renewal_url,
+        initial_paragraph=initial_paragraph,
+        end_paragraph=end_paragraph,
+    )
+    html_body = _client_email_html(
+        company,
+        sections,
+        renewal_url=renewal_url,
+        logo_cid=logo_cid,
+        initial_paragraph=initial_paragraph,
+        end_paragraph=end_paragraph,
+    )
+    return subject, body, html_body
 
 
 def _create_renewal_invite(
@@ -255,14 +302,6 @@ def _days_remaining_label(days_remaining: int | None) -> str:
     return f"{days_remaining} days remaining"
 
 
-def _form_stopped(sub: ClientSubscription) -> bool:
-    return bool(
-        sub.end_date
-        and sub.expiry_reminder_stopped_for_end_date
-        and sub.expiry_reminder_stopped_for_end_date == sub.end_date
-    )
-
-
 def _next_manual_send_number(sub: ClientSubscription, threshold: int, today) -> int:
     """Next slot number for a manual send, counted separately from automatic ones."""
     highest = SubscriptionExpiryDispatch.objects.filter(
@@ -288,11 +327,8 @@ def _manual_skip_reason(client, subs, phases, today) -> str | None:
         sub
         for sub in subs
         if (sub.deal_status or "") not in _BLOCKING_DEAL_STATUSES
-        and not _form_stopped(sub)
     ]
     if not open_subs:
-        if all(_form_stopped(sub) for sub in subs):
-            return "renewal form already submitted for the current expiry"
         statuses = sorted(
             {
                 (sub.get_deal_status_display() or sub.deal_status)
@@ -1047,13 +1083,13 @@ def _renewal_confirmation_html(
 def send_renewal_confirmation_email(
     invite: SubscriptionRenewalInvite, lines=None, new_products=None
 ) -> bool:
-    """Email the client a copy of the quantities they just confirmed."""
+    """Email only the submitter a copy of the quantities they just confirmed."""
     try:
         company = invite.company
-        to_email = (invite.client_email or "").strip()
+        to_email = (invite.submitted_by_email or "").strip()
         if not to_email:
             logger.warning(
-                "Skipped renewal confirmation email for invite %s: missing client email.",
+                "Skipped renewal confirmation email for invite %s: missing submitter email.",
                 invite.pk,
             )
             return False
@@ -1077,7 +1113,6 @@ def send_renewal_confirmation_email(
             logo_cid=logo_inline[0] if logo_inline else "",
             new_products=new_products,
         )
-        cc_addresses = _renewal_confirmation_cc_recipients(invite, to_email)
         ok, err, _internet_message_id = send_renewal_email(
             company,
             invite,
@@ -1085,7 +1120,6 @@ def send_renewal_confirmation_email(
             RENEWAL_CONFIRMATION_SUBJECT,
             body,
             html_body,
-            cc_addresses=cc_addresses,
             inline_images=[logo_inline] if logo_inline else None,
         )
     except Exception:
@@ -1780,8 +1814,6 @@ def send_client_expiry_emails(
             for sub in subs:
                 if (sub.deal_status or "") in _BLOCKING_DEAL_STATUSES:
                     continue
-                if _form_stopped(sub):
-                    continue
                 days_remaining = (sub.end_date - today).days
                 if not client.contact_emails():
                     if client.pk not in skipped_no_email:
@@ -1816,8 +1848,6 @@ def send_client_expiry_emails(
         for sub in qs:
             client = sub.client
             if not getattr(client, "renewal_emails_enabled", True):
-                continue
-            if _form_stopped(sub):
                 continue
             days_remaining = (sub.end_date - today).days if sub.end_date else None
             if days_remaining is None:
@@ -1856,7 +1886,6 @@ def send_client_expiry_emails(
         client = items[0][0].client
         contact_emails = client.contact_emails()
         client_email = contact_emails[0]
-        extra_client_cc = contact_emails[1:]
         sections = [
             (
                 client.name,
@@ -1869,55 +1898,63 @@ def send_client_expiry_emails(
         body_items = [item for _, client_items in sections for item in client_items]
         copy = resolve_email_copy(company, client)
         invite = _create_renewal_invite(company, client_email, items)
-        renewal_url = renewal_invite_absolute_url(invite)
-        context = merge_context(
-            company=company,
-            client=client,
-            items=body_items,
-            renewal_url=renewal_url,
-        )
-        subject = apply_merge_tags(copy["subject"], context).strip() or (
-            _client_reminder_subject(body_items)
-        )
-        initial_paragraph = apply_merge_tags(copy["initial"], context)
-        end_paragraph = apply_merge_tags(copy["end"], context)
-        body = _client_email_body(
-            company,
-            sections,
-            renewal_url=renewal_url,
-            initial_paragraph=initial_paragraph,
-            end_paragraph=end_paragraph,
-        )
         logo_inline = _company_logo_inline(company)
-        html_body = _client_email_html(
-            company,
-            sections,
-            renewal_url=renewal_url,
-            logo_cid=logo_inline[0] if logo_inline else "",
-            initial_paragraph=initial_paragraph,
-            end_paragraph=end_paragraph,
-        )
+        logo_cid = logo_inline[0] if logo_inline else ""
         inline_images = [logo_inline] if logo_inline else None
 
-        cc_for_send = _merge_cc_addresses(
-            client_email, extra_client_cc, cc_recipients
-        )
+        sent_recipients: list[str] = []
+        first_subject = ""
+        first_message_id = ""
+        team_cc_attached = False
+        for to_email in contact_emails:
+            renewal_url = renewal_invite_absolute_url(invite, to_email)
+            subject, body, html_body = _client_reminder_content(
+                company,
+                client,
+                sections,
+                body_items,
+                copy,
+                renewal_url,
+                logo_cid,
+            )
+            cc_for_send = None
+            if not team_cc_attached and cc_recipients:
+                cc_for_send = _merge_cc_addresses(to_email, cc_recipients)
+            ok, err, internet_message_id = send_renewal_email(
+                company,
+                invite,
+                [to_email],
+                subject,
+                body,
+                html_body,
+                cc_addresses=cc_for_send,
+                inline_images=inline_images,
+            )
+            if not ok:
+                logs.append(
+                    f"{company.company_name}: failed to send client reminder to {to_email}."
+                )
+                if err:
+                    logs.append(err)
+                continue
+            if cc_for_send:
+                team_cc_attached = True
+            if not first_subject:
+                first_subject = subject
+                first_message_id = internet_message_id or ""
+            SubscriptionRenewalInviteRecipient.objects.create(
+                invite=invite,
+                email=to_email.strip().lower(),
+                sent_at=timezone.now(),
+                internet_message_id=internet_message_id or "",
+            )
+            sent_recipients.append(to_email)
 
-        ok, err, internet_message_id = send_renewal_email(
-            company,
-            invite,
-            [client_email],
-            subject,
-            body,
-            html_body,
-            cc_addresses=cc_for_send,
-            inline_images=inline_images,
-        )
-        if ok:
+        if sent_recipients:
             sent_count += 1
-            invite.email_subject = subject
+            invite.email_subject = first_subject
             invite.email_sent_at = timezone.now()
-            invite.internet_message_id = internet_message_id or ""
+            invite.internet_message_id = first_message_id
             invite.save(
                 update_fields=[
                     "email_subject",
@@ -1939,16 +1976,14 @@ def send_client_expiry_emails(
                         days_before=notice_threshold,
                     )
             logs.append(
-                f"{company.company_name}: client reminder sent to {client_email} "
-                f"({len(items)} subscription(s))."
+                f"{company.company_name}: client reminder sent to "
+                f"{', '.join(sent_recipients)} ({len(items)} subscription(s))."
             )
         else:
             invite.delete()
             logs.append(
                 f"{company.company_name}: failed to send client reminder to {client_email}."
             )
-            if err:
-                logs.append(err)
 
     return sent_count, logs
 

@@ -5,7 +5,6 @@ Django settings for client subscription starter project.
 import os
 from pathlib import Path
 
-from celery.schedules import crontab
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -242,7 +241,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "send-expiry-notifications-daytime": {
         "task": "business.tasks.send_expiry_notifications_task",
-        "schedule": crontab(minute="*/15", hour="8-18"),
+        "schedule": 60.0,
     },
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",

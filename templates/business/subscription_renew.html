@@ -74,6 +74,7 @@
           <div class="tracker-mock-grid">
             {% include "includes/form_field_mock.html" with field=form.quantity %}
             {% include "includes/form_field_mock.html" with field=form.billing_amount %}
+            {% include "includes/form_field_mock.html" with field=form.vendor %}
           </div>
         </section>
 
@@ -85,4 +86,19 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  var select = document.getElementById("id_vendor");
+  if (!select) return;
+  var lastValue = select.value;
+  select.addEventListener("change", function () {
+    if (select.value === "__new__") {
+      window.location.href = "{% url 'vendor_add' %}?next={{ request.get_full_path|urlencode }}";
+      select.value = lastValue;
+      return;
+    }
+    lastValue = select.value;
+  });
+})();
+</script>
 {% endblock %}

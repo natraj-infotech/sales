@@ -256,8 +256,12 @@ def _receipt_matches_invite(item: dict, invite: SubscriptionRenewalInvite) -> bo
         return False
 
     sender = _sender_address(item)
-    client_email = (invite.client_email or "").strip().lower()
-    return sender == client_email
+    allowed = {
+        (addr or "").strip().lower()
+        for addr in invite.sent_to_emails
+        if (addr or "").strip()
+    }
+    return bool(sender) and sender in allowed
 
 
 def _sync_read_receipts_for_invites(
@@ -325,7 +329,9 @@ def poll_outlook_read_receipts_for_company(company) -> tuple[int, list[str]]:
         SubscriptionRenewalInvite.objects.filter(
             company=company,
             email_sent_at__isnull=False,
-        ).exclude(email_subject="")
+        )
+        .exclude(email_subject="")
+        .prefetch_related("recipients")
     )
     if not invites:
         return 0, logs

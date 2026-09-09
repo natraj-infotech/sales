@@ -7,6 +7,7 @@ from .models import (
     Vendor,
     Client,
     CaseLockInbox,
+    CaseLockProduct,
     CaseLockSubmission,
     ClientSubscription,
     Product,
@@ -464,32 +465,95 @@ class CaseLockPublicForm(forms.ModelForm):
     class Meta:
         model = CaseLockSubmission
         fields = (
-            "vendor_name",
-            "vendor_gst",
+            "product",
             "client_name",
-            "client_phone",
-            "client_email",
-            "client_email_2",
             "client_gst",
-            "product_name",
             "product_quantity",
         )
+        labels = {
+            "product": "Product",
+            "client_name": "Company name",
+            "client_gst": "GST number",
+            "product_quantity": "Quantity",
+        }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["client_phone"].widget.attrs.setdefault(
-            "placeholder",
-            "Client phone number",
+        products = CaseLockProduct.objects.none()
+        if company is not None:
+            products = company.caselock_products.order_by("name")
+        self.fields["product"] = forms.ModelChoiceField(
+            queryset=products,
+            required=True,
+            empty_label="Select a product",
+            error_messages={"required": "Select a product."},
+            widget=forms.Select(
+                attrs={
+                    "class": "cl-product-native",
+                    "aria-hidden": "true",
+                    "required": True,
+                }
+            ),
         )
-        self.fields["client_email"].widget.attrs.setdefault(
-            "placeholder",
-            "Client email",
+        for name in ("client_name", "client_gst", "product_quantity"):
+            self.fields[name].required = True
+        self.fields["client_name"].error_messages["required"] = "Enter the company name."
+        self.fields["client_gst"].error_messages["required"] = "Enter the GST number."
+        self.fields["product_quantity"].error_messages["required"] = "Enter the quantity."
+        self.fields["product_quantity"].widget.attrs.update(
+            {"min": "1", "required": True, "placeholder": "Quantity"}
         )
-        self.fields["client_email_2"].label = "Client email 2 (optional)"
-        self.fields["client_email_2"].widget.attrs.setdefault(
-            "placeholder",
-            "Additional client email",
+        self.fields["client_name"].widget.attrs.update(
+            {"required": True, "placeholder": "Company name"}
         )
+        self.fields["client_gst"].widget.attrs.update(
+            {"required": True, "placeholder": "GST number"}
+        )
+
+    def clean_client_name(self):
+        name = (self.cleaned_data.get("client_name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter the company name.")
+        return name
+
+    def clean_client_gst(self):
+        gst = (self.cleaned_data.get("client_gst") or "").strip()
+        if not gst:
+            raise forms.ValidationError("Enter the GST number.")
+        return gst
+
+    def clean_product_quantity(self):
+        qty = self.cleaned_data.get("product_quantity")
+        if qty is None or qty < 1:
+            raise forms.ValidationError("Enter a quantity of at least 1.")
+        return qty
+
+
+class CaseLockProductForm(forms.ModelForm):
+    class Meta:
+        model = CaseLockProduct
+        fields = ("name",)
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "Product name"}),
+        }
+
+    def __init__(self, *args, company=None, **kwargs):
+        self.company = company
+        super().__init__(*args, **kwargs)
+        self.fields["name"].label = "Product name"
+
+    def clean_name(self):
+        name = (self.cleaned_data.get("name") or "").strip()
+        if not name:
+            raise forms.ValidationError("Enter a product name.")
+        qs = CaseLockProduct.objects.filter(
+            company=self.company, name__iexact=name
+        )
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if self.company and qs.exists():
+            raise forms.ValidationError("This product already exists.")
+        return name
 
 
 class RenewalConfirmLineForm(forms.Form):
@@ -505,43 +569,6 @@ class RenewalConfirmLineForm(forms.Form):
             }
         ),
     )
-
-
-class RenewalConfirmSubmitterForm(forms.Form):
-    submitter_email = forms.EmailField(
-        label="Your email",
-        help_text="Use Email 1, Email 2, or Email 3 from the client record. "
-        "A verification code will be sent to this address.",
-        widget=forms.EmailInput(
-            attrs={
-                "placeholder": "you@example.com",
-                "autocomplete": "email",
-            }
-        ),
-    )
-
-
-class RenewalConfirmOtpForm(forms.Form):
-    otp_code = forms.CharField(
-        label="Verification code",
-        min_length=6,
-        max_length=8,
-        widget=forms.TextInput(
-            attrs={
-                "inputmode": "numeric",
-                "autocomplete": "one-time-code",
-                "placeholder": "6-digit code",
-                "pattern": "[0-9]*",
-            }
-        ),
-    )
-
-    def clean_otp_code(self):
-        raw = self.cleaned_data.get("otp_code") or ""
-        code = "".join(ch for ch in raw if ch.isdigit())
-        if len(code) != 6:
-            raise forms.ValidationError("Enter the 6-digit code sent to your email.")
-        return code
 
 
 RenewalConfirmLineFormSet = formset_factory(RenewalConfirmLineForm, extra=0)
@@ -631,6 +658,8 @@ class CaseLockInboxForm(forms.ModelForm):
 
 
 class SubscriptionRenewForm(forms.Form):
+    NEW_VENDOR = "__new__"
+
     start_date = forms.DateField(
         label="New start date",
         widget=forms.DateInput(
@@ -660,6 +689,22 @@ class SubscriptionRenewForm(forms.Form):
             attrs={"min": 0, "step": "0.01", "placeholder": "0.00"}
         ),
     )
+    vendor = forms.ChoiceField(
+        label="New vendor",
+        required=False,
+    )
+
+    def __init__(self, *args, company=None, **kwargs):
+        self.company = company
+        super().__init__(*args, **kwargs)
+        vendors = []
+        if company is not None:
+            vendors = list(company.vendors.all().order_by("name"))
+        choices = [("", "---------")] + [
+            (str(v.pk), v.name) for v in vendors
+        ]
+        choices.append((self.NEW_VENDOR, "+ Add new vendor"))
+        self.fields["vendor"].choices = choices
 
     def clean(self):
         cleaned = super().clean()
@@ -667,4 +712,21 @@ class SubscriptionRenewForm(forms.Form):
         end = cleaned.get("end_date")
         if start and end and end < start:
             raise forms.ValidationError("End date must be on or after the start date.")
+        choice = (cleaned.get("vendor") or "").strip()
+        cleaned["resolved_vendor"] = None
+        if choice == self.NEW_VENDOR:
+            self.add_error("vendor", "Add the vendor from the Add vendor page.")
+        elif choice:
+            try:
+                pk = int(choice)
+            except (TypeError, ValueError):
+                self.add_error("vendor", "Select a valid vendor.")
+            else:
+                vendor = None
+                if self.company is not None:
+                    vendor = self.company.vendors.filter(pk=pk).first()
+                if vendor is None:
+                    self.add_error("vendor", "Select a valid vendor.")
+                else:
+                    cleaned["resolved_vendor"] = vendor
         return cleaned

@@ -69,6 +69,17 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="App password for the support mailbox (e.g. Gmail app password).",
     )
+    caselock_email = models.EmailField(
+        "case lock email",
+        blank=True,
+        help_text="Mailbox that receives Case lock requests. Incoming mail gets a form link.",
+    )
+    caselock_email_app_password = models.CharField(
+        "case lock email app password",
+        max_length=256,
+        blank=True,
+        help_text="App password for the Case lock mailbox (e.g. Gmail app password).",
+    )
     outgoing_email = models.EmailField(
         "outgoing / SMTP email",
         blank=True,
@@ -181,6 +192,10 @@ class CompanyMember(models.Model):
     can_grant_sales = models.BooleanField(
         default=False,
         help_text="Can grant or revoke sales module access for teammates.",
+    )
+    support_ticket_access = models.BooleanField(
+        default=False,
+        help_text="Can view and manage the support tickets dashboard for this company.",
     )
     joined_at = models.DateTimeField(auto_now_add=True)
 
