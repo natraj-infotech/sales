@@ -29,6 +29,10 @@
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Import
     </a>
+    <button type="submit" form="subscription-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected subscriptions?');">
+      <svg aria-hidden="true"><use href="#i-trash"/></svg>
+      Delete selected
+    </button>
   </div>
 </div>
 {% endblock %}
@@ -117,55 +121,90 @@
 {% endif %}
 
 <div class="tracker-card tracker-card--flush-bottom tracker-card-subscriptions">
-  <div class="tracker-table-scroll">
-    <table class="tracker-table-subscriptions">
-      <thead>
-        <tr>
-          <th>Client</th>
-          <th>Category</th>
-          <th>Product</th>
-          <th>Vendor</th>
-          <th>Qty</th>
-          <th>Start date</th>
-          <th>End date</th>
-          <th>Price</th>
-          <th>Serial number</th>
-          <th>Subscription ID</th>
-          <th class="col-actions">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for s in object_list %}
-        <tr>
-          <td>{{ s.client.name }}</td>
-          <td>{{ s.product.category|default:"—" }}</td>
-          <td>{{ s.product.name }}</td>
-          <td>{{ s.vendor.name|default:"—" }}</td>
-          <td>{{ s.quantity }}</td>
-          <td>{{ s.start_date|date:"d/m/Y" }}</td>
-          <td>{% if s.end_date %}{{ s.end_date|date:"d/m/Y" }}{% else %}—{% endif %}</td>
-          <td>{{ s.billing_amount }}</td>
-          <td>{{ s.serial_number|default:"—" }}</td>
-          <td>{{ s.subscription_list_id }}</td>
-          <td class="col-actions">
-            {% if filters.expiring_soon %}
-            <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ request.get_full_path|urlencode }}" style="margin-right:0.35rem;">Renew</a>
-            {% endif %}
-            <a class="btn-table-edit" href="{% url 'subscription_edit' s.pk %}">
-              <svg aria-hidden="true"><use href="#i-pencil"/></svg>
-              Edit
-            </a>
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;">
-            No subscriptions match your filters. <a href="{% url 'subscription_add' %}">Add a subscription</a>.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <form method="post" action="{% url 'subscription_bulk_delete' %}" id="subscription-bulk-form">
+    {% csrf_token %}
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-subscriptions">
+        <thead>
+          <tr>
+            <th class="col-check">
+              <input type="checkbox" id="subscription-select-all" title="Select all" aria-label="Select all subscriptions">
+            </th>
+            <th>Client</th>
+            <th>Category</th>
+            <th>Product</th>
+            <th>Vendor</th>
+            <th>Qty</th>
+            <th>Start date</th>
+            <th>End date</th>
+            <th>Price</th>
+            <th>Serial number</th>
+            <th>Subscription ID</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in object_list %}
+          <tr>
+            <td class="col-check">
+              <input type="checkbox" class="subscription-row-check" name="subscription_ids" value="{{ s.pk }}" aria-label="Select {{ s.client.name }} — {{ s.product.name }}">
+            </td>
+            <td>{{ s.client.name }}</td>
+            <td>{{ s.product.category|default:"—" }}</td>
+            <td>{{ s.product.name }}</td>
+            <td>{{ s.vendor.name|default:"—" }}</td>
+            <td>{{ s.quantity }}</td>
+            <td>{{ s.start_date|date:"d/m/Y" }}</td>
+            <td>{% if s.end_date %}{{ s.end_date|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+            <td>{{ s.billing_amount }}</td>
+            <td>{{ s.serial_number|default:"—" }}</td>
+            <td>{{ s.subscription_list_id }}</td>
+            <td class="col-actions">
+              {% if filters.expiring_soon %}
+              <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ request.get_full_path|urlencode }}" style="margin-right:0.35rem;">Renew</a>
+              {% endif %}
+              <a class="btn-table-edit" href="{% url 'subscription_edit' s.pk %}">
+                <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+                Edit
+              </a>
+              <button type="submit"
+                class="btn btn-ghost"
+                style="color:#dc2626;padding:0.35rem 0.75rem;font-size:0.78rem;margin-top:0.35rem;display:block;"
+                formaction="{% url 'subscription_delete' s.pk %}"
+                formmethod="post"
+                onclick="return confirm('Delete this subscription for {{ s.client.name|escapejs }}?');">
+                Delete
+              </button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="12" class="muted" style="padding:1.25rem;text-align:center;">
+              No subscriptions match your filters. <a href="{% url 'subscription_add' %}">Add a subscription</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
 </div>
+
+<script>
+(function () {
+  var master = document.getElementById("subscription-select-all");
+  var boxes = document.querySelectorAll(".subscription-row-check");
+  if (!master || !boxes.length) return;
+  master.addEventListener("change", function () {
+    boxes.forEach(function (b) { b.checked = master.checked; });
+  });
+  boxes.forEach(function (b) {
+    b.addEventListener("change", function () {
+      var all = true;
+      boxes.forEach(function (x) { if (!x.checked) all = false; });
+      master.checked = all;
+    });
+  });
+})();
+</script>
 {% endblock %}

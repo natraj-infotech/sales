@@ -1024,7 +1024,7 @@
     }
     .tracker-table-subscriptions {
       width: 100%;
-      min-width: 1100px;
+      min-width: 1140px;
       border-collapse: collapse;
       font-size: 0.8125rem;
     }
@@ -1050,9 +1050,20 @@
     .tracker-table-subscriptions tbody tr:hover td {
       background: #f8fafc;
     }
-    .tracker-table-subscriptions .col-actions {
-      width: 88px;
+    .tracker-table-subscriptions thead th.col-check,
+    .tracker-table-subscriptions thead th.col-actions {
       text-align: center;
+    }
+    .tracker-table-subscriptions .col-check { width: 44px; text-align: center; }
+    .tracker-table-subscriptions .col-actions {
+      width: 96px;
+      text-align: center;
+    }
+    .tracker-table-subscriptions input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--header-blue);
+      cursor: pointer;
     }
     .tracker-card-subscriptions .tracker-table-scroll {
       border-top: 1px solid var(--border);

@@ -158,6 +158,14 @@ def _delete_vendors(company, qs) -> tuple[int, int, int]:
     return entity_count, sub_count, product_count
 
 
+def _delete_subscriptions(company, qs) -> int:
+    qs = qs.filter(company=company)
+    entity_count = qs.count()
+    if entity_count:
+        qs.delete()
+    return entity_count
+
+
 EXPIRING_SOON_DAYS = (90, 45, 30, 15, 7)
 
 
@@ -1324,6 +1332,30 @@ def subscription_list(request):
             "expiring_choices": _expiring_subscription_choices(),
         },
     )
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def subscription_bulk_delete(request):
+    company = _company(request)
+    ids = request.POST.getlist("subscription_ids")
+    if not ids:
+        messages.warning(request, "Select at least one subscription to delete.")
+        return redirect("subscription_list")
+    qs = company.subscriptions.filter(pk__in=ids)
+    n = _delete_subscriptions(company, qs)
+    _delete_success_message(request, n, 0, "subscription(s)")
+    return redirect("subscription_list")
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def subscription_delete(request, pk):
+    company = _company(request)
+    obj = get_object_or_404(ClientSubscription, pk=pk, company=company)
+    n = _delete_subscriptions(company, company.subscriptions.filter(pk=obj.pk))
+    _delete_success_message(request, n, 0, "subscription")
+    return redirect("subscription_list")
 
 
 def _stash_import_upload(

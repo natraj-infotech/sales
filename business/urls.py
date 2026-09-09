@@ -115,6 +115,11 @@ urlpatterns = [
     path("products/<int:pk>/edit/", views.product_edit, name="product_edit"),
     path("products/<int:pk>/delete/", views.product_delete, name="product_delete"),
     path("subscriptions/", views.subscription_list, name="subscription_list"),
+    path(
+        "subscriptions/bulk-delete/",
+        views.subscription_bulk_delete,
+        name="subscription_bulk_delete",
+    ),
     path("subscriptions/import/", views.subscription_import, name="subscription_import"),
     path(
         "subscriptions/import/map/",
@@ -131,6 +136,11 @@ urlpatterns = [
         "subscriptions/<int:pk>/edit/",
         views.subscription_edit,
         name="subscription_edit",
+    ),
+    path(
+        "subscriptions/<int:pk>/delete/",
+        views.subscription_delete,
+        name="subscription_delete",
     ),
     path(
         "subscriptions/<int:pk>/renew/",
