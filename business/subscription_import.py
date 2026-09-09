@@ -603,7 +603,7 @@ def _import_subscription_rows(
 
         existing = ClientSubscription.objects.filter(
             company=company,
-            subscription_code=sub_code[:64],
+            subscription_code__iexact=sub_code[:64],
         ).first()
         if existing:
             existing.client = client
