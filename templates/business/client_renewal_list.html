@@ -911,7 +911,6 @@
   var activeDealUrl = "";
   var activeInviteId = "";
   var dealItems = [];
-  var winSubId = null;
 
   function closeDealModal() {
     if (!dealModal) return;
@@ -919,7 +918,6 @@
     activeDealUrl = "";
     activeInviteId = "";
     dealItems = [];
-    winSubId = null;
     if (dealList) dealList.innerHTML = "";
     setDealError("");
   }
@@ -979,7 +977,6 @@
 
   function handleSaved(data) {
     dealItems = data.items || [];
-    winSubId = null;
     setDealError("");
     applyInviteDealCell(data);
     if (data.renew_url) {
@@ -1013,47 +1010,16 @@
 
       if (item.deal_status) {
         actions.innerHTML = dealBadgeHtml(item.deal_status);
-      } else if (winSubId === item.subscription_id) {
-        var nowBtn = document.createElement("button");
-        nowBtn.type = "button";
-        nowBtn.className = "btn-table-edit";
-        nowBtn.textContent = "Renew now";
-        nowBtn.addEventListener("click", function () {
-          postDealStatus(
-            { deal_status: "win", update_now: "1", subscription_id: item.subscription_id },
-            handleSaved
-          );
-        });
-        var laterBtn = document.createElement("button");
-        laterBtn.type = "button";
-        laterBtn.className = "btn-table-edit cr-modal-btn-ghost";
-        laterBtn.textContent = "Renew later";
-        laterBtn.addEventListener("click", function () {
-          postDealStatus(
-            { deal_status: "win", subscription_id: item.subscription_id },
-            handleSaved
-          );
-        });
-        var backBtn = document.createElement("button");
-        backBtn.type = "button";
-        backBtn.className = "btn-table-edit cr-modal-btn-ghost";
-        backBtn.textContent = "Back";
-        backBtn.addEventListener("click", function () {
-          winSubId = null;
-          renderDealList();
-        });
-        actions.appendChild(nowBtn);
-        actions.appendChild(laterBtn);
-        actions.appendChild(backBtn);
       } else {
         var winBtn = document.createElement("button");
         winBtn.type = "button";
         winBtn.className = "btn-table-edit";
         winBtn.textContent = "Win";
         winBtn.addEventListener("click", function () {
-          winSubId = item.subscription_id;
-          setDealError("");
-          renderDealList();
+          postDealStatus(
+            { deal_status: "win", update_now: "1", subscription_id: item.subscription_id },
+            handleSaved
+          );
         });
         var lostBtn = document.createElement("button");
         lostBtn.type = "button";
@@ -1089,7 +1055,6 @@
   function openDealList(url) {
     activeDealUrl = url;
     activeInviteId = inviteIdFromUrl(url);
-    winSubId = null;
     setDealError("");
     dealTitle.textContent = "Deal Status";
     dealText.textContent = "Loading…";
