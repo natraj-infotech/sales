@@ -39,6 +39,7 @@ from .forms import (
     VendorForm,
 )
 from . import helpdesk_bridge
+from .analytics import sales_dashboard_charts, ticket_charts_from_views
 from .models import (
     CaseLockInvite,
     CaseLockProduct,
@@ -208,6 +209,7 @@ def dashboard(request):
     expiring_subs = expiring_qs.select_related("client", "product", "vendor").order_by(
         "end_date", "client__name"
     )[:50]
+    charts = sales_dashboard_charts(company, expiring_qs=expiring_qs, today=today)
     ctx = {
         "company": company,
         "counts": {
@@ -232,6 +234,7 @@ def dashboard(request):
         "dashboard_renew_next": (
             f"{reverse('dashboard')}?expiring_days={expiring_days}"
         ),
+        "charts": charts,
     }
     return render(request, "business/dashboard.html", ctx)
 
@@ -1861,6 +1864,7 @@ def _support_ticket_list_data(company, *, status_filter: str = ""):
         "counts": counts,
         "assignees": company_users(company),
         "sla_settings": sla_settings,
+        "charts": ticket_charts_from_views(base),
     }
 
 
@@ -1904,6 +1908,7 @@ def support_ticket_list(request):
             "counts": data["counts"],
             "assignees": data["assignees"],
             "sla_settings": data["sla_settings"],
+            "charts": data["charts"],
         },
     )
 
@@ -1980,6 +1985,7 @@ def support_ticket_live(request):
             "assignees": assignees,
             "sla_mode": data["sla_settings"].sla_mode,
             "rows": rows,
+            "charts": data["charts"],
         }
     )
 

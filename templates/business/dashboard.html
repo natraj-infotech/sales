@@ -3,6 +3,7 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block extra_css %}
+{% include "includes/analytics_dash.css.html" %}
 <style>
   .dashboard-expiring-header {
     display: flex;
@@ -54,8 +55,8 @@
     letter-spacing: 0.03em;
     white-space: nowrap;
   }
-  .dash-deal--win { background: #d1fae5; color: #065f46; }
-  .dash-deal--lost { background: #fee2e2; color: #991b1b; }
+  .dash-deal--win { background: #dbeafe; color: #1e40af; }
+  .dash-deal--lost { background: #eff6ff; color: #3b82f6; }
   .dash-deal--cancel { background: #e2e8f0; color: #334155; }
   .dash-deal--empty { color: var(--muted, #64748b); font-weight: 600; text-transform: none; letter-spacing: 0; }
 </style>
@@ -101,13 +102,68 @@
   </div>
 </div>
 
-<div class="tracker-card">
-  <h3 class="tracker-card-section-title" style="margin-top:0;">Quick actions</h3>
-  <div class="toolbar" style="margin-bottom:0;">
-    <a class="btn btn-primary" href="{% url 'subscription_add' %}">Add subscription</a>
-    <a class="btn btn-ghost" href="{% url 'vendor_add' %}">Add vendor</a>
-    <a class="btn btn-ghost" href="{% url 'client_add' %}">Add client</a>
-    <a class="btn btn-ghost" href="{% url 'product_add' %}">Add product</a>
+<div class="adash">
+  <div class="adash-row adash-row--3">
+    <div class="adash-card">
+      <div class="adash-kpis">
+        <div class="adash-kpi">
+          <div class="lbl">Win</div>
+          <div class="num">{{ charts.win }}</div>
+        </div>
+        <div class="adash-kpi">
+          <div class="lbl">Lost</div>
+          <div class="num">{{ charts.lost }}</div>
+        </div>
+        <div class="adash-kpi">
+          <div class="lbl">Win rate</div>
+          <div class="num">{{ charts.win_rate }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="adash-card">
+      <div class="adash-kpi">
+        <div class="num">{{ charts.pending_renewals }}</div>
+        <div class="lbl" style="margin-top:0.35rem;">Pending renewals</div>
+        <p class="sub">Active subscriptions expiring in {{ expiring_days }} days without Win/Lost</p>
+      </div>
+    </div>
+    <div class="adash-card">
+      <div class="adash-kpi">
+        <div class="num">{{ charts.new_qty_month }}</div>
+        <div class="lbl" style="margin-top:0.35rem;">New subscription qty</div>
+        <p class="sub">Quantity added this month (new subs + renewal Add)</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="adash-row adash-row--3">
+    <div class="adash-card">
+      <h3>Deal outcome</h3>
+      <div class="adash-chart">
+        {% if charts.deal_total %}
+        <canvas id="chart-deal-outcome"></canvas>
+        {% else %}
+        <p class="adash-empty">No win / lost / pending deals yet.</p>
+        {% endif %}
+      </div>
+      <div class="adash-legend">
+        <span><i class="adash-dot" style="background:#1e5bb8;"></i> Win {{ charts.win }}</span>
+        <span><i class="adash-dot" style="background:#60a5fa;"></i> Lost {{ charts.lost }}</span>
+        <span><i class="adash-dot" style="background:#94a3b8;"></i> Pending {{ charts.pending_deals }}</span>
+      </div>
+    </div>
+    <div class="adash-card">
+      <h3>Renewal pipeline</h3>
+      <div class="adash-chart">
+        <canvas id="chart-renewal-pipeline"></canvas>
+      </div>
+    </div>
+    <div class="adash-card">
+      <h3>New subscription quantity</h3>
+      <div class="adash-chart">
+        <canvas id="chart-new-qty"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -181,6 +237,16 @@
 </div>
 
 <div class="tracker-card">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Quick actions</h3>
+  <div class="toolbar" style="margin-bottom:0;">
+    <a class="btn btn-primary" href="{% url 'subscription_add' %}">Add subscription</a>
+    <a class="btn btn-ghost" href="{% url 'vendor_add' %}">Add vendor</a>
+    <a class="btn btn-ghost" href="{% url 'client_add' %}">Add client</a>
+    <a class="btn btn-ghost" href="{% url 'product_add' %}">Add product</a>
+  </div>
+</div>
+
+<div class="tracker-card">
   <h3 class="tracker-card-section-title" style="margin-top:0;">Recent subscriptions</h3>
   {% if recent_subs %}
   <div class="table-wrap">
@@ -211,4 +277,27 @@
   <p class="muted">No subscriptions yet. <a href="{% url 'subscription_add' %}">Create one</a>.</p>
   {% endif %}
 </div>
+
+{{ charts|json_script:"sales-charts-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% include "includes/adash_charts.js.html" %}
+<script>
+(function () {
+  var dataEl = document.getElementById("sales-charts-data");
+  if (!dataEl || !window.Adash) return;
+  var data = JSON.parse(dataEl.textContent);
+  if (document.getElementById("chart-deal-outcome")) {
+    Adash.doughnut(
+      "chart-deal-outcome",
+      ["Win", "Lost", "Pending"],
+      [data.win, data.lost, data.pending_deals],
+      ["#1e5bb8", "#60a5fa", "#94a3b8"],
+      data.deal_total,
+      "deals"
+    );
+  }
+  Adash.line("chart-renewal-pipeline", data.pipeline_labels, data.pipeline_values, "Expiring");
+  Adash.bar("chart-new-qty", data.qty_month_labels, data.qty_month_values);
+})();
+</script>
 {% endblock %}

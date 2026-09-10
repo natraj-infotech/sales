@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Support tickets{% endblock %}
 
+{% block extra_css %}
+{% include "includes/analytics_dash.css.html" %}
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header">
   <div class="tracker-page-header-text">
@@ -43,6 +47,90 @@
     <div class="ticket360-stat {% if counts.sla_breached %}is-warn{% endif %}" id="st-stat-breached">
       <div class="num" id="st-count-breached">{{ counts.sla_breached }}</div>
       <div class="lbl">SLA breached</div>
+    </div>
+  </div>
+
+  <div class="adash">
+    <div class="adash-row adash-row--3">
+      <div class="adash-card">
+        <div class="lbl" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Avg resolution time</div>
+        <div class="num" id="st-kpi-avg-res" style="font-size:1.7rem;font-weight:700;color:var(--header-blue);margin-top:0.2rem;">{{ charts.avg_resolution }}</div>
+        <p class="adash-kpi"><span class="sub">Average time to close, in minutes or hours</span></p>
+      </div>
+      <div class="adash-card">
+        <div class="lbl" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">Solved on time</div>
+        <div class="num" id="st-kpi-ontime" style="font-size:1.7rem;font-weight:700;color:var(--header-blue);margin-top:0.2rem;">{{ charts.solved_on_time_pct }}%</div>
+        <p class="adash-kpi"><span class="sub" id="st-kpi-ontime-sub">{{ charts.solved_on_time }} of {{ charts.solved_with_sla }} resolved within SLA</span></p>
+      </div>
+      <div class="adash-card">
+        <div class="lbl" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);">SLA breached</div>
+        <div class="num is-red" id="st-kpi-breached" style="font-size:1.7rem;font-weight:700;color:#dc2626;margin-top:0.2rem;">{{ charts.sla_breached }}</div>
+        <p class="adash-kpi"><span class="sub">Tickets that missed SLA</span></p>
+      </div>
+    </div>
+
+    <div class="adash-row adash-row--3">
+      <div class="adash-card">
+        <h3>Ticket volume (14 days)</h3>
+        <div class="adash-chart">
+          <canvas id="chart-ticket-volume"></canvas>
+        </div>
+      </div>
+      <div class="adash-card">
+        <h3>Status mix</h3>
+        <div class="adash-chart">
+          <canvas id="chart-status-mix"></canvas>
+        </div>
+        <div class="adash-legend">
+          <span><i class="adash-dot" style="background:#3b82f6;"></i> Open</span>
+          <span><i class="adash-dot" style="background:#60a5fa;"></i> In progress</span>
+          <span><i class="adash-dot" style="background:#93c5fd;"></i> Under observation</span>
+          <span><i class="adash-dot" style="background:#1e3a8a;"></i> Closed</span>
+        </div>
+      </div>
+      <div class="adash-card">
+        <h3>Queue highlights</h3>
+        <ul class="adash-queue">
+          <li><span class="ico">!</span><span class="n" id="st-q-high">{{ charts.queue.high_unassigned }}</span> High priority unassigned</li>
+          <li><span class="ico">⏱</span><span class="n" id="st-q-wait">{{ charts.queue.waiting_8h }}</span> Waiting over 8h</li>
+          <li><span class="ico">○</span><span class="n" id="st-q-unassigned">{{ charts.queue.unassigned_open }}</span> Unassigned open</li>
+          <li><span class="ico is-warn">⚠</span><span class="n" id="st-q-sla">{{ charts.queue.sla_breached }}</span> SLA breached</li>
+          <li><span class="ico">◷</span><span class="n" id="st-q-obs">{{ charts.queue.observation }}</span> Under observation</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="adash-row adash-row--3">
+      <div class="adash-card">
+        <h3>Solved vs open</h3>
+        <div class="adash-chart">
+          <canvas id="chart-solved-open"></canvas>
+        </div>
+      </div>
+      <div class="adash-card">
+        <h3>SLA compliance</h3>
+        <div class="adash-convert">
+          <div class="adash-convert-meta">
+            <span class="ok">On track / Met <span id="st-sla-met">{{ charts.sla_met_pct }}</span>%</span>
+            <span class="bad">Missed <span id="st-sla-miss">{{ charts.sla_missed_pct }}</span>%</span>
+          </div>
+          <div class="adash-bar" id="st-sla-bar">
+            <i class="ok" style="width: {{ charts.sla_met_pct }}%;"></i>
+            <i class="bad" style="width: {{ charts.sla_missed_pct }}%;"></i>
+          </div>
+        </div>
+        <div class="adash-chart adash-chart--sm" style="margin-top:0.85rem;">
+          <canvas id="chart-sla-daily"></canvas>
+        </div>
+      </div>
+      <div class="adash-card">
+        <h3>Average time to solve</h3>
+        <div class="num" id="st-kpi-avg-solve" style="font-size:1.7rem;font-weight:700;color:var(--header-blue);">{{ charts.avg_resolution }}</div>
+        <div class="adash-chart adash-chart--sm" style="margin-top:0.5rem;">
+          <canvas id="chart-avg-spark"></canvas>
+        </div>
+        <p class="adash-kpi"><span class="sub">First response time <strong id="st-kpi-first">{{ charts.first_response }}</strong></span></p>
+      </div>
     </div>
   </div>
 
@@ -174,6 +262,9 @@
   </div>
 </div>
 
+{{ charts|json_script:"ticket-charts-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+{% include "includes/adash_charts.js.html" %}
 <script>
 (function () {
   var LIVE_URL = "{% url 'support_ticket_live' %}";
@@ -189,6 +280,52 @@
   var timer = null;
   var inFlight = false;
   var lastSignature = "";
+  var ticketCharts = { volume: null, mix: null, solved: null, sla: null, spark: null };
+
+  function chartPayload() {
+    var el = document.getElementById("ticket-charts-data");
+    if (!el) return null;
+    try { return JSON.parse(el.textContent); } catch (e) { return null; }
+  }
+
+  function mixData(c) {
+    var mix = (c && c.status_mix) || {};
+    return [mix.open || 0, mix.in_progress || 0, mix.resolved || 0, mix.closed || 0];
+  }
+
+  function renderTicketCharts(c) {
+    if (!window.Adash || !c) return;
+    if (!ticketCharts.volume) {
+      ticketCharts.volume = Adash.line("chart-ticket-volume", c.volume_labels, c.volume_values, "Tickets");
+      ticketCharts.mix = Adash.doughnut(
+        "chart-status-mix",
+        ["Open", "In progress", "Under observation", "Closed"],
+        mixData(c),
+        ["#3b82f6", "#60a5fa", "#93c5fd", "#1e3a8a"],
+        c.total,
+        "tickets"
+      );
+      ticketCharts.solved = Adash.groupedBar("chart-solved-open", c.week_labels, [
+        { label: "Solved", data: c.week_solved, backgroundColor: "#10b981", borderRadius: 6, maxBarThickness: 22 },
+        { label: "Open", data: c.week_open, backgroundColor: "#2563eb", borderRadius: 6, maxBarThickness: 22 },
+      ]);
+      ticketCharts.sla = Adash.skipNullBar("chart-sla-daily", c.sla_daily_labels, c.sla_daily_values);
+      ticketCharts.spark = Adash.line("chart-avg-spark", c.volume_labels, c.volume_values, "Volume");
+      return;
+    }
+    Adash.replaceData(ticketCharts.volume, c.volume_labels, [{ data: c.volume_values }]);
+    Adash.replaceData(ticketCharts.mix, ["Open", "In progress", "Under observation", "Closed"], [{ data: mixData(c) }]);
+    Adash.setCenter(ticketCharts.mix, c.total, "tickets");
+    Adash.replaceData(ticketCharts.solved, c.week_labels, [
+      { data: c.week_solved },
+      { data: c.week_open },
+    ]);
+    Adash.replaceData(ticketCharts.sla, c.sla_daily_labels, [{ data: c.sla_daily_values }]);
+    Adash.replaceData(ticketCharts.spark, c.volume_labels, [{ data: c.volume_values }]);
+    if (ticketCharts.mix) ticketCharts.mix.update();
+  }
+
+  renderTicketCharts(chartPayload());
 
   function qs() {
     var params = new URLSearchParams();
@@ -227,6 +364,7 @@
     return JSON.stringify({
       created: data.created || 0,
       counts: data.counts || {},
+      charts: data.charts || {},
       rows: (data.rows || []).map(function (r) {
         return [
           r.id,
@@ -387,6 +525,31 @@
     if (breachedStat) {
       if (c.sla_breached) breachedStat.classList.add("is-warn");
       else breachedStat.classList.remove("is-warn");
+    }
+    var charts = data.charts;
+    if (charts) {
+      setText("st-kpi-avg-res", charts.avg_resolution || "—");
+      setText("st-kpi-avg-solve", charts.avg_resolution || "—");
+      setText("st-kpi-ontime", (charts.solved_on_time_pct != null ? charts.solved_on_time_pct : 0) + "%");
+      setText("st-kpi-ontime-sub", (charts.solved_on_time || 0) + " of " + (charts.solved_with_sla || 0) + " resolved within SLA");
+      setText("st-kpi-breached", charts.sla_breached != null ? charts.sla_breached : "0");
+      setText("st-kpi-first", charts.first_response || "—");
+      setText("st-sla-met", charts.sla_met_pct != null ? charts.sla_met_pct : 0);
+      setText("st-sla-miss", charts.sla_missed_pct != null ? charts.sla_missed_pct : 0);
+      var q = charts.queue || {};
+      setText("st-q-high", q.high_unassigned != null ? q.high_unassigned : 0);
+      setText("st-q-wait", q.waiting_8h != null ? q.waiting_8h : 0);
+      setText("st-q-unassigned", q.unassigned_open != null ? q.unassigned_open : 0);
+      setText("st-q-sla", q.sla_breached != null ? q.sla_breached : 0);
+      setText("st-q-obs", q.observation != null ? q.observation : 0);
+      var bar = document.getElementById("st-sla-bar");
+      if (bar) {
+        var ok = bar.querySelector(".ok");
+        var bad = bar.querySelector(".bad");
+        if (ok) ok.style.width = (charts.sla_met_pct || 0) + "%";
+        if (bad) bad.style.width = (charts.sla_missed_pct || 0) + "%";
+      }
+      renderTicketCharts(charts);
     }
   }
 

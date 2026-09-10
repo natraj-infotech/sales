@@ -1,0 +1,194 @@
+<script>
+(function (global) {
+  if (!global.Chart) return;
+  Chart.defaults.font.family = '"Segoe UI", Inter, system-ui, sans-serif';
+  Chart.defaults.color = "#64748b";
+  Chart.defaults.plugins.legend.labels.boxWidth = 10;
+  Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.legend.labels.pointStyle = "circle";
+  Chart.defaults.maintainAspectRatio = false;
+
+  var centerTextPlugin = {
+    id: "adashCenter",
+    afterDraw: function (chart) {
+      var opts = chart.options.plugins && chart.options.plugins.adashCenter;
+      if (!opts || !opts.text) return;
+      var area = chart.chartArea;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.fillStyle = "#0f172a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      var x = (area.left + area.right) / 2;
+      var y = (area.top + area.bottom) / 2;
+      ctx.font = "700 22px Segoe UI, sans-serif";
+      ctx.fillText(String(opts.text), x, y - 8);
+      if (opts.sub) {
+        ctx.font = "600 11px Segoe UI, sans-serif";
+        ctx.fillStyle = "#64748b";
+        ctx.fillText(String(opts.sub), x, y + 14);
+      }
+      ctx.restore();
+    },
+  };
+
+  function el(id) {
+    return typeof id === "string" ? document.getElementById(id) : id;
+  }
+
+  function gradient(chart, from, to) {
+    var ctx = chart.ctx;
+    var area = chart.chartArea || { top: 0, bottom: 180 };
+    var g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0, from);
+    g.addColorStop(1, to);
+    return g;
+  }
+
+  function doughnut(canvasId, labels, data, colors, center, sub) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "doughnut",
+      plugins: [centerTextPlugin],
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: colors,
+          borderWidth: 0,
+          hoverOffset: 4,
+        }],
+      },
+      options: {
+        cutout: "72%",
+        plugins: {
+          legend: { display: false },
+          adashCenter: { text: center, sub: sub || "" },
+        },
+      },
+    });
+  }
+
+  function line(canvasId, labels, data, label) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    var chart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: label || "",
+          data: data,
+          borderColor: "#2563eb",
+          backgroundColor: "rgba(37, 99, 235, 0.16)",
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: "#2563eb",
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 7 } },
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+        },
+      },
+    });
+    return chart;
+  }
+
+  function bar(canvasId, labels, data, color) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: color || "#3b82f6",
+          borderRadius: 6,
+          maxBarThickness: 28,
+        }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+        },
+      },
+    });
+  }
+
+  function groupedBar(canvasId, labels, datasets) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "bar",
+      data: { labels: labels, datasets: datasets },
+      options: {
+        plugins: { legend: { position: "top", align: "end" } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+        },
+      },
+    });
+  }
+
+  function skipNullBar(canvasId, labels, data) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: "#2563eb",
+          borderRadius: 4,
+          maxBarThickness: 18,
+        }],
+      },
+      options: {
+        skipNull: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 7 } },
+          y: { beginAtZero: true, max: 100, ticks: { callback: function (v) { return v + "%"; } }, grid: { color: "rgba(148,163,184,0.25)" } },
+        },
+      },
+    });
+  }
+
+  function replaceData(chart, labels, datasets) {
+    if (!chart) return;
+    chart.data.labels = labels;
+    chart.data.datasets.forEach(function (ds, i) {
+      if (datasets[i]) {
+        ds.data = datasets[i].data;
+        if (datasets[i].backgroundColor) ds.backgroundColor = datasets[i].backgroundColor;
+      }
+    });
+    chart.update();
+  }
+
+  global.Adash = {
+    doughnut: doughnut,
+    line: line,
+    bar: bar,
+    groupedBar: groupedBar,
+    skipNullBar: skipNullBar,
+    replaceData: replaceData,
+    setCenter: function (chart, text, sub) {
+      if (!chart || !chart.options.plugins) return;
+      chart.options.plugins.adashCenter = { text: text, sub: sub || "" };
+    },
+    gradient: gradient,
+  };
+})(window);
+</script>

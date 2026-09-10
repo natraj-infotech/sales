@@ -40,6 +40,12 @@ from business.renewal_tokens import (
     sign_renewal_confirm_token,
     unsign_renewal_confirm_token,
 )
+from business.analytics import (
+    empty_ticket_view,
+    format_duration,
+    sales_dashboard_charts,
+    ticket_charts_from_views,
+)
 from business.views import (
     _existing_expiry_rows,
     _new_subscription_rows,
@@ -1214,3 +1220,174 @@ class ClientRenewalDealStatusTests(TestCase):
         state = self.invite.deal_table_state()
         self.assertFalse(state["form_empty"])
         self.assertFalse(state["pending"])
+
+
+class DashboardChartTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="Hyfun", email="hyfun@example.com"
+        )
+        self.product = Product.objects.create(
+            company=self.company, name="Microsoft 365 Business Basic"
+        )
+        self.vendor = Vendor.objects.create(company=self.company, name="Redington")
+        today = timezone.localdate()
+        self.win_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=365),
+            end_date=today + timedelta(days=5),
+            quantity=10,
+            billing_amount=Decimal("1000.00"),
+            deal_status=ClientSubscription.DealStatus.WIN,
+        )
+        self.lost_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=365),
+            end_date=today + timedelta(days=8),
+            quantity=2,
+            billing_amount=Decimal("200.00"),
+            deal_status=ClientSubscription.DealStatus.LOST,
+        )
+        self.pending_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=365),
+            end_date=today + timedelta(days=3),
+            quantity=4,
+            billing_amount=Decimal("400.00"),
+        )
+        invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="hyfun@example.com",
+            email_sent_at=timezone.now(),
+            submitted_at=timezone.now(),
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=self.pending_sub,
+            company_name="Hyfun",
+            product_name=self.product.name,
+            current_quantity=4,
+        )
+        SubscriptionRenewalInviteNewProduct.objects.create(
+            invite=invite,
+            product=self.product,
+            company_name="Hyfun",
+            product_name="VPN",
+            quantity=7,
+        )
+        self.client.force_login(self.user)
+
+    def test_sales_charts_count_win_lost_pending_and_new_qty(self):
+        charts = sales_dashboard_charts(self.company, today=timezone.localdate())
+        self.assertEqual(charts["win"], 1)
+        self.assertEqual(charts["lost"], 1)
+        self.assertEqual(charts["pending_deals"], 1)
+        self.assertEqual(charts["win_rate"], 50)
+        self.assertGreaterEqual(charts["new_qty_month"], 7)
+        self.assertEqual(len(charts["pipeline_labels"]), 14)
+        self.assertEqual(len(charts["qty_month_labels"]), 6)
+
+    def test_dashboard_renders_chart_markup(self):
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deal outcome")
+        self.assertContains(response, "Pending renewals")
+        self.assertContains(response, "New subscription qty")
+        self.assertContains(response, "chart-deal-outcome")
+        self.assertContains(response, "sales-charts-data")
+
+    @patch(
+        "business.helpdesk_inbox.maybe_fetch_on_dashboard",
+        return_value={"created": 0, "logs": []},
+    )
+    def test_support_tickets_renders_charts(self, _fetch):
+        response = self.client.get(reverse("support_ticket_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Avg resolution time")
+        self.assertContains(response, "SLA breached")
+        self.assertContains(response, "chart-status-mix")
+        self.assertContains(response, "ticket-charts-data")
+
+
+class TicketChartHelperTests(SimpleTestCase):
+    def test_format_duration(self):
+        self.assertEqual(format_duration(None), "0m")
+        self.assertEqual(format_duration(45), "1m")
+        self.assertEqual(format_duration(0), "0m")
+        self.assertEqual(format_duration(120), "2m")
+        self.assertEqual(format_duration(4 * 3600 + 12 * 60), "4h 12m")
+
+    def test_ticket_charts_sla_and_status(self):
+        now = timezone.now()
+        tickets = [
+            empty_ticket_view(
+                status="closed",
+                created_at=now - timedelta(hours=5),
+                completed_at=now - timedelta(hours=1),
+                first_responded_at=now - timedelta(hours=4),
+                sla={
+                    "tracks_resolve": True,
+                    "tracks_response": True,
+                    "resolve_status": "met",
+                    "response_status": "met",
+                    "any_breached": False,
+                },
+            ),
+            empty_ticket_view(
+                status="open",
+                created_at=now - timedelta(hours=10),
+                priority="high",
+                assignee_id=None,
+                sla={"any_breached": True, "tracks_resolve": True, "resolve_status": "breached"},
+            ),
+        ]
+        charts = ticket_charts_from_views(tickets, now=now)
+        self.assertEqual(charts["total"], 2)
+        self.assertEqual(charts["closed"], 1)
+        self.assertEqual(charts["pending"], 1)
+        self.assertEqual(charts["sla_breached"], 1)
+        self.assertEqual(charts["solved_on_time"], 1)
+        self.assertEqual(charts["solved_with_sla"], 1)
+        self.assertEqual(charts["solved_on_time_pct"], 100)
+        self.assertEqual(charts["queue"]["high_unassigned"], 1)
+        self.assertEqual(charts["queue"]["waiting_8h"], 1)
+        self.assertEqual(charts["avg_resolution"], "4h")
+        self.assertEqual(charts["first_response"], "1h")
+
+    def test_resolution_uses_updated_at_when_completed_missing(self):
+        now = timezone.now()
+        tickets = [
+            empty_ticket_view(
+                status="closed",
+                created_at=now - timedelta(hours=3),
+                completed_at=None,
+                updated_at=now - timedelta(hours=1),
+            )
+        ]
+        charts = ticket_charts_from_views(tickets, now=now)
+        self.assertEqual(charts["avg_resolution"], "2h")
+
+    def test_resolution_is_zero_minutes_when_none_closed(self):
+        now = timezone.now()
+        tickets = [
+            empty_ticket_view(status="open", created_at=now - timedelta(hours=2))
+        ]
+        charts = ticket_charts_from_views(tickets, now=now)
+        self.assertEqual(charts["avg_resolution"], "0m")
+        self.assertEqual(charts["first_response"], "0m")
+
