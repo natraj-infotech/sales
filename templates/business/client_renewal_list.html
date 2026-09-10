@@ -39,6 +39,90 @@
   .cr-status--cancel { background: #e2e8f0; color: #334155; }
   .cr-status--no { background: #f1f5f9; color: #64748b; }
   .cr-status--pending { background: #fef3c7; color: #92400e; }
+  .cr-deal-cell { white-space: normal; }
+  .cr-deal-stack,
+  .cr-deal-open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.18rem;
+  }
+  .cr-deal-open {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    max-width: 100%;
+  }
+  .cr-deal-open:hover .cr-deal-hint,
+  .cr-deal-open:focus-visible .cr-deal-hint {
+    text-decoration: underline;
+  }
+  .cr-deal-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .cr-deal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.22rem 0.72rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    color: #fff;
+  }
+  .cr-deal-pill.cr-status--win { background: #16a34a; color: #fff; }
+  .cr-deal-pill.cr-status--lost { background: #f43f5e; color: #fff; }
+  .cr-deal-pill.cr-status--cancel { background: #94a3b8; color: #fff; }
+  .cr-deal-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 50%;
+    background: #f59e0b;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .cr-deal-hint {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #b45309;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.25;
+  }
+  .cr-deal-set {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.32rem 0.78rem;
+    border-radius: 999px;
+    border: 1.5px solid #3b82f6;
+    background: #fff;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 650;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .cr-deal-set:hover,
+  .cr-deal-set:focus-visible {
+    background: #eff6ff;
+  }
+  .cr-deal-set-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    flex-shrink: 0;
+  }
   tr.cr-row--clickable {
     cursor: pointer;
   }
@@ -75,7 +159,6 @@
     from { background: #dbeafe; }
     to { background: transparent; }
   }
-  .cr-deal-cell { white-space: nowrap; }
   .cr-modal {
     position: fixed;
     inset: 0;
@@ -209,6 +292,52 @@
     color: #b91c1c;
     font-size: 0.75rem;
   }
+  .cr-win-form { margin-top: 0.95rem; }
+  .cr-win-form-section {
+    margin-top: 1rem;
+  }
+  .cr-win-form-section:first-child { margin-top: 0; }
+  .cr-win-form-section-title {
+    margin: 0 0 0.55rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #1d4ed8;
+  }
+  .cr-win-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1rem;
+  }
+  .cr-win-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+  }
+  .cr-win-form-field label {
+    font-size: 0.78rem;
+    font-weight: 650;
+    color: #1d4ed8;
+  }
+  .cr-win-form-field input,
+  .cr-win-form-field select {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.48rem 0.65rem;
+    font-size: 0.9rem;
+    color: #0f172a;
+    background: #fff;
+  }
+  .cr-win-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+  @media (max-width: 640px) {
+    .cr-win-form-grid { grid-template-columns: 1fr; }
+  }
   .cr-tabs { margin-bottom: 0; }
   .cr-tab-panel[hidden] {
     display: none;
@@ -237,23 +366,27 @@
     border-color: rgba(255, 255, 255, 0.38);
   }
   #cr-new-table th:nth-child(1),
-  #cr-new-table td:nth-child(1) { width: 26%; }
+  #cr-new-table td:nth-child(1) { width: 22%; }
   #cr-new-table th:nth-child(2),
-  #cr-new-table td:nth-child(2) { width: 22%; }
+  #cr-new-table td:nth-child(2) { width: 13%; }
   #cr-new-table th:nth-child(3),
-  #cr-new-table td:nth-child(3) { width: 42%; }
+  #cr-new-table td:nth-child(3) { width: 18%; }
   #cr-new-table th:nth-child(4),
-  #cr-new-table td:nth-child(4) { width: 10%; }
+  #cr-new-table td:nth-child(4) { width: 37%; }
+  #cr-new-table th:nth-child(5),
+  #cr-new-table td:nth-child(5) { width: 10%; }
   #cr-existing-table th:nth-child(1),
-  #cr-existing-table td:nth-child(1) { width: 24%; }
+  #cr-existing-table td:nth-child(1) { width: 18%; }
   #cr-existing-table th:nth-child(2),
-  #cr-existing-table td:nth-child(2) { width: 20%; }
+  #cr-existing-table td:nth-child(2) { width: 12%; }
   #cr-existing-table th:nth-child(3),
-  #cr-existing-table td:nth-child(3) { width: 32%; }
+  #cr-existing-table td:nth-child(3) { width: 16%; }
   #cr-existing-table th:nth-child(4),
-  #cr-existing-table td:nth-child(4) { width: 12%; }
+  #cr-existing-table td:nth-child(4) { width: 30%; }
   #cr-existing-table th:nth-child(5),
   #cr-existing-table td:nth-child(5) { width: 12%; }
+  #cr-existing-table th:nth-child(6),
+  #cr-existing-table td:nth-child(6) { width: 12%; }
   #cr-table th:nth-child(1),
   #cr-table td:nth-child(1) { width: 18%; }
   #cr-table th:nth-child(2),
@@ -270,6 +403,9 @@
   #cr-table td:nth-child(7) { width: 14%; }
   .cr-grid-table .cr-col-qty {
     text-align: center;
+    white-space: nowrap;
+  }
+  .cr-grid-table .cr-col-timestamp {
     white-space: nowrap;
   }
   .cr-grid-table .cr-col-response .cr-meta,
@@ -302,6 +438,7 @@
         <thead>
           <tr>
             <th>Client email</th>
+            <th class="cr-col-timestamp">Date and Timestamp</th>
             <th>Company</th>
             <th>Product</th>
             <th class="cr-col-qty">Quantity</th>
@@ -323,13 +460,14 @@
                 {{ row.client_email }}
               {% endfor %}
             </td>
+            <td class="cr-col-timestamp">{% if row.submitted_at %}{{ row.submitted_at|date:"d M Y, H:i:s" }}{% else %}—{% endif %}</td>
             <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
             <td>{{ row.product_name }}</td>
             <td class="cr-col-qty"><strong>{{ row.quantity }}</strong></td>
           </tr>
           {% empty %}
           <tr id="cr-new-empty-row">
-            <td colspan="4" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">
               No new subscriptions yet. They appear here after a client uses Add on the renewal form.
             </td>
           </tr>
@@ -345,6 +483,7 @@
         <thead>
           <tr>
             <th>Client email</th>
+            <th class="cr-col-timestamp">Date and Timestamp</th>
             <th>Company</th>
             <th>Product</th>
             <th class="cr-col-qty">Previous quantity</th>
@@ -367,6 +506,7 @@
                 {{ row.client_email }}
               {% endfor %}
             </td>
+            <td class="cr-col-timestamp">{% if row.submitted_at %}{{ row.submitted_at|date:"d M Y, H:i:s" }}{% else %}—{% endif %}</td>
             <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
             <td>{{ row.product_name }}</td>
             <td class="cr-col-qty">{{ row.previous_quantity }}</td>
@@ -382,7 +522,7 @@
           </tr>
           {% empty %}
           <tr id="cr-existing-empty-row">
-            <td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">
               No renewal requests yet. They appear here after a client submits renewal quantities.
             </td>
           </tr>
@@ -469,18 +609,51 @@
           <td data-col="items">{{ invite.line_count }}</td>
           <td data-col="deal" class="cr-deal-cell">
             {% with deal=invite.deal_table_state %}
-            {% if deal.pending %}
+            {% if deal.pending and not deal.badges %}
             <button
               type="button"
-              class="btn-table-edit cr-deal-btn"
+              class="cr-deal-set cr-deal-btn"
               data-deal-url="{% url 'client_renewal_set_deal_status' invite.pk %}"
-            >Deal Status</button>
+            >
+              <svg class="cr-deal-set-icon" aria-hidden="true"><use href="#i-bell"/></svg>
+              Set status
+            </button>
             {% elif deal.badges %}
-              {% for badge in deal.badges %}
-              <span class="cr-status cr-status--{{ badge }}">
-                {% if badge == "win" %}Win{% elif badge == "lost" %}Lost{% elif badge == "cancel" %}Cancel{% else %}{{ badge }}{% endif %}
-              </span>
-              {% endfor %}
+              {% if deal.pending or deal.form_empty %}
+              <button
+                type="button"
+                class="cr-deal-open cr-deal-btn"
+                data-deal-url="{% url 'client_renewal_set_deal_status' invite.pk %}"
+              >
+              {% else %}
+              <div class="cr-deal-stack">
+              {% endif %}
+                <span class="cr-deal-pills">
+                  {% for badge in deal.badges %}
+                  <span class="cr-deal-pill cr-status--{{ badge }}">
+                    {% if badge == "win" %}Win{% elif badge == "lost" %}Lost{% elif badge == "cancel" %}Cancel{% else %}{{ badge }}{% endif %}
+                    {% if badge == "win" and deal.form_empty %}
+                    <span class="cr-deal-dot" aria-hidden="true"></span>
+                    {% endif %}
+                  </span>
+                  {% endfor %}
+                </span>
+                {% if deal.form_empty %}
+                <span class="cr-deal-hint">
+                  {% if deal.form_empty_count > 1 or deal.badges|length > 1 %}
+                    {{ deal.form_empty_count }} form empty
+                  {% else %}
+                    Form empty
+                  {% endif %}
+                </span>
+                {% elif deal.pending %}
+                <span class="cr-deal-hint">Set remaining</span>
+                {% endif %}
+              {% if deal.pending or deal.form_empty %}
+              </button>
+              {% else %}
+              </div>
+              {% endif %}
             {% else %}
             <span class="cr-status cr-status--no">—</span>
             {% endif %}
@@ -506,7 +679,7 @@
     <div class="cr-modal-head">
       <div>
         <h3 id="cr-deal-title">Deal Status</h3>
-        <p id="cr-deal-text" class="cr-modal-sub">Set Win, Lost, or Cancel for each company and product.</p>
+        <p id="cr-deal-text" class="cr-modal-sub">Set Win or Lost for each company and product.</p>
       </div>
       <button type="button" class="cr-modal-x" data-close="1">Close</button>
     </div>
@@ -657,28 +830,71 @@
     return '<span class="cr-status cr-status--no">—</span>';
   }
 
-  function dealBadgeHtml(status) {
+  function dealBadgeLabel(status) {
     var labels = { win: "Win", lost: "Lost", cancel: "Cancel" };
-    var cls = "cr-status cr-status--" + escapeHtml(status || "no");
-    return '<span class="' + cls + '">' + escapeHtml(labels[status] || status || "—") + "</span>";
+    return labels[status] || status || "—";
+  }
+
+  function dealPillHtml(status, showDot) {
+    return (
+      '<span class="cr-deal-pill cr-status--' +
+      escapeHtml(status || "no") +
+      '">' +
+      escapeHtml(dealBadgeLabel(status)) +
+      (showDot ? '<span class="cr-deal-dot" aria-hidden="true"></span>' : "") +
+      "</span>"
+    );
+  }
+
+  function formEmptyHint(row) {
+    var count = Number(row.deal_form_empty_count || 0);
+    var badges = row.deal_badges || [];
+    if (count <= 1 && badges.length <= 1) return "Form empty";
+    return (count || 1) + " form empty";
+  }
+
+  function setStatusBtnHtml(url) {
+    return (
+      '<button type="button" class="cr-deal-set cr-deal-btn" data-deal-url="' +
+      escapeHtml(url) +
+      '"><svg class="cr-deal-set-icon" aria-hidden="true"><use href="#i-bell"/></svg>Set status</button>'
+    );
   }
 
   function dealHtml(row) {
-    if (row.deal_pending) {
+    var badges = row.deal_badges || [];
+    var pendingOnly = row.deal_pending && !badges.length;
+    if (pendingOnly) {
       if (!row.deal_status_url) {
         return '<span class="cr-status cr-status--no">—</span>';
       }
+      return setStatusBtnHtml(row.deal_status_url);
+    }
+    if (!badges.length) {
+      return '<span class="cr-status cr-status--no">—</span>';
+    }
+    var pills = badges
+      .map(function (status) {
+        return dealPillHtml(status, !!(row.deal_form_empty && status === "win"));
+      })
+      .join("");
+    var hint = "";
+    if (row.deal_form_empty) {
+      hint = '<span class="cr-deal-hint">' + escapeHtml(formEmptyHint(row)) + "</span>";
+    } else if (row.deal_pending) {
+      hint = '<span class="cr-deal-hint">Set remaining</span>';
+    }
+    var inner = '<span class="cr-deal-pills">' + pills + "</span>" + hint;
+    if ((row.deal_pending || row.deal_form_empty) && row.deal_status_url) {
       return (
-        '<button type="button" class="btn-table-edit cr-deal-btn" data-deal-url="' +
+        '<button type="button" class="cr-deal-open cr-deal-btn" data-deal-url="' +
         escapeHtml(row.deal_status_url) +
-        '">Deal Status</button>'
+        '">' +
+        inner +
+        "</button>"
       );
     }
-    var badges = row.deal_badges || [];
-    if (badges.length) {
-      return badges.map(dealBadgeHtml).join(" ");
-    }
-    return '<span class="cr-status cr-status--no">—</span>';
+    return '<div class="cr-deal-stack">' + inner + "</div>";
   }
 
   function paintDealCell(tr, row) {
@@ -738,6 +954,7 @@
     var tr = makeClickableRow(row);
     tr.innerHTML =
       "<td>" + clientEmailHtml(row) + "</td>" +
+      '<td class="cr-col-timestamp">' + dash(row.submitted_at) + "</td>" +
       "<td>" + dash(row.company_name) + "</td>" +
       "<td>" + escapeHtml(row.product_name || "") + "</td>" +
       '<td class="cr-col-qty"><strong>' + escapeHtml(row.quantity) + "</strong></td>";
@@ -758,6 +975,7 @@
     }
     tr.innerHTML =
       "<td>" + clientEmailHtml(row) + "</td>" +
+      '<td class="cr-col-timestamp">' + dash(row.submitted_at) + "</td>" +
       "<td>" + dash(row.company_name) + "</td>" +
       "<td>" + escapeHtml(row.product_name || "") + "</td>" +
       '<td class="cr-col-qty">' + escapeHtml(row.previous_quantity) + "</td>" +
@@ -787,7 +1005,7 @@
     fillSimpleTable(
       newTbody,
       "cr-new-empty-row",
-      4,
+      5,
       "No new subscriptions yet. They appear here after a client uses Add on the renewal form.",
       data.new_subscription_rows || [],
       createNewRow
@@ -795,7 +1013,7 @@
     fillSimpleTable(
       existingTbody,
       "cr-existing-empty-row",
-      5,
+      6,
       "No renewal requests yet. They appear here after a client submits renewal quantities.",
       data.existing_expiry_rows || [],
       createExistingRow
@@ -911,6 +1129,7 @@
   var activeDealUrl = "";
   var activeInviteId = "";
   var dealItems = [];
+  var dealVendors = [];
 
   function closeDealModal() {
     if (!dealModal) return;
@@ -918,6 +1137,7 @@
     activeDealUrl = "";
     activeInviteId = "";
     dealItems = [];
+    dealVendors = [];
     if (dealList) dealList.innerHTML = "";
     setDealError("");
   }
@@ -945,6 +1165,8 @@
     paintDealCell(tr, {
       deal_pending: data.deal_pending,
       deal_badges: data.deal_badges || [],
+      deal_form_empty: data.deal_form_empty,
+      deal_form_empty_count: data.deal_form_empty_count,
       deal_status_url: data.deal_status_url || activeDealUrl,
     });
   }
@@ -977,19 +1199,143 @@
 
   function handleSaved(data) {
     dealItems = data.items || [];
+    if (data.vendors) dealVendors = data.vendors;
     setDealError("");
     applyInviteDealCell(data);
-    if (data.renew_url) {
-      window.location.href = data.renew_url;
-      return;
+    if (data.open_win_form) {
+      var formItem = dealItems.filter(function (item) {
+        return String(item.subscription_id) === String(data.open_win_form);
+      })[0];
+      if (formItem) {
+        renderWinForm(formItem);
+        return;
+      }
     }
     renderDealList();
+  }
+
+  function vendorOptionsHtml(selectedId) {
+    var html = '<option value="">---------</option>';
+    var selected = String(selectedId || "");
+    dealVendors.forEach(function (vendor) {
+      html +=
+        '<option value="' +
+        escapeHtml(vendor.id) +
+        '"' +
+        (String(vendor.id) === selected ? " selected" : "") +
+        ">" +
+        escapeHtml(vendor.name) +
+        "</option>";
+    });
+    return html;
+  }
+
+  function fieldHtml(id, label, inputHtml) {
+    return (
+      '<div class="cr-win-form-field">' +
+      '<label for="' + id + '">' + escapeHtml(label) + "</label>" +
+      inputHtml +
+      "</div>"
+    );
+  }
+
+  function renderWinForm(item) {
+    if (!dealList) return;
+    var draft = item.draft || {};
+    dealTitle.textContent = "Win details";
+    dealText.textContent =
+      "These details will appear on the Renew form. The subscription updates only after Save renewal.";
+    dealList.innerHTML =
+      '<div class="cr-deal-row" style="margin-bottom:0.85rem;">' +
+        '<div class="cr-deal-row-text">' +
+          '<span class="cr-deal-row-company">' + escapeHtml(item.company_name || "Client") + "</span>" +
+          '<span class="cr-deal-row-product">' + escapeHtml(item.product_name || "") + "</span>" +
+        "</div>" +
+      "</div>" +
+      '<form id="cr-win-form" class="cr-win-form">' +
+        '<section class="cr-win-form-section">' +
+          '<h4 class="cr-win-form-section-title">New dates</h4>' +
+          '<div class="cr-win-form-grid">' +
+            fieldHtml(
+              "cr-win-start",
+              "New start date",
+              '<input id="cr-win-start" name="start_date" type="date" required value="' +
+                escapeHtml(draft.start_date || "") +
+                '">'
+            ) +
+            fieldHtml(
+              "cr-win-end",
+              "New end date",
+              '<input id="cr-win-end" name="end_date" type="date" value="' +
+                escapeHtml(draft.end_date || "") +
+                '">'
+            ) +
+          "</div>" +
+        "</section>" +
+        '<section class="cr-win-form-section">' +
+          '<h4 class="cr-win-form-section-title">New quantity &amp; price</h4>' +
+          '<div class="cr-win-form-grid">' +
+            fieldHtml(
+              "cr-win-qty",
+              "New quantity",
+              '<input id="cr-win-qty" name="quantity" type="number" min="0" required value="' +
+                escapeHtml(draft.quantity != null ? draft.quantity : "") +
+                '">'
+            ) +
+            fieldHtml(
+              "cr-win-price",
+              "New price",
+              '<input id="cr-win-price" name="billing_amount" type="number" min="0" step="0.01" required value="' +
+                escapeHtml(draft.billing_amount || "") +
+                '">'
+            ) +
+          "</div>" +
+          '<div class="cr-win-form-grid" style="margin-top:0.75rem;grid-template-columns:1fr;">' +
+            fieldHtml(
+              "cr-win-vendor",
+              "New vendor",
+              '<select id="cr-win-vendor" name="vendor">' +
+                vendorOptionsHtml(draft.vendor) +
+              "</select>"
+            ) +
+          "</div>" +
+        "</section>" +
+        '<div class="cr-win-form-actions">' +
+          '<button type="button" class="btn-table-edit cr-modal-btn-ghost" id="cr-win-back">Back</button>' +
+          '<button type="submit" class="btn-table-edit">Save details</button>' +
+        "</div>" +
+      "</form>";
+
+    var form = document.getElementById("cr-win-form");
+    var backBtn = document.getElementById("cr-win-back");
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        renderDealList();
+      });
+    }
+    if (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        postDealStatus(
+          {
+            action: "save_win_form",
+            subscription_id: item.subscription_id,
+            start_date: form.start_date.value,
+            end_date: form.end_date.value,
+            quantity: form.quantity.value,
+            billing_amount: form.billing_amount.value,
+            vendor: form.vendor.value,
+          },
+          handleSaved
+        );
+      });
+    }
   }
 
   function renderDealList() {
     if (!dealList) return;
     dealTitle.textContent = "Deal Status";
-    dealText.textContent = "Set Win, Lost, or Cancel for each company and product.";
+    dealText.textContent = "Set Win or Lost for each company and product.";
     dealList.innerHTML = "";
 
     if (!dealItems.length) {
@@ -1009,7 +1355,25 @@
       actions.className = "cr-deal-row-actions";
 
       if (item.deal_status) {
-        actions.innerHTML = dealBadgeHtml(item.deal_status);
+        var statusWrap = document.createElement("div");
+        statusWrap.className = "cr-deal-stack";
+        statusWrap.innerHTML =
+          dealPillHtml(
+            item.deal_status,
+            !!(item.form_empty && item.deal_status === "win")
+          ) +
+          (item.form_empty ? '<span class="cr-deal-hint">Form empty</span>' : "");
+        actions.appendChild(statusWrap);
+        if (item.form_empty) {
+          var fillBtn = document.createElement("button");
+          fillBtn.type = "button";
+          fillBtn.className = "btn-table-edit";
+          fillBtn.textContent = "Fill form";
+          fillBtn.addEventListener("click", function () {
+            renderWinForm(item);
+          });
+          actions.appendChild(fillBtn);
+        }
       } else {
         var winBtn = document.createElement("button");
         winBtn.type = "button";
@@ -1017,7 +1381,7 @@
         winBtn.textContent = "Win";
         winBtn.addEventListener("click", function () {
           postDealStatus(
-            { deal_status: "win", update_now: "1", subscription_id: item.subscription_id },
+            { deal_status: "win", subscription_id: item.subscription_id },
             handleSaved
           );
         });
@@ -1031,19 +1395,8 @@
             handleSaved
           );
         });
-        var cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "btn-table-edit cr-modal-btn-ghost";
-        cancelBtn.textContent = "Cancel";
-        cancelBtn.addEventListener("click", function () {
-          postDealStatus(
-            { deal_status: "cancel", subscription_id: item.subscription_id },
-            handleSaved
-          );
-        });
         actions.appendChild(winBtn);
         actions.appendChild(lostBtn);
-        actions.appendChild(cancelBtn);
       }
 
       row.appendChild(text);
@@ -1074,6 +1427,7 @@
       })
       .then(function (data) {
         dealItems = data.items || [];
+        dealVendors = data.vendors || [];
         renderDealList();
       })
       .catch(function (err) {

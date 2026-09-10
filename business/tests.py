@@ -355,6 +355,7 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, "VPN")
         self.assertContains(response, "Previous quantity")
         self.assertContains(response, "pending@example.com")
+        self.assertContains(response, "Set status")
 
     def test_live_json_includes_tab_rows(self):
         self.client.force_login(self.user)
@@ -1023,6 +1024,10 @@ class SubscriptionRenewVendorTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.vendor_id, self.other_vendor.pk)
+        self.assertEqual(self.subscription.deal_status, ClientSubscription.DealStatus.WIN)
+        self.assertTrue(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.renewal_draft_vendor_id, self.other_vendor.pk)
+        self.assertEqual(self.subscription.renewal_draft_quantity, 2)
 
     def test_add_new_vendor_redirects_to_add_page(self):
         response = self._post("__new__")
@@ -1057,3 +1062,155 @@ class SubscriptionRenewVendorTests(TestCase):
             f'<option value="{created.pk}" selected>',
             html=False,
         )
+
+
+class ClientRenewalDealStatusTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="Hyfun", email="hyfun@example.com"
+        )
+        self.product = Product.objects.create(
+            company=self.company, name="Microsoft 365 Business Basic"
+        )
+        self.vendor = Vendor.objects.create(
+            company=self.company, name="Redington"
+        )
+        self.subscription = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=date(2024, 9, 11),
+            end_date=date(2026, 9, 10),
+            quantity=1,
+            billing_amount=Decimal("7529.80"),
+        )
+        self.invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="hyfun@example.com",
+            email_sent_at=timezone.now(),
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=self.invite,
+            subscription=self.subscription,
+            company_name="Hyfun Agrilink Private Limited",
+            product_name=self.product.name,
+            current_quantity=1,
+        )
+        self.client.force_login(self.user)
+        self.url = reverse(
+            "client_renewal_set_deal_status", kwargs={"pk": self.invite.pk}
+        )
+
+    def test_win_marks_status_without_changing_subscription(self):
+        response = self.client.post(
+            self.url,
+            {
+                "deal_status": "win",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["open_win_form"], self.subscription.pk)
+        self.assertTrue(data["deal_form_empty"])
+        self.assertEqual(data["deal_form_empty_count"], 1)
+        item = data["items"][0]
+        self.assertEqual(item["deal_status"], "win")
+        self.assertTrue(item["form_empty"])
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "win")
+        self.assertFalse(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.quantity, 1)
+        self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
+
+    def test_cancel_is_rejected(self):
+        response = self.client.post(
+            self.url,
+            {
+                "deal_status": "cancel",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "")
+
+    def test_win_form_saves_draft_only(self):
+        self.client.post(
+            self.url,
+            {
+                "deal_status": "win",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_win_form",
+                "subscription_id": self.subscription.pk,
+                "start_date": "2026-09-11",
+                "end_date": "2028-09-09",
+                "quantity": "3",
+                "billing_amount": "22589.40",
+                "vendor": str(self.vendor.pk),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["deal_form_empty"])
+        self.assertFalse(data["items"][0]["form_empty"])
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.renewal_draft_start_date, date(2026, 9, 11))
+        self.assertEqual(self.subscription.renewal_draft_end_date, date(2028, 9, 9))
+        self.assertEqual(self.subscription.renewal_draft_quantity, 3)
+        self.assertEqual(
+            self.subscription.renewal_draft_billing_amount, Decimal("22589.40")
+        )
+        self.assertEqual(self.subscription.quantity, 1)
+        self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
+        self.assertEqual(self.subscription.billing_amount, Decimal("7529.80"))
+
+        renew = self.client.get(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        )
+        self.assertEqual(renew.status_code, 200)
+        form = renew.context["form"]
+        self.assertEqual(form.initial["start_date"], date(2026, 9, 11))
+        self.assertEqual(form.initial["end_date"], date(2028, 9, 9))
+        self.assertEqual(form.initial["quantity"], 3)
+        self.assertEqual(form.initial["billing_amount"], Decimal("22589.40"))
+        self.assertEqual(form.initial["vendor"], str(self.vendor.pk))
+
+    def test_renew_save_sets_win_and_clears_form_empty(self):
+        self.subscription.deal_status = ClientSubscription.DealStatus.WIN
+        self.subscription.win_form_completed = False
+        self.subscription.save(update_fields=["deal_status", "win_form_completed"])
+        response = self.client.post(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk}),
+            {
+                "start_date": "2026-09-11",
+                "end_date": "2028-09-09",
+                "quantity": "3",
+                "billing_amount": "22589.40",
+                "vendor": str(self.vendor.pk),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "win")
+        self.assertTrue(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.quantity, 3)
+        self.assertEqual(self.subscription.start_date, date(2026, 9, 11))
+        self.assertEqual(self.subscription.renewal_draft_quantity, 3)
+        state = self.invite.deal_table_state()
+        self.assertFalse(state["form_empty"])
+        self.assertFalse(state["pending"])

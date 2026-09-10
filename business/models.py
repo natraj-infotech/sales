@@ -179,6 +179,20 @@ class ClientSubscription(models.Model):
         blank=True,
         default="",
     )
+    win_form_completed = models.BooleanField(default=False)
+    renewal_draft_start_date = models.DateField(null=True, blank=True)
+    renewal_draft_end_date = models.DateField(null=True, blank=True)
+    renewal_draft_quantity = models.PositiveIntegerField(null=True, blank=True)
+    renewal_draft_billing_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    renewal_draft_vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="renewal_draft_subscriptions",
+    )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
@@ -229,6 +243,109 @@ class ClientSubscription(models.Model):
             new_start = today
             new_end = today + timedelta(days=365)
         return new_start, new_end
+
+    @property
+    def win_form_empty(self) -> bool:
+        return self.deal_status == self.DealStatus.WIN and not self.win_form_completed
+
+    def renewal_form_initial(self) -> dict:
+        """Values for the Win draft form and the Renew page new-detail fields."""
+        suggested_start, suggested_end = self.renewal_dates()
+        if self.win_form_completed:
+            start = self.renewal_draft_start_date or suggested_start
+            end = self.renewal_draft_end_date
+            quantity = (
+                self.renewal_draft_quantity
+                if self.renewal_draft_quantity is not None
+                else self.quantity
+            )
+            amount = (
+                self.renewal_draft_billing_amount
+                if self.renewal_draft_billing_amount is not None
+                else self.billing_amount
+            )
+            vendor_id = self.renewal_draft_vendor_id
+        else:
+            start, end = suggested_start, suggested_end
+            quantity = self.quantity
+            amount = self.billing_amount
+            vendor_id = self.vendor_id
+        return {
+            "start_date": start,
+            "end_date": end,
+            "quantity": quantity,
+            "billing_amount": amount,
+            "vendor": str(vendor_id) if vendor_id else "",
+        }
+
+    def _set_renewal_draft(
+        self, *, start_date, end_date, quantity, billing_amount, vendor
+    ) -> None:
+        self.deal_status = self.DealStatus.WIN
+        self.win_form_completed = True
+        self.renewal_draft_start_date = start_date
+        self.renewal_draft_end_date = end_date
+        self.renewal_draft_quantity = quantity
+        self.renewal_draft_billing_amount = billing_amount
+        self.renewal_draft_vendor = vendor
+
+    def save_renewal_draft(
+        self, *, start_date, end_date, quantity, billing_amount, vendor
+    ) -> None:
+        """Store intended renewal terms. Does not change the live subscription."""
+        self._set_renewal_draft(
+            start_date=start_date,
+            end_date=end_date,
+            quantity=quantity,
+            billing_amount=billing_amount,
+            vendor=vendor,
+        )
+        self.save(
+            update_fields=[
+                "deal_status",
+                "win_form_completed",
+                "renewal_draft_start_date",
+                "renewal_draft_end_date",
+                "renewal_draft_quantity",
+                "renewal_draft_billing_amount",
+                "renewal_draft_vendor",
+            ]
+        )
+
+    def apply_saved_renewal(
+        self, *, start_date, end_date, quantity, billing_amount, vendor
+    ) -> None:
+        """Apply renewal to the live subscription and mark the Win form filled."""
+        self.start_date = start_date
+        self.end_date = end_date
+        self.quantity = quantity
+        self.billing_amount = billing_amount
+        self.vendor = vendor
+        self.status = self.Status.ACTIVE
+        self._set_renewal_draft(
+            start_date=start_date,
+            end_date=end_date,
+            quantity=quantity,
+            billing_amount=billing_amount,
+            vendor=vendor,
+        )
+        self.save(
+            update_fields=[
+                "start_date",
+                "end_date",
+                "quantity",
+                "billing_amount",
+                "vendor",
+                "status",
+                "deal_status",
+                "win_form_completed",
+                "renewal_draft_start_date",
+                "renewal_draft_end_date",
+                "renewal_draft_quantity",
+                "renewal_draft_billing_amount",
+                "renewal_draft_vendor",
+            ]
+        )
 
 
 class SubscriptionExpiryNotice(models.Model):
@@ -327,28 +444,48 @@ class SubscriptionRenewalInvite(models.Model):
         return key in {addr.lower() for addr in self.allowed_submitter_emails()}
 
     def deal_table_state(self) -> dict:
-        """Pending flag and unique deal badges from linked subscriptions."""
+        """Pending flag, unique deal badges, and Win-form-empty from linked subscriptions."""
         pending = False
         badges: list[str] = []
         seen: set[str] = set()
         lines = list(self.lines.all())
         if not lines:
-            return {"pending": True, "badges": []}
+            return {
+                "pending": True,
+                "form_empty": False,
+                "form_empty_count": 0,
+                "badges": [],
+            }
+        form_empty_count = 0
         for line in lines:
-            status = getattr(getattr(line, "subscription", None), "deal_status", "") or ""
+            sub = getattr(line, "subscription", None)
+            status = getattr(sub, "deal_status", "") or ""
             if status:
                 if status not in seen:
                     seen.add(status)
                     badges.append(status)
+                if getattr(sub, "win_form_empty", False):
+                    form_empty_count += 1
             else:
                 pending = True
-        return {"pending": pending, "badges": badges}
+        return {
+            "pending": pending,
+            "form_empty": form_empty_count > 0,
+            "form_empty_count": form_empty_count,
+            "badges": badges,
+        }
+
+    def _line_subscription(self, subscription_id: int):
+        line = (
+            self.lines.select_related("subscription")
+            .filter(subscription_id=subscription_id)
+            .first()
+        )
+        if line is None or line.subscription is None:
+            raise ValueError("Subscription is not part of this renewal email.")
+        return line.subscription
 
     def deal_line_items(self, next_url: str) -> list[dict]:
-        from urllib.parse import urlencode
-
-        from django.urls import reverse
-
         items = []
         seen: set[int] = set()
         lines = self.lines.select_related(
@@ -366,10 +503,10 @@ class SubscriptionRenewalInvite(models.Model):
                 sub.client.name if sub.client_id else ""
             )
             product_name = line.product_name or sub.product.name
-            renew_url = ""
-            if not status:
-                renew_path = reverse("subscription_renew", kwargs={"pk": sub.pk})
-                renew_url = f"{renew_path}?{urlencode({'next': next_url})}"
+            initial = sub.renewal_form_initial()
+            start = initial["start_date"]
+            end = initial["end_date"]
+            amount = initial["billing_amount"]
             items.append(
                 {
                     "subscription_id": sub.pk,
@@ -377,25 +514,46 @@ class SubscriptionRenewalInvite(models.Model):
                     "product_name": product_name,
                     "deal_status": status,
                     "deal_status_label": sub.get_deal_status_display() if status else "",
-                    "renew_url": renew_url,
+                    "win_form_completed": bool(sub.win_form_completed),
+                    "form_empty": sub.win_form_empty,
+                    "draft": {
+                        "start_date": start.isoformat() if start else "",
+                        "end_date": end.isoformat() if end else "",
+                        "quantity": initial["quantity"],
+                        "billing_amount": (
+                            f"{amount:.2f}" if amount is not None else ""
+                        ),
+                        "vendor": initial["vendor"],
+                    },
                 }
             )
         return items
 
     def apply_line_deal_status(self, subscription_id: int, status: str) -> None:
-        """Set Win/Lost/Cancel on one linked subscription only."""
-        line = (
-            self.lines.select_related("subscription")
-            .filter(subscription_id=subscription_id)
-            .first()
-        )
-        if line is None or line.subscription is None:
-            raise ValueError("Subscription is not part of this renewal email.")
-        sub = line.subscription
+        """Set Win or Lost on one linked subscription only."""
+        sub = self._line_subscription(subscription_id)
         if sub.deal_status:
             raise ValueError("Deal status is already set.")
         sub.deal_status = status
+        if status == ClientSubscription.DealStatus.WIN:
+            sub.win_form_completed = False
+            sub.save(update_fields=["deal_status", "win_form_completed"])
+            return
         sub.save(update_fields=["deal_status"])
+
+    def save_line_renewal_draft(
+        self, subscription_id: int, *, start_date, end_date, quantity, billing_amount, vendor
+    ) -> None:
+        sub = self._line_subscription(subscription_id)
+        if sub.deal_status == ClientSubscription.DealStatus.LOST:
+            raise ValueError("Deal is already marked Lost.")
+        sub.save_renewal_draft(
+            start_date=start_date,
+            end_date=end_date,
+            quantity=quantity,
+            billing_amount=billing_amount,
+            vendor=vendor,
+        )
 
     @property
     def sent_to_emails(self) -> list[str]:

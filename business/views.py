@@ -268,10 +268,40 @@ def _invite_deal_payload(invite):
     return {
         "deal_pending": state["pending"],
         "deal_badges": state["badges"],
+        "deal_form_empty": state.get("form_empty", False),
+        "deal_form_empty_count": state.get("form_empty_count", 0),
         "deal_status_url": reverse(
             "client_renewal_set_deal_status", kwargs={"pk": invite.pk}
         ),
     }
+
+
+def _company_vendor_choices(company):
+    return [
+        {"id": vendor.pk, "name": vendor.name}
+        for vendor in company.vendors.all().order_by("name")
+    ]
+
+
+def _form_first_error(form) -> str:
+    if form.non_field_errors():
+        return str(form.non_field_errors()[0])
+    for errors in form.errors.values():
+        if errors:
+            return str(errors[0])
+    return "Please check the form."
+
+
+def _deal_status_json(invite, company, next_url, extra=None):
+    payload = {
+        "ok": True,
+        "items": invite.deal_line_items(next_url),
+        "vendors": _company_vendor_choices(company),
+        **_invite_deal_payload(invite),
+    }
+    if extra:
+        payload.update(extra)
+    return JsonResponse(payload)
 
 
 def _format_dt(value):
@@ -426,25 +456,8 @@ def client_renewal_set_deal_status(request, pk):
     next_url = reverse("client_renewal_list")
 
     if request.method == "GET":
-        return JsonResponse(
-            {
-                "ok": True,
-                "items": invite.deal_line_items(next_url),
-                **_invite_deal_payload(invite),
-            }
-        )
+        return _deal_status_json(invite, company, next_url)
 
-    valid = {
-        ClientSubscription.DealStatus.WIN,
-        ClientSubscription.DealStatus.LOST,
-        ClientSubscription.DealStatus.CANCEL,
-    }
-    status = (request.POST.get("deal_status") or "").strip().lower()
-    if status not in valid:
-        return JsonResponse(
-            {"ok": False, "error": "Choose Win, Lost, or Cancel."},
-            status=400,
-        )
     try:
         subscription_id = int(request.POST.get("subscription_id") or "")
     except (TypeError, ValueError):
@@ -464,33 +477,47 @@ def client_renewal_set_deal_status(request, pk):
             status=400,
         )
 
+    action = (request.POST.get("action") or "").strip()
+    extra = {"subscription_id": subscription_id}
     try:
-        invite.apply_line_deal_status(subscription_id, status)
+        if action == "save_win_form":
+            form = SubscriptionRenewForm(request.POST, company=company)
+            if not form.is_valid():
+                return JsonResponse(
+                    {"ok": False, "error": _form_first_error(form)},
+                    status=400,
+                )
+            invite.save_line_renewal_draft(
+                subscription_id,
+                start_date=form.cleaned_data["start_date"],
+                end_date=form.cleaned_data.get("end_date"),
+                quantity=form.cleaned_data["quantity"],
+                billing_amount=form.cleaned_data["billing_amount"],
+                vendor=form.cleaned_data.get("resolved_vendor"),
+            )
+            extra["deal_status"] = ClientSubscription.DealStatus.WIN
+        else:
+            valid = {
+                ClientSubscription.DealStatus.WIN,
+                ClientSubscription.DealStatus.LOST,
+            }
+            status = (request.POST.get("deal_status") or "").strip().lower()
+            if status not in valid:
+                return JsonResponse(
+                    {"ok": False, "error": "Choose Win or Lost."},
+                    status=400,
+                )
+            invite.apply_line_deal_status(subscription_id, status)
+            extra["deal_status"] = status
+            if status == ClientSubscription.DealStatus.WIN:
+                extra["open_win_form"] = subscription_id
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-
-    update_now = (request.POST.get("update_now") or "").strip() in {
-        "1",
-        "true",
-        "yes",
-    }
-    renew_url = ""
-    if status == ClientSubscription.DealStatus.WIN and update_now:
-        renew_url = target.get("renew_url") or ""
 
     invite = SubscriptionRenewalInvite.objects.prefetch_related(
         _renewal_invite_line_prefetch()
     ).get(pk=invite.pk)
-    return JsonResponse(
-        {
-            "ok": True,
-            "deal_status": status,
-            "subscription_id": subscription_id,
-            "items": invite.deal_line_items(next_url),
-            "renew_url": renew_url,
-            **_invite_deal_payload(invite),
-        }
-    )
+    return _deal_status_json(invite, company, next_url, extra)
 
 
 @sales_module_required
@@ -1702,6 +1729,7 @@ def subscription_renew(request, pk):
         default_next,
     )
     suggested_start, suggested_end = obj.renewal_dates()
+    initial = obj.renewal_form_initial()
 
     if request.method == "POST":
         if request.POST.get("vendor") == SubscriptionRenewForm.NEW_VENDOR:
@@ -1719,21 +1747,12 @@ def subscription_renew(request, pk):
             new_qty = form.cleaned_data["quantity"]
             new_price = form.cleaned_data["billing_amount"]
             new_vendor = form.cleaned_data["resolved_vendor"]
-            obj.start_date = new_start
-            obj.end_date = new_end
-            obj.quantity = new_qty
-            obj.billing_amount = new_price
-            obj.vendor = new_vendor
-            obj.status = ClientSubscription.Status.ACTIVE
-            obj.save(
-                update_fields=[
-                    "start_date",
-                    "end_date",
-                    "quantity",
-                    "billing_amount",
-                    "vendor",
-                    "status",
-                ]
+            obj.apply_saved_renewal(
+                start_date=new_start,
+                end_date=new_end,
+                quantity=new_qty,
+                billing_amount=new_price,
+                vendor=new_vendor,
             )
             end_label = new_end.strftime("%d %b %Y") if new_end else "no end date"
             messages.success(
@@ -1744,17 +1763,21 @@ def subscription_renew(request, pk):
             )
             return redirect(next_url)
     else:
-        initial_vendor = str(obj.vendor_id) if obj.vendor_id else ""
+        initial_vendor = initial["vendor"]
         preselect = (request.GET.get("preselect_vendor") or "").strip()
         if preselect and company.vendors.filter(pk=preselect).exists():
             initial_vendor = preselect
         form = SubscriptionRenewForm(
             company=company,
             initial={
-                "start_date": suggested_start,
-                "end_date": suggested_end,
-                "quantity": obj.quantity,
-                "billing_amount": obj.billing_amount,
+                "start_date": initial["start_date"] or suggested_start,
+                "end_date": (
+                    initial["end_date"]
+                    if obj.win_form_completed
+                    else (initial["end_date"] or suggested_end)
+                ),
+                "quantity": initial["quantity"],
+                "billing_amount": initial["billing_amount"],
                 "vendor": initial_vendor,
             },
         )
