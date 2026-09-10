@@ -470,6 +470,12 @@ def _client_email_body(
             "",
         ]
     )
+    lines.extend(
+        [
+            "So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.",
+            "",
+        ]
+    )
     if renewal_url:
         lines.extend(
             [
@@ -479,8 +485,6 @@ def _client_email_body(
         )
     lines.extend(
         [
-            "So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.",
-            "",
             "Thank you.",
             "",
             "Best Regards,",
@@ -726,10 +730,10 @@ def _client_email_html(
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
               {end_paragraph}
             </p>
-            {cta_html}
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
               So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.
             </p>
+            {cta_html}
             <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
               Thank you.
             </p>
