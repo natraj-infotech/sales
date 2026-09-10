@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 
 from accounts.models import CompanyProfile
@@ -211,6 +212,14 @@ class ClientSubscription(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-start_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                models.F("company"),
+                Lower(Trim("subscription_code")),
+                condition=models.Q(subscription_code__regex=r"\S"),
+                name="unique_company_normalized_subscription_code",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.client} — {self.product}"

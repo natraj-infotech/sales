@@ -46,6 +46,7 @@ from business.analytics import (
     sales_dashboard_charts,
     ticket_charts_from_views,
 )
+from business.subscription_import import import_subscriptions_from_file
 from business.views import (
     _existing_expiry_rows,
     _new_subscription_rows,
@@ -1390,4 +1391,68 @@ class TicketChartHelperTests(SimpleTestCase):
         charts = ticket_charts_from_views(tickets, now=now)
         self.assertEqual(charts["avg_resolution"], "0m")
         self.assertEqual(charts["first_response"], "0m")
+
+
+class SubscriptionImportIdentityTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "import-owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Import Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="Acme"
+        )
+        self.product = Product.objects.create(
+            company=self.company, name="Microsoft 365"
+        )
+        self.vendor = Vendor.objects.create(
+            company=self.company, name="Redington"
+        )
+        self.subscription = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            subscription_code="SUB-001",
+            start_date=date(2026, 1, 1),
+            end_date=date(2027, 1, 1),
+            quantity=1,
+            billing_amount=Decimal("1200"),
+        )
+
+    def test_reimport_matches_subscription_id_case_insensitively(self):
+        csv_data = (
+            "Subscription Id,Product Name,Customer Name,Start Date,"
+            "End Date,Quantity,Price\n"
+            "sub-001,Microsoft 365,Acme,2026-02-01,2027-02-01,3,2400\n"
+        ).encode()
+
+        created, updated, errors = import_subscriptions_from_file(
+            self.company,
+            csv_data,
+            "subscriptions.csv",
+            import_vendor=self.vendor,
+        )
+
+        self.assertEqual((created, updated, errors), (0, 1, []))
+        self.assertEqual(
+            ClientSubscription.objects.filter(company=self.company).count(),
+            1,
+        )
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.quantity, 3)
+        self.assertEqual(self.subscription.billing_amount, Decimal("2400"))
+
+    def test_database_rejects_case_only_duplicate_subscription_id(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ClientSubscription.objects.create(
+                    company=self.company,
+                    client=self.client_obj,
+                    product=self.product,
+                    subscription_code="sub-001",
+                    start_date=date(2026, 1, 1),
+                )
 
