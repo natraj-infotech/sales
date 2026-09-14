@@ -48,9 +48,8 @@ from business.analytics import (
 )
 from business.subscription_import import import_subscriptions_from_file
 from business.views import (
-    _existing_expiry_rows,
-    _new_subscription_rows,
     _renewal_invite_queryset,
+    _renewal_product_groups,
 )
 
 
@@ -335,47 +334,82 @@ class ClientRenewalTabRowsTests(TestCase):
     def _invites(self):
         return list(_renewal_invite_queryset(self.company))
 
-    def test_new_tab_only_includes_submitted_add_products(self):
-        rows = _new_subscription_rows(self._invites())
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["client_email"], "acme@example.com")
-        self.assertEqual(rows[0]["product_name"], "VPN")
-        self.assertEqual(rows[0]["quantity"], 3)
+    def _rows(self):
+        groups = _renewal_product_groups(self._invites())
+        return [row for group in groups for row in group["rows"]]
 
-    def test_existing_tab_shows_previous_and_new_quantity(self):
-        rows = _existing_expiry_rows(self._invites())
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["product_name"], "Antivirus")
-        self.assertEqual(rows[0]["previous_quantity"], 5)
-        self.assertEqual(rows[0]["new_quantity"], 8)
+    def test_groups_include_new_and_existing_products(self):
+        rows = {row["product_name"]: row for row in self._rows()}
+        self.assertEqual(rows["VPN"]["client_email"], "acme@example.com")
+        self.assertTrue(rows["VPN"]["is_new"])
+        self.assertEqual(rows["VPN"]["renewal_quantity"], 3)
+        self.assertIsNone(rows["VPN"]["previous_quantity"])
+        self.assertEqual(rows["Antivirus"]["previous_quantity"], 5)
+        self.assertEqual(rows["Antivirus"]["renewal_quantity"], 8)
+        self.assertFalse(rows["Antivirus"]["is_new"])
 
-    def test_list_page_splits_tabs(self):
+    def test_list_page_uses_single_grouped_table(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("client_renewal_list"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context["new_subscription_rows"]), 1)
-        self.assertEqual(len(response.context["existing_expiry_rows"]), 1)
-        self.assertEqual(len(response.context["object_list"]), 2)
-        self.assertContains(response, "New subscriptions")
-        self.assertContains(response, "Renewal requests")
-        self.assertContains(response, "All emails")
+        groups = response.context["renewal_groups"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["company_name"], "Acme")
+        self.assertEqual(len(groups[0]["rows"]), 3)
+        names = [row["product_name"] for row in groups[0]["rows"]]
+        self.assertEqual(names.count("VPN"), 1)
+        self.assertEqual(names.count("Antivirus"), 2)
+        self.assertContains(response, "Company")
+        self.assertContains(response, "Prev qty")
+        self.assertContains(response, "Renewal qty")
         self.assertContains(response, "VPN")
-        self.assertContains(response, "Previous quantity")
         self.assertContains(response, "pending@example.com")
-        self.assertContains(response, "Set status")
+        self.assertContains(response, "Connect Zoho")
+        self.assertContains(response, ">Win</button>")
+        self.assertContains(response, ">Lost</button>")
+        self.assertNotContains(response, "cr-deal-pill cr-status--pending")
+        self.assertContains(response, '<td class="cr-company-cell">Acme</td>', html=False)
+        self.assertContains(response, 'class="cr-products"')
+        self.assertNotContains(response, "New subscriptions")
+        self.assertNotContains(response, "Renewal requests")
+        self.assertNotContains(response, "All emails")
+        self.assertNotContains(response, "Set status")
+        self.assertNotContains(response, "Average time to close")
 
-    def test_live_json_includes_tab_rows(self):
+    def test_live_json_includes_grouped_rows(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("client_renewal_live"))
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(len(data["new_subscription_rows"]), 1)
-        self.assertEqual(data["new_subscription_rows"][0]["product_name"], "VPN")
-        self.assertEqual(data["new_subscription_rows"][0]["quantity"], 3)
-        self.assertEqual(len(data["existing_expiry_rows"]), 1)
-        self.assertEqual(data["existing_expiry_rows"][0]["previous_quantity"], 5)
-        self.assertEqual(data["existing_expiry_rows"][0]["new_quantity"], 8)
-        self.assertEqual(len(data["rows"]), 2)
+        self.assertEqual(len(data["groups"]), 1)
+        rows = {row["product_name"]: row for row in data["groups"][0]["rows"]}
+        self.assertEqual(rows["VPN"]["renewal_quantity"], 3)
+        self.assertTrue(rows["VPN"]["is_new"])
+        self.assertEqual(rows["Antivirus"]["previous_quantity"], 5)
+        self.assertEqual(rows["Antivirus"]["renewal_quantity"], 8)
+        self.assertTrue(rows["Antivirus"]["subscription_id"])
+        self.assertIn("sent", rows["Antivirus"]["timestamps"])
+
+    def test_zoho_payload_includes_open_quote_url(self):
+        self.invite.zoho_quote_url = "https://crm.zoho.com/crm/quote/1"
+        self.invite.quotation_sent_at = timezone.now()
+        self.invite.save(update_fields=["zoho_quote_url", "quotation_sent_at"])
+        groups = _renewal_product_groups(
+            self._invites(), zoho_connected=True, zoho_configured=True
+        )
+        rows = [row for group in groups for row in group["rows"]]
+        antivirus = next(
+            row
+            for row in rows
+            if row["product_name"] == "Antivirus"
+            and row["client_email"] == "acme@example.com"
+        )
+        self.assertEqual(antivirus["zoho"]["kind"], "send")
+        self.assertEqual(
+            antivirus["zoho"]["quote_url"], "https://crm.zoho.com/crm/quote/1"
+        )
+        vpn = next(row for row in rows if row["product_name"] == "VPN")
+        self.assertEqual(vpn["zoho"]["quote_url"], "https://crm.zoho.com/crm/quote/1")
 
 
 class ReminderScheduleOverlapTests(SimpleTestCase):

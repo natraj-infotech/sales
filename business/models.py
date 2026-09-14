@@ -180,6 +180,7 @@ class ClientSubscription(models.Model):
         blank=True,
         default="",
     )
+    deal_status_set_at = models.DateTimeField(null=True, blank=True)
     win_form_completed = models.BooleanField(default=False)
     renewal_draft_start_date = models.DateField(null=True, blank=True)
     renewal_draft_end_date = models.DateField(null=True, blank=True)
@@ -291,6 +292,8 @@ class ClientSubscription(models.Model):
         self, *, start_date, end_date, quantity, billing_amount, vendor
     ) -> None:
         self.deal_status = self.DealStatus.WIN
+        if not self.deal_status_set_at:
+            self.deal_status_set_at = timezone.now()
         self.win_form_completed = True
         self.renewal_draft_start_date = start_date
         self.renewal_draft_end_date = end_date
@@ -312,6 +315,7 @@ class ClientSubscription(models.Model):
         self.save(
             update_fields=[
                 "deal_status",
+                "deal_status_set_at",
                 "win_form_completed",
                 "renewal_draft_start_date",
                 "renewal_draft_end_date",
@@ -347,6 +351,7 @@ class ClientSubscription(models.Model):
                 "vendor",
                 "status",
                 "deal_status",
+                "deal_status_set_at",
                 "win_form_completed",
                 "renewal_draft_start_date",
                 "renewal_draft_end_date",
@@ -544,11 +549,18 @@ class SubscriptionRenewalInvite(models.Model):
         if sub.deal_status:
             raise ValueError("Deal status is already set.")
         sub.deal_status = status
+        if not sub.deal_status_set_at:
+            sub.deal_status_set_at = timezone.now()
+        if not self.deal_status_set_at:
+            self.deal_status_set_at = sub.deal_status_set_at
+            self.save(update_fields=["deal_status_set_at"])
         if status == ClientSubscription.DealStatus.WIN:
             sub.win_form_completed = False
-            sub.save(update_fields=["deal_status", "win_form_completed"])
+            sub.save(
+                update_fields=["deal_status", "deal_status_set_at", "win_form_completed"]
+            )
             return
-        sub.save(update_fields=["deal_status"])
+        sub.save(update_fields=["deal_status", "deal_status_set_at"])
 
     def save_line_renewal_draft(
         self, subscription_id: int, *, start_date, end_date, quantity, billing_amount, vendor
