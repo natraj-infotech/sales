@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -48,6 +50,7 @@ from business.analytics import (
 )
 from business.subscription_import import import_subscriptions_from_file
 from business.views import (
+    _all_email_rows,
     _existing_expiry_rows,
     _new_subscription_rows,
     _renewal_invite_queryset,
@@ -356,9 +359,12 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(len(response.context["new_subscription_rows"]), 1)
         self.assertEqual(len(response.context["existing_expiry_rows"]), 1)
         self.assertEqual(len(response.context["object_list"]), 2)
+        self.assertEqual(len(response.context["all_email_rows"]), 2)
         self.assertContains(response, "New subscriptions")
         self.assertContains(response, "Renewal requests")
         self.assertContains(response, "All emails")
+        self.assertContains(response, "Company")
+        self.assertContains(response, "Product")
         self.assertContains(response, "VPN")
         self.assertContains(response, "Previous quantity")
         self.assertContains(response, "pending@example.com")
@@ -376,6 +382,60 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(data["existing_expiry_rows"][0]["previous_quantity"], 5)
         self.assertEqual(data["existing_expiry_rows"][0]["new_quantity"], 8)
         self.assertEqual(len(data["rows"]), 2)
+        self.assertEqual(data["rows"][0]["company_name"], "Acme")
+        self.assertIn(data["rows"][0]["product_name"], {"Antivirus"})
+        self.assertTrue(data["rows"][0]["invite_id"])
+
+    def test_all_emails_splits_one_mail_into_subscription_rows(self):
+        client = Client.objects.get(email="acme@example.com")
+        extra_products = [
+            Product.objects.create(company=self.company, name="Firewall"),
+            Product.objects.create(company=self.company, name="Backup"),
+        ]
+        for product in extra_products:
+            subscription = ClientSubscription.objects.create(
+                company=self.company,
+                client=client,
+                product=product,
+                start_date=date.today(),
+                end_date=date.today() + timedelta(days=30),
+                quantity=2,
+            )
+            SubscriptionRenewalInviteLine.objects.create(
+                invite=self.invite,
+                subscription=subscription,
+                company_name="Acme Corp",
+                product_name=product.name,
+                current_quantity=2,
+            )
+        extra_products[0].subscriptions.update(
+            deal_status=ClientSubscription.DealStatus.WIN
+        )
+        extra_products[1].subscriptions.update(
+            deal_status=ClientSubscription.DealStatus.LOST
+        )
+
+        rows = _all_email_rows(self._invites())
+        invite_rows = [row for row in rows if row["invite_id"] == str(self.invite.pk)]
+        self.assertEqual(len(invite_rows), 3)
+        products = {row["product_name"] for row in invite_rows}
+        self.assertEqual(products, {"Antivirus", "Firewall", "Backup"})
+        self.assertTrue(all(row["company_name"] for row in invite_rows))
+        by_product = {row["product_name"]: row for row in invite_rows}
+        self.assertEqual(by_product["Firewall"]["deal_badges"], ["win"])
+        self.assertEqual(by_product["Backup"]["deal_badges"], ["lost"])
+        self.assertEqual(by_product["Antivirus"]["deal_badges"], [])
+        self.assertTrue(by_product["Antivirus"]["deal_pending"])
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("client_renewal_list"))
+        self.assertEqual(len(response.context["all_email_rows"]), 4)
+        self.assertContains(response, "Firewall")
+        self.assertContains(response, "Backup")
+        self.assertContains(response, "Acme Corp")
+
+        live = self.client.get(reverse("client_renewal_live")).json()
+        self.assertEqual(len(live["rows"]), 4)
 
 
 class ReminderScheduleOverlapTests(SimpleTestCase):
@@ -1168,12 +1228,19 @@ class ClientRenewalDealStatusTests(TestCase):
                 "quantity": "3",
                 "billing_amount": "22589.40",
                 "vendor": str(self.vendor.pk),
+                "invoice_number": "INV-778",
+                "invoice_pdf": SimpleUploadedFile(
+                    "renewal.pdf",
+                    b"%PDF-1.4 test",
+                    content_type="application/pdf",
+                ),
             },
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertFalse(data["deal_form_empty"])
         self.assertFalse(data["items"][0]["form_empty"])
+        self.assertEqual(data["items"][0]["draft"]["invoice_number"], "INV-778")
         self.subscription.refresh_from_db()
         self.assertTrue(self.subscription.win_form_completed)
         self.assertEqual(self.subscription.renewal_draft_start_date, date(2026, 9, 11))
@@ -1182,9 +1249,12 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(
             self.subscription.renewal_draft_billing_amount, Decimal("22589.40")
         )
+        self.assertEqual(self.subscription.renewal_draft_invoice_number, "INV-778")
+        self.assertTrue(self.subscription.renewal_draft_invoice_pdf)
         self.assertEqual(self.subscription.quantity, 1)
         self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
         self.assertEqual(self.subscription.billing_amount, Decimal("7529.80"))
+        self.assertEqual(self.subscription.invoice_number, "")
 
         renew = self.client.get(
             reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
@@ -1196,6 +1266,17 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(form.initial["quantity"], 3)
         self.assertEqual(form.initial["billing_amount"], Decimal("22589.40"))
         self.assertEqual(form.initial["vendor"], str(self.vendor.pk))
+        self.assertEqual(form.initial["invoice_number"], "INV-778")
+        self.assertContains(renew, "New invoice number")
+        self.assertContains(renew, "New invoice PDF")
+        self.assertContains(renew, "New vendor")
+
+    def test_add_subscription_form_has_optional_invoice_fields(self):
+        response = self.client.get(reverse("subscription_add"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Invoice number")
+        self.assertContains(response, "Invoice PDF copy")
+        self.assertContains(response, 'enctype="multipart/form-data"')
 
     def test_renew_save_sets_win_and_clears_form_empty(self):
         self.subscription.deal_status = ClientSubscription.DealStatus.WIN
@@ -1209,6 +1290,7 @@ class ClientRenewalDealStatusTests(TestCase):
                 "quantity": "3",
                 "billing_amount": "22589.40",
                 "vendor": str(self.vendor.pk),
+                "invoice_number": "INV-900",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -1218,6 +1300,7 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(self.subscription.quantity, 3)
         self.assertEqual(self.subscription.start_date, date(2026, 9, 11))
         self.assertEqual(self.subscription.renewal_draft_quantity, 3)
+        self.assertEqual(self.subscription.invoice_number, "INV-900")
         state = self.invite.deal_table_state()
         self.assertFalse(state["form_empty"])
         self.assertFalse(state["pending"])
@@ -1445,6 +1528,25 @@ class SubscriptionImportIdentityTests(TestCase):
         self.assertEqual(self.subscription.quantity, 3)
         self.assertEqual(self.subscription.billing_amount, Decimal("2400"))
 
+    def test_import_sets_optional_invoice_number(self):
+        csv_data = (
+            "Subscription Id,Product Name,Customer Name,Start Date,"
+            "End Date,Quantity,Price,Invoice Number\n"
+            "SUB-NEW,Microsoft 365,Acme,2026-03-01,2027-03-01,2,1800,INV-42\n"
+        ).encode()
+        created, updated, errors = import_subscriptions_from_file(
+            self.company,
+            csv_data,
+            "subscriptions.csv",
+            import_vendor=self.vendor,
+        )
+        self.assertEqual((created, updated, errors), (1, 0, []))
+        created_sub = ClientSubscription.objects.get(
+            company=self.company, subscription_code="SUB-NEW"
+        )
+        self.assertEqual(created_sub.invoice_number, "INV-42")
+        self.assertFalse(created_sub.invoice_pdf)
+
     def test_database_rejects_case_only_duplicate_subscription_id(self):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
@@ -1455,4 +1557,229 @@ class SubscriptionImportIdentityTests(TestCase):
                     subscription_code="sub-001",
                     start_date=date(2026, 1, 1),
                 )
+
+
+class OemTicketFeatureTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="oem-owner@example.com", password="pass12345"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user,
+            company_name="Acme OEM",
+            oem_email="oem-from@example.com",
+            oem_email_app_password="oem-secret",
+        )
+        self.client.login(email="oem-owner@example.com", password="pass12345")
+        inbox_patch = patch(
+            "business.helpdesk_inbox.maybe_fetch_on_dashboard",
+            return_value={"created": 0, "logs": []},
+        )
+        inbox_patch.start()
+        self.addCleanup(inbox_patch.stop)
+
+    def test_company_setup_shows_oem_email(self):
+        response = self.client.get(reverse("company_setup"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "OEM email")
+        self.assertContains(response, "oem_email")
+
+    def test_internal_and_oem_tabs(self):
+        internal = self.client.get(reverse("support_ticket_list"))
+        self.assertEqual(internal.status_code, 200)
+        self.assertContains(internal, "External (OEM)")
+        self.assertContains(internal, "Transfer to OEM")
+        oem = self.client.get(reverse("support_ticket_list") + "?source=oem")
+        self.assertEqual(oem.status_code, 200)
+        self.assertContains(oem, "Email Diary")
+        self.assertContains(oem, "Subscription ID")
+        self.assertContains(oem, "+ OEM ticket")
+        self.assertNotContains(oem, "Serial Number")
+
+    def test_diary_add_company_and_extra_email(self):
+        response = self.client.post(
+            reverse("support_oem_diary"),
+            {"action": "add_company", "name": "HP", "email": "support@hp.example"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["rows"][0]["name"], "HP")
+        extra = self.client.post(
+            reverse("support_oem_diary"),
+            {"action": "add_email", "name": "HP", "email": "care@hp.example"},
+        )
+        emails = {item["email"] for item in extra.json()["rows"][0]["emails"]}
+        self.assertEqual(emails, {"support@hp.example", "care@hp.example"})
+
+    def test_quick_oem_contacts_list_products_with_company_fields(self):
+        Product.objects.create(
+            company=self.company,
+            name="Laptop",
+            company_name="HP",
+            company_email="support@hp.example",
+        )
+        Product.objects.create(company=self.company, name="Printer")
+        self.client.post(
+            reverse("support_oem_diary"),
+            {"action": "add_company", "name": "abc", "email": "keniep442006@gmail.com"},
+        )
+        page = self.client.get(reverse("support_oem_ticket_add") + "?mode=quick")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Search / select product...")
+        self.assertContains(page, "Product (optional)")
+        response = self.client.get(reverse("support_oem_contacts"))
+        self.assertEqual(response.status_code, 200)
+        contacts = response.json()["contacts"]
+        by_product = {row["product_name"]: row for row in contacts}
+        self.assertIn("Laptop", by_product)
+        self.assertIn("Printer", by_product)
+        self.assertEqual(by_product["Laptop"]["name"], "HP")
+        self.assertEqual(by_product["Laptop"]["email"], "support@hp.example")
+        self.assertEqual(by_product["Printer"]["name"], "")
+        self.assertEqual(by_product["Printer"]["email"], "")
+        self.assertNotIn("keniep442006@gmail.com", {row["email"] for row in contacts})
+
+    @patch("business.oem_tickets.send_outbound", return_value=(True, None))
+    def test_quick_oem_creates_ticket(self, _send):
+        response = self.client.post(
+            reverse("support_oem_ticket_add"),
+            {
+                "mode": "quick",
+                "to_email": "vendor@example.com",
+                "oem_company": "HP",
+                "subject": "Laptop issue",
+                "description": "Screen flicker",
+                "cc": "",
+                "subscription_id": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        from business.models import SupportTicketMeta
+
+        meta = SupportTicketMeta.objects.get(is_oem=True)
+        self.assertEqual(meta.oem_company_name, "HP")
+        self.assertEqual(meta.oem_to_email, "vendor@example.com")
+        self.assertEqual(meta.subscription_id, "")
+        html_body = _send.call_args.kwargs["html_body"]
+        plain_body = _send.call_args.args[4]
+        self.assertIn("OEM SUPPORT", html_body)
+        self.assertIn("Laptop issue", html_body)
+        self.assertIn("Screen flicker", html_body)
+        self.assertIn("Best Regards", html_body)
+        self.assertIn("Acme OEM", html_body)
+        self.assertNotIn("HP", html_body)
+        self.assertIn("Hello,", plain_body)
+        self.assertIn("Screen flicker", plain_body)
+        self.assertIn("Best Regards,", plain_body)
+        self.assertIn("Acme OEM", plain_body)
+
+    def test_oem_email_html_uses_subject_heading_and_attachment_chips(self):
+        from types import SimpleNamespace
+
+        from business.oem_tickets import build_oem_email_html, build_oem_email_text
+
+        company = SimpleNamespace(company_name="Acme OEM")
+        html_body = build_oem_email_html(
+            company,
+            subject="Laptop issue",
+            body="Screen flicker",
+            attachment_names=["photo.png"],
+            logo_cid="company-logo",
+        )
+        self.assertIn("OEM SUPPORT", html_body)
+        self.assertIn("<h1", html_body)
+        self.assertIn("Laptop issue", html_body)
+        self.assertIn("Screen flicker", html_body)
+        self.assertNotIn("Attachments", html_body)
+        self.assertNotIn("ATTACHMENTS", html_body)
+        self.assertIn("photo.png", html_body)
+        self.assertIn("cid:company-logo", html_body)
+        self.assertIn("Best Regards", html_body)
+        self.assertNotIn("ticket id", html_body.lower())
+        text_body = build_oem_email_text(
+            company,
+            subject="Laptop issue",
+            body="Screen flicker",
+            attachment_names=["photo.png"],
+        )
+        self.assertIn("- photo.png", text_body)
+
+    @patch("business.oem_tickets.send_outbound", return_value=(True, None))
+    def test_transfer_marks_internal_ticket(self, _send):
+        from business.helpdesk_bridge import create_internal_ticket
+
+        source = create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Internal printer issue",
+            description="Won't print",
+        )
+        response = self.client.post(
+            reverse("support_ticket_transfer_oem", kwargs={"pk": source.pk}),
+            {
+                "to_email": "oem@example.com",
+                "oem_company": "HP",
+                "subject": "Internal printer issue",
+                "description": "Won't print",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        source.crm_meta.refresh_from_db()
+        self.assertTrue(source.crm_meta.transferred_to_id)
+        detail = self.client.get(
+            reverse("support_ticket_detail", kwargs={"pk": source.pk})
+        )
+        self.assertContains(detail, "Transferred to")
+
+    def test_subscription_lookup_fills_oem_details(self):
+        client_obj = Client.objects.create(company=self.company, name="Retail Co")
+        product = Product.objects.create(
+            company=self.company,
+            name="Laptop",
+            company_name="HP",
+            company_email="support@hp.example",
+        )
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=client_obj,
+            product=product,
+            subscription_code="SUB-88",
+            start_date=date(2026, 1, 1),
+            serial_number="HP-123",
+        )
+        response = self.client.get(
+            reverse("support_oem_subscription_lookup"), {"q": "SUB-88"}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["subscription"]
+        self.assertEqual(data["oem_company"], "HP")
+        self.assertEqual(data["oem_email"], "support@hp.example")
+        self.assertEqual(data["client_name"], "Retail Co")
+
+    def test_subscription_lookup_lists_options_for_dropdown(self):
+        client_obj = Client.objects.create(company=self.company, name="Retail Co")
+        product = Product.objects.create(
+            company=self.company,
+            name="Laptop",
+            company_name="HP",
+            company_email="support@hp.example",
+        )
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=client_obj,
+            product=product,
+            subscription_code="SUB-88",
+            start_date=date(2026, 1, 1),
+            serial_number="HP-123",
+        )
+        response = self.client.get(reverse("support_oem_subscription_lookup"))
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["subscriptions"]
+        self.assertEqual(rows[0]["subscription_id"], "SUB-88")
+        self.assertEqual(rows[0]["client_name"], "Retail Co")
+        page = self.client.get(reverse("support_oem_ticket_add") + "?mode=standard")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Search / select subscription ID")
 

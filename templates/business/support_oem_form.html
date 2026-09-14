@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "transfer" %}Transfer to OEM{% elif mode == "standard" %}OEM ticket{% else %}Quick OEM ticket{% endif %}{% endblock %}
+
+{% block extra_css %}
+{% include "includes/oem_tickets.css.html" %}
+{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-ticket"/></svg>
+    <div>
+      <h1 class="tracker-page-title">{% if mode == "transfer" %}Transfer to OEM{% else %}OEM ticket{% endif %}</h1>
+      <p class="tracker-page-subtitle">
+        {% if mode == "transfer" %}
+          Send this internal ticket to the OEM. From: {{ oem_from|default:"(set OEM email in Company profile)" }}
+        {% else %}
+          From address is the company OEM email. Pick a product to fill OEM company and email, or type the address in To.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="#" data-open-oem-diary>Email Diary</a>
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}?source=oem">OEM tickets</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if mode != "transfer" %}
+<div class="oem-mode-tabs">
+  <a class="oem-mode-tab {% if mode == 'standard' %}is-active{% endif %}" href="{% url 'support_oem_ticket_add' %}?mode=standard">Standard — by subscription ID</a>
+  <a class="oem-mode-tab {% if mode == 'quick' %}is-active{% endif %}" href="{% url 'support_oem_ticket_add' %}?mode=quick">Quick OEM ticket</a>
+</div>
+{% endif %}
+
+<div class="oem-compose">
+  {% if mode == "transfer" and transfer_ticket %}
+  <h2>Transfer {{ transfer_ticket.reference }}</h2>
+  <p class="lede">Internal ticket stays open and will show Transferred to the new OEM ticket.</p>
+  {% elif mode == "standard" %}
+  <h2>Standard OEM ticket</h2>
+  <p class="lede">Select a subscription ID to fetch OEM company and email. Subscription ID is optional.</p>
+  {% else %}
+  <h2>Quick OEM ticket</h2>
+  <p class="lede">Choose a product from the list. Company name and company email fill in when they were added on that product. You can still type To yourself. No subscription ID is required.</p>
+  {% endif %}
+
+  {% if mode == "standard" %}
+  <div class="oem-field">
+    <label for="oem-sub-id">Subscription ID</label>
+    <div class="oem-sub-row">
+      <div class="oem-combo" id="oem-sub-combo">
+        <input type="search" id="oem-sub-id" class="oem-combo-input" value="{{ form_data.subscription_id }}" placeholder="Search / select subscription ID..." autocomplete="off">
+        <div class="oem-combo-list" id="oem-sub-list" hidden></div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="oem-sub-fetch">Fetch</button>
+    </div>
+  </div>
+  <div class="oem-sub-card" id="oem-sub-details" hidden></div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" id="oem-compose-form">
+    {% csrf_token %}
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="subscription_id" id="oem-subscription-id" value="{{ form_data.subscription_id }}">
+
+    <div class="oem-field">
+      <label for="oem-contact-search">Product (optional)</label>
+      <div class="oem-combo">
+        <input type="search" id="oem-contact-search" class="oem-combo-input" placeholder="Search / select product..." autocomplete="off">
+        <div class="oem-combo-list" id="oem-contact-list" hidden></div>
+      </div>
+      <select id="oem-contact" hidden></select>
+    </div>
+
+    <div class="oem-mail-grid">
+      <div class="oem-mail-row">
+        <span>To</span>
+        <input type="email" name="to_email" id="oem-to" required placeholder="Enter OEM email or select a product above" value="{{ form_data.to_email }}">
+      </div>
+      <div class="oem-mail-row">
+        <span>From</span>
+        <input type="text" value="{{ oem_from|default:'Set OEM email in Company profile' }}" readonly>
+      </div>
+      <div class="oem-mail-row">
+        <span>Cc</span>
+        <input type="text" name="cc" placeholder="email1@example.com, email2@example.com" value="{{ form_data.cc }}">
+      </div>
+      <div class="oem-mail-row">
+        <span>Company name</span>
+        <input type="text" name="oem_company" id="oem-company" placeholder="Company name" value="{{ form_data.oem_company }}">
+      </div>
+      <div class="oem-mail-row">
+        <span>Subject</span>
+        <input type="text" name="subject" required placeholder="Email subject" value="{{ form_data.subject }}">
+      </div>
+      <div class="oem-mail-row is-message">
+        <span>Message</span>
+        <textarea name="description" rows="12" required placeholder="Write your support message here...">{{ form_data.description }}</textarea>
+      </div>
+    </div>
+
+    <div class="oem-drop" id="oem-drop">
+      <input type="file" name="attachments" id="oem-files" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" hidden>
+      <p style="margin:0;font-weight:650;color:#334155;">Choose files or drag and drop files here</p>
+      <p class="muted" style="margin:0.35rem 0 0;">You can attach multiple files and images (up to 8).</p>
+      <div class="oem-file-chips" id="oem-file-list"></div>
+      <button type="button" class="btn btn-ghost" id="oem-file-btn" style="margin-top:0.6rem;">Choose files</button>
+    </div>
+
+    <div class="oem-actions">
+      <a class="btn btn-ghost" href="{% url 'support_ticket_list' %}?source=oem">Cancel</a>
+      <button type="submit" class="btn btn-primary">Send email &amp; create ticket</button>
+    </div>
+  </form>
+</div>
+
+{% include "includes/oem_email_diary_modal.html" %}
+<script>
+(function () {
+  var CONTACTS_URL = "{% url 'support_oem_contacts' %}";
+  var SUB_URL = "{% url 'support_oem_subscription_lookup' %}";
+  var select = document.getElementById("oem-contact");
+  var searchInput = document.getElementById("oem-contact-search");
+  var listEl = document.getElementById("oem-contact-list");
+  var toInput = document.getElementById("oem-to");
+  var companyInput = document.getElementById("oem-company");
+  var subHidden = document.getElementById("oem-subscription-id");
+  var contacts = [];
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function fillSelect(items) {
+    contacts = items || [];
+    if (!select) return;
+    var html = '<option value="">Select / search product...</option>';
+    contacts.forEach(function (c) {
+      html += '<option value="' + encodeURIComponent(c.email || c.product_name || "") + '" data-name="' +
+        String(c.name || "").replace(/"/g, "&quot;") + '" data-product="' +
+        String(c.product_name || "").replace(/"/g, "&quot;") + '">' +
+        (c.label || c.product_name || c.name) + "</option>";
+    });
+    select.innerHTML = html;
+    renderContactList((searchInput && searchInput.value) || "");
+  }
+
+  function filteredContacts(q) {
+    q = (q || "").trim().toLowerCase();
+    if (!q) return contacts.slice(0, 40);
+    return contacts.filter(function (c) {
+      return ((c.label || "") + " " + (c.product_name || "") + " " + (c.name || "") + " " + (c.email || "")).toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 40);
+  }
+
+  function openList() {
+    if (!listEl) return;
+    listEl.hidden = false;
+    listEl.classList.add("is-open");
+  }
+  function closeList() {
+    if (!listEl) return;
+    listEl.hidden = true;
+    listEl.classList.remove("is-open");
+  }
+
+  function renderContactList(q) {
+    if (!listEl) return;
+    var rows = filteredContacts(q);
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="oem-combo-empty">No matching product.</div>';
+      return;
+    }
+    listEl.innerHTML = rows.map(function (c) {
+      var meta = [c.name, c.email].filter(Boolean).join(" — ");
+      return (
+        '<button type="button" class="oem-combo-item" data-email="' + escapeHtml(c.email) +
+          '" data-name="' + escapeHtml(c.name) +
+          '" data-product="' + escapeHtml(c.product_name || "") + '">' +
+          "<strong>" + escapeHtml(c.product_name || c.name || c.email) + "</strong>" +
+          (meta ? "<span>" + escapeHtml(meta) + "</span>" : "") +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function chooseContact(email, name, productName) {
+    if (toInput && email) toInput.value = email;
+    if (companyInput) companyInput.value = name || "";
+    if (searchInput) {
+      searchInput.value = productName || (name && email ? (name + " — " + email) : (name || email || ""));
+    }
+    if (select) select.value = encodeURIComponent(email || productName || "");
+    closeList();
+  }
+
+  function loadContacts() {
+    if (searchInput) searchInput.placeholder = "Loading products...";
+    fetch(CONTACTS_URL, { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        fillSelect(data.contacts || []);
+        if (searchInput) searchInput.placeholder = "Search / select product...";
+      })
+      .catch(function () {
+        if (select) select.innerHTML = '<option value="">Could not load products</option>';
+        if (searchInput) searchInput.placeholder = "Could not load products";
+      });
+  }
+  window.refreshOemContacts = loadContacts;
+  loadContacts();
+
+  if (searchInput) {
+    searchInput.addEventListener("focus", function () {
+      renderContactList(searchInput.value);
+      openList();
+    });
+    searchInput.addEventListener("input", function () {
+      renderContactList(searchInput.value);
+      openList();
+    });
+  }
+  if (listEl) {
+    listEl.addEventListener("mousedown", function (e) {
+      var item = e.target.closest(".oem-combo-item");
+      if (!item) return;
+      e.preventDefault();
+      chooseContact(
+        item.getAttribute("data-email"),
+        item.getAttribute("data-name"),
+        item.getAttribute("data-product")
+      );
+    });
+  }
+  var fetchBtn = document.getElementById("oem-sub-fetch");
+  var details = document.getElementById("oem-sub-details");
+  var subSearch = document.getElementById("oem-sub-id");
+  var subListEl = document.getElementById("oem-sub-list");
+  var subscriptions = [];
+
+  function applySubscription(s, typedId) {
+    if (!s) return;
+    var id = s.subscription_id || typedId || "";
+    if (subHidden) subHidden.value = id;
+    if (subSearch) subSearch.value = id;
+    if (s.oem_email) toInput.value = s.oem_email;
+    if (s.oem_company) companyInput.value = s.oem_company;
+    if (!details) return;
+    details.hidden = false;
+    details.innerHTML =
+      "<strong>Fetched details</strong><br>" +
+      "Subscription ID: " + (s.subscription_id || "—") + "<br>" +
+      "Client: " + (s.client_name || "—") + "<br>" +
+      "Product: " + (s.product_name || "—") + "<br>" +
+      "Company: " + (s.oem_company || "—") + "<br>" +
+      "OEM email: " + (s.oem_email || "—");
+  }
+
+  function filteredSubscriptions(q) {
+    q = (q || "").trim().toLowerCase();
+    if (!q) return subscriptions.slice(0, 40);
+    return subscriptions.filter(function (s) {
+      return ((s.label || "") + " " + (s.subscription_id || "") + " " +
+        (s.client_name || "") + " " + (s.product_name || "") + " " +
+        (s.serial_number || "")).toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 40);
+  }
+
+  function openSubList() {
+    if (!subListEl) return;
+    subListEl.hidden = false;
+    subListEl.classList.add("is-open");
+  }
+  function closeSubList() {
+    if (!subListEl) return;
+    subListEl.hidden = true;
+    subListEl.classList.remove("is-open");
+  }
+
+  function renderSubList(q) {
+    if (!subListEl) return;
+    var rows = filteredSubscriptions(q);
+    if (!rows.length) {
+      subListEl.innerHTML = '<div class="oem-combo-empty">No matching subscription.</div>';
+      return;
+    }
+    subListEl.innerHTML = rows.map(function (s) {
+      return (
+        '<button type="button" class="oem-combo-item" data-id="' +
+          escapeHtml(s.subscription_id) + '">' +
+          "<strong>" + escapeHtml(s.subscription_id) + "</strong>" +
+          "<span>" + escapeHtml([s.client_name, s.product_name].filter(Boolean).join(" — ")) + "</span>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function fetchSubscription(q) {
+    q = (q || "").trim();
+    if (!q) {
+      if (details) { details.hidden = false; details.textContent = "Select or enter a subscription ID to fetch details."; }
+      return;
+    }
+    var local = subscriptions.find(function (s) {
+      return String(s.subscription_id || "").toLowerCase() === q.toLowerCase();
+    });
+    if (local) {
+      applySubscription(local, q);
+      closeSubList();
+      return;
+    }
+    fetch(SUB_URL + "?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) {
+          if (details) {
+            details.hidden = false;
+            details.textContent = data.error || "No subscription found.";
+          }
+          return;
+        }
+        applySubscription(data.subscription, q);
+        closeSubList();
+      });
+  }
+
+  if (subSearch && subListEl) {
+    fetch(SUB_URL, { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        subscriptions = data.subscriptions || [];
+        if (subSearch && !subSearch.value) {
+          subSearch.placeholder = subscriptions.length
+            ? "Search / select subscription ID..."
+            : "No subscriptions yet — type an ID";
+        }
+      })
+      .catch(function () {
+        if (subSearch) subSearch.placeholder = "Type a subscription ID";
+      });
+
+    subSearch.addEventListener("focus", function () {
+      renderSubList(subSearch.value);
+      openSubList();
+    });
+    subSearch.addEventListener("input", function () {
+      if (subHidden) subHidden.value = (subSearch.value || "").trim();
+      renderSubList(subSearch.value);
+      openSubList();
+    });
+    subSearch.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        fetchSubscription(subSearch.value);
+      }
+    });
+    subListEl.addEventListener("mousedown", function (e) {
+      var item = e.target.closest(".oem-combo-item");
+      if (!item) return;
+      e.preventDefault();
+      fetchSubscription(item.getAttribute("data-id"));
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#oem-contact-search") && !e.target.closest("#oem-contact-list")) closeList();
+    if (!e.target.closest("#oem-sub-combo")) closeSubList();
+  });
+
+  if (fetchBtn) {
+    fetchBtn.addEventListener("click", function () {
+      fetchSubscription(subSearch ? subSearch.value : "");
+    });
+  }
+
+  var composeForm = document.getElementById("oem-compose-form");
+  if (composeForm) {
+    composeForm.addEventListener("submit", function () {
+      var vis = document.getElementById("oem-sub-id");
+      if (vis && subHidden) subHidden.value = (vis.value || "").trim();
+    });
+  }
+
+  if (select) {
+    select.addEventListener("change", function () {
+      var opt = select.options[select.selectedIndex];
+      if (!opt || !opt.value) return;
+      chooseContact(decodeURIComponent(opt.value), opt.getAttribute("data-name") || "");
+    });
+  }
+
+  var fileInput = document.getElementById("oem-files");
+  var fileBtn = document.getElementById("oem-file-btn");
+  var fileList = document.getElementById("oem-file-list");
+  var drop = document.getElementById("oem-drop");
+  var selectedFiles = [];
+  var MAX_FILES = 8;
+
+  function fileKey(f) {
+    return [f.name, f.size, f.lastModified].join(":");
+  }
+
+  function syncInput() {
+    if (!fileInput) return;
+    var dt = new DataTransfer();
+    selectedFiles.forEach(function (f) { dt.items.add(f); });
+    fileInput.files = dt.files;
+    renderFiles();
+  }
+
+  function addFiles(fileList) {
+    var incoming = Array.prototype.slice.call(fileList || []);
+    incoming.forEach(function (f) {
+      if (selectedFiles.length >= MAX_FILES) return;
+      var key = fileKey(f);
+      var exists = selectedFiles.some(function (x) { return fileKey(x) === key; });
+      if (!exists) selectedFiles.push(f);
+    });
+    syncInput();
+  }
+
+  function renderFiles() {
+    if (!fileList) return;
+    if (!selectedFiles.length) {
+      fileList.innerHTML = "";
+      return;
+    }
+    fileList.innerHTML = selectedFiles.map(function (f, i) {
+      return (
+        '<span class="oem-file-chip">' +
+          "<span>" + escapeHtml(f.name) + "</span>" +
+          '<button type="button" class="oem-file-remove" data-i="' + i + '" aria-label="Remove file">&times;</button>' +
+        "</span>"
+      );
+    }).join("");
+  }
+
+  if (fileList) {
+    fileList.addEventListener("click", function (e) {
+      var btn = e.target.closest(".oem-file-remove");
+      if (!btn) return;
+      var i = Number(btn.getAttribute("data-i"));
+      if (i >= 0) selectedFiles.splice(i, 1);
+      syncInput();
+    });
+  }
+  if (fileBtn && fileInput) fileBtn.addEventListener("click", function () { fileInput.click(); });
+  if (fileInput) {
+    fileInput.addEventListener("change", function () {
+      addFiles(fileInput.files);
+    });
+  }
+  if (drop && fileInput) {
+    drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("is-over"); });
+    drop.addEventListener("dragleave", function () { drop.classList.remove("is-over"); });
+    drop.addEventListener("drop", function (e) {
+      e.preventDefault();
+      drop.classList.remove("is-over");
+      addFiles(e.dataTransfer.files);
+    });
+  }
+})();
+</script>
+{% endblock %}

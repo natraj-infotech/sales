@@ -155,9 +155,34 @@ urlpatterns = [
     ),
     path("support/tickets/add/", views.support_ticket_add, name="support_ticket_add"),
     path(
+        "support/tickets/oem/add/",
+        views.support_oem_ticket_add,
+        name="support_oem_ticket_add",
+    ),
+    path(
+        "support/tickets/oem/diary/",
+        views.support_oem_diary,
+        name="support_oem_diary",
+    ),
+    path(
+        "support/tickets/oem/contacts/",
+        views.support_oem_contacts,
+        name="support_oem_contacts",
+    ),
+    path(
+        "support/tickets/oem/subscription/",
+        views.support_oem_subscription_lookup,
+        name="support_oem_subscription_lookup",
+    ),
+    path(
         "support/settings/",
         views.support_sla_settings,
         name="support_sla_settings",
+    ),
+    path(
+        "support/tickets/<int:pk>/transfer-oem/",
+        views.support_ticket_transfer_oem,
+        name="support_ticket_transfer_oem",
     ),
     path(
         "support/tickets/<int:pk>/",

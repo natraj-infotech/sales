@@ -70,19 +70,28 @@ def build_authorize_url(*, state: str) -> str:
 
 
 def exchange_code_for_tokens(code: str) -> dict:
-    resp = requests.post(
-        f"{accounts_base_url()}/oauth/v2/token",
-        data={
-            "grant_type": "authorization_code",
-            "client_id": settings.ZOHO_CLIENT_ID,
-            "client_secret": settings.ZOHO_CLIENT_SECRET,
-            "redirect_uri": redirect_uri(),
-            "code": code,
-        },
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            f"{accounts_base_url()}/oauth/v2/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": settings.ZOHO_CLIENT_ID,
+                "client_secret": settings.ZOHO_CLIENT_SECRET,
+                "redirect_uri": redirect_uri(),
+                "code": code,
+            },
+            timeout=30,
+        )
+    except requests.RequestException:
+        logger.exception("Zoho token exchange network error")
+        raise RuntimeError("Could not reach Zoho. Try again.") from None
     payload = resp.json() if resp.content else {}
     if not resp.ok or "error" in payload:
+        logger.warning(
+            "Zoho token exchange failed status=%s body=%s",
+            resp.status_code,
+            (resp.text or "")[:300],
+        )
         raise RuntimeError(
             payload.get("error")
             or payload.get("error_description")
@@ -97,16 +106,22 @@ def refresh_access_token(company: CompanyProfile) -> str:
         raise RuntimeError("Zoho CRM is not connected for this company.")
 
     accounts_domain = (company.zoho_accounts_domain or "").strip() or accounts_base_url()
-    resp = requests.post(
-        f"{accounts_domain}/oauth/v2/token",
-        data={
-            "grant_type": "refresh_token",
-            "client_id": settings.ZOHO_CLIENT_ID,
-            "client_secret": settings.ZOHO_CLIENT_SECRET,
-            "refresh_token": refresh,
-        },
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            f"{accounts_domain}/oauth/v2/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": settings.ZOHO_CLIENT_ID,
+                "client_secret": settings.ZOHO_CLIENT_SECRET,
+                "refresh_token": refresh,
+            },
+            timeout=30,
+        )
+    except requests.RequestException:
+        logger.exception(
+            "Zoho token refresh network error company_id=%s", company.pk
+        )
+        raise RuntimeError("Could not reach Zoho to refresh the connection.") from None
     payload = resp.json() if resp.content else {}
     if not resp.ok or "access_token" not in payload:
         raise RuntimeError(
@@ -245,14 +260,27 @@ def _search_module(
 
 def _create_record(company: CompanyProfile, module: str, payload: dict) -> dict:
     url = f"{_crm_api_root(company)}/{module}"
-    resp = requests.post(
-        url,
-        headers=_crm_headers(company),
-        json={"data": [payload]},
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            url,
+            headers=_crm_headers(company),
+            json={"data": [payload]},
+            timeout=30,
+        )
+    except requests.RequestException:
+        logger.exception(
+            "Zoho %s create network error company_id=%s", module, company.pk
+        )
+        raise RuntimeError(f"Could not reach Zoho to create {module}.") from None
     body = resp.json() if resp.content else {}
     if not resp.ok:
+        logger.warning(
+            "Zoho %s create failed company_id=%s status=%s body=%s",
+            module,
+            company.pk,
+            resp.status_code,
+            (resp.text or "")[:300],
+        )
         raise RuntimeError(
             f"Zoho {module} create failed: {body or resp.text[:300]}"
         )

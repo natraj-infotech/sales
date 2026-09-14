@@ -218,6 +218,9 @@
 <p class="muted">
   Please review your subscriptions below and enter the renewal quantity for each product.
 </p>
+{% if save_error %}
+<p class="cl-product-error" style="color:#dc2626;">{{ save_error }}</p>
+{% endif %}
 
 <form method="post" novalidate>
   {% csrf_token %}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
@@ -10,6 +11,8 @@ from typing import Any, Callable
 from accounts.models import CompanyProfile
 from business.import_io import detect_header_row, iter_spreadsheet_rows
 from business.models import Product, Vendor
+
+logger = logging.getLogger(__name__)
 
 IMPORT_HEADERS: tuple[str, ...] = (
     "Item ID",
@@ -346,6 +349,11 @@ def count_product_data_rows(
     try:
         rows = list(iter_spreadsheet_rows(file_bytes, filename))
     except Exception:
+        logger.warning(
+            "Could not count product import rows filename=%s",
+            filename,
+            exc_info=True,
+        )
         return 0
     return max(0, len(rows) - header_row_index - 1)
 
@@ -564,6 +572,12 @@ def import_products_from_file(
             file_bytes, filename, min_cols=min_cols
         )
     except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Could not read product import file %s: %s",
+            filename,
+            exc,
+            exc_info=True,
+        )
         kind = "CSV" if lower.endswith(".csv") else "Excel"
         return 0, 0, [(0, f"Could not read {kind} file: {exc}")]
 

@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ ticket.reference }} — {{ ticket.subject|truncatechars:40 }}{% endblock %}
 
+{% block extra_css %}
+{% include "includes/oem_tickets.css.html" %}
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header">
   <div class="tracker-page-header-text">
@@ -12,6 +16,11 @@
   </div>
   <div class="tracker-page-actions">
     <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}">All tickets</a>
+    {% if ticket.is_oem %}
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_list' %}?source=oem">OEM tickets</a>
+    {% elif not ticket.transferred_to_id %}
+    <a class="btn-tracker-header btn-tracker-on-blue" href="{% url 'support_ticket_transfer_oem' ticket.pk %}">Transfer to OEM</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
@@ -45,6 +54,17 @@
     <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
     {% if ticket.source_sender %}
     <div><dt>From (email)</dt><dd>{{ ticket.source_sender }}</dd></div>
+    {% endif %}
+    {% if ticket.is_oem %}
+    <div><dt>OEM company</dt><dd>{{ ticket.oem_company_name|default:"—" }}</dd></div>
+    <div><dt>OEM email</dt><dd>{{ ticket.oem_to_email|default:"—" }}</dd></div>
+    <div><dt>Subscription ID</dt><dd>{{ ticket.subscription_id|default:"—" }}</dd></div>
+    {% endif %}
+    {% if ticket.transferred_to_id %}
+    <div>
+      <dt>OEM transfer</dt>
+      <dd class="oem-transferred" style="margin:0;">Transferred to <a href="{% url 'support_ticket_detail' ticket.transferred_to_id %}">{{ ticket.transferred_to_reference }}</a></dd>
+    </div>
     {% endif %}
     <div><dt>Raised by</dt><dd>{{ ticket.created_by.email }}</dd></div>
     <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>

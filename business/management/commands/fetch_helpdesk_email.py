@@ -1,6 +1,10 @@
-from django.core.management.base import BaseCommand
+import logging
+
+from django.core.management.base import BaseCommand, CommandError
 
 from business.helpdesk_inbox import fetch_helpdesk_mail_for_all_companies
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -10,7 +14,11 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        result = fetch_helpdesk_mail_for_all_companies()
+        try:
+            result = fetch_helpdesk_mail_for_all_companies()
+        except Exception as exc:
+            logger.exception("fetch_helpdesk_email command failed")
+            raise CommandError(f"Helpdesk email fetch failed: {exc}") from exc
         for line in result.get("logs") or []:
             self.stdout.write(line)
         self.stdout.write(

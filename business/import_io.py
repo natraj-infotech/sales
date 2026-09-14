@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import warnings
 from collections.abc import Iterator
 from io import BytesIO, StringIO
@@ -11,20 +12,26 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+logger = logging.getLogger(__name__)
+
 
 def load_workbook_bytes(file_bytes: bytes, *, read_only: bool = False):
     """Load xlsx bytes; suppress harmless openpyxl style warnings."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="Workbook contains no default style*",
-            category=UserWarning,
-        )
-        return load_workbook(
-            BytesIO(file_bytes),
-            read_only=read_only,
-            data_only=True,
-        )
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Workbook contains no default style*",
+                category=UserWarning,
+            )
+            return load_workbook(
+                BytesIO(file_bytes),
+                read_only=read_only,
+                data_only=True,
+            )
+    except Exception:
+        logger.warning("Could not load Excel workbook bytes", exc_info=True)
+        raise
 
 
 def _decode_csv_text(file_bytes: bytes) -> str:

@@ -60,6 +60,8 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "support_email_app_password",
         "caselock_email",
         "caselock_email_app_password",
+        "oem_email",
+        "oem_email_app_password",
         "outgoing_email",
         "outgoing_email_app_password",
         "regards_email",

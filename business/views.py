@@ -1,10 +1,12 @@
 import csv
+import logging
 from datetime import timedelta
 from io import StringIO
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -13,6 +15,8 @@ from django.utils import timezone
 from django.utils.formats import date_format
 from django.views.decorators.http import require_http_methods
 from openpyxl import Workbook
+
+logger = logging.getLogger(__name__)
 
 from accounts.models import CompanyProfile
 from accounts.permissions import (
@@ -79,6 +83,21 @@ from .subscription_import import (
 )
 
 User = get_user_model()
+
+
+def _json_error(message: str, status: int = 500):
+    return JsonResponse({"ok": False, "error": message}, status=status)
+
+
+def _xlsx_response(content, filename: str):
+    response = HttpResponse(
+        content,
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def _company(request):
@@ -266,6 +285,10 @@ def _renewal_invite_queryset(company):
     )
 
 
+def _invite_deal_status_url(invite):
+    return reverse("client_renewal_set_deal_status", kwargs={"pk": invite.pk})
+
+
 def _invite_deal_payload(invite):
     state = invite.deal_table_state()
     return {
@@ -273,9 +296,21 @@ def _invite_deal_payload(invite):
         "deal_badges": state["badges"],
         "deal_form_empty": state.get("form_empty", False),
         "deal_form_empty_count": state.get("form_empty_count", 0),
-        "deal_status_url": reverse(
-            "client_renewal_set_deal_status", kwargs={"pk": invite.pk}
-        ),
+        "deal_status_url": _invite_deal_status_url(invite),
+    }
+
+
+def _line_deal_payload(invite, line):
+    sub = getattr(line, "subscription", None)
+    status = getattr(sub, "deal_status", "") or ""
+    form_empty = bool(getattr(sub, "win_form_empty", False))
+    return {
+        "deal_pending": not status,
+        "deal_badges": [status] if status else [],
+        "deal_form_empty": form_empty,
+        "deal_form_empty_count": 1 if form_empty else 0,
+        "deal_status_url": _invite_deal_status_url(invite),
+        "subscription_id": sub.pk if sub else None,
     }
 
 
@@ -379,22 +414,76 @@ def _jsonify_tab_rows(rows):
     return formatted
 
 
-def _invite_status_row(invite):
-    row = {
-        "id": str(invite.pk),
+def _invite_base_status_row(invite):
+    return {
+        "invite_id": str(invite.pk),
         "client_email": invite.client_email,
         "recipient_emails": invite.sent_to_emails,
-        "email_sent_at": _format_dt(invite.email_sent_at),
-        "read_at": _format_dt(invite.read_at),
+        "email_sent_at": invite.email_sent_at,
+        "read_at": invite.read_at,
         "read_source": invite.read_source or "",
-        "submitted_at": _format_dt(invite.submitted_at),
+        "submitted_at": invite.submitted_at,
         "submitted_by_email": invite.submitted_by_email or "",
-        "quotation_sent_at": _format_dt(invite.quotation_sent_at),
-        "line_count": invite.line_count,
+        "quotation_sent_at": invite.quotation_sent_at,
         "detail_url": _invite_detail_url(invite),
     }
-    row.update(_invite_deal_payload(invite))
+
+
+def _invite_line_status_row(invite, line):
+    sub = getattr(line, "subscription", None)
+    client = getattr(sub, "client", None)
+    product = getattr(sub, "product", None)
+    row = _invite_base_status_row(invite)
+    row.update(
+        {
+            "id": f"{invite.pk}-{line.pk}",
+            "company_name": line.company_name or getattr(client, "name", "") or "",
+            "product_name": line.product_name or getattr(product, "name", "") or "",
+        }
+    )
+    row.update(_line_deal_payload(invite, line))
     return row
+
+
+def _invite_status_rows(invite):
+    """One All-emails table row per subscription on the reminder email."""
+    lines = list(invite.lines.all())
+    if not lines:
+        row = _invite_base_status_row(invite)
+        row.update(
+            {
+                "id": str(invite.pk),
+                "company_name": "",
+                "product_name": "",
+                "subscription_id": None,
+            }
+        )
+        row.update(_invite_deal_payload(invite))
+        return [row]
+    return [_invite_line_status_row(invite, line) for line in lines]
+
+
+def _all_email_rows(invites):
+    rows = []
+    for invite in invites:
+        rows.extend(_invite_status_rows(invite))
+    return rows
+
+
+def _jsonify_email_rows(rows):
+    datetime_keys = (
+        "email_sent_at",
+        "read_at",
+        "submitted_at",
+        "quotation_sent_at",
+    )
+    formatted = []
+    for row in rows:
+        item = dict(row)
+        for key in datetime_keys:
+            item[key] = _format_dt(row.get(key))
+        formatted.append(item)
+    return formatted
 
 
 @sales_module_required
@@ -407,12 +496,14 @@ def client_renewal_list(request):
         if "failed" in message.lower():
             messages.warning(request, message)
     invites = list(_renewal_invite_queryset(company))
+    all_email_rows = _all_email_rows(invites)
     return render(
         request,
         "business/client_renewal_list.html",
         {
             "company": company,
             "object_list": invites,
+            "all_email_rows": all_email_rows,
             "new_subscription_rows": _new_subscription_rows(invites),
             "existing_expiry_rows": _existing_expiry_rows(invites),
         },
@@ -425,23 +516,29 @@ def client_renewal_live(request):
     company = _company(request)
     from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
 
-    updated, poll_logs = poll_outlook_read_receipts_for_company(company)
-    invites = list(_renewal_invite_queryset(company))
-    return JsonResponse(
-        {
-            "ok": True,
-            "updated": updated,
-            "polled_at": _format_dt(timezone.now()),
-            "logs": poll_logs,
-            "rows": [_invite_status_row(invite) for invite in invites],
-            "new_subscription_rows": _jsonify_tab_rows(
-                _new_subscription_rows(invites)
-            ),
-            "existing_expiry_rows": _jsonify_tab_rows(
-                _existing_expiry_rows(invites)
-            ),
-        }
-    )
+    try:
+        updated, poll_logs = poll_outlook_read_receipts_for_company(company)
+        invites = list(_renewal_invite_queryset(company))
+        return JsonResponse(
+            {
+                "ok": True,
+                "updated": updated,
+                "polled_at": _format_dt(timezone.now()),
+                "logs": poll_logs,
+                "rows": _jsonify_email_rows(_all_email_rows(invites)),
+                "new_subscription_rows": _jsonify_tab_rows(
+                    _new_subscription_rows(invites)
+                ),
+                "existing_expiry_rows": _jsonify_tab_rows(
+                    _existing_expiry_rows(invites)
+                ),
+            }
+        )
+    except Exception:
+        logger.exception(
+            "client_renewal_live failed company_id=%s", company.pk
+        )
+        return _json_error("Could not refresh renewal status.")
 
 
 @sales_module_required
@@ -484,7 +581,9 @@ def client_renewal_set_deal_status(request, pk):
     extra = {"subscription_id": subscription_id}
     try:
         if action == "save_win_form":
-            form = SubscriptionRenewForm(request.POST, company=company)
+            form = SubscriptionRenewForm(
+                request.POST, request.FILES, company=company
+            )
             if not form.is_valid():
                 return JsonResponse(
                     {"ok": False, "error": _form_first_error(form)},
@@ -497,6 +596,8 @@ def client_renewal_set_deal_status(request, pk):
                 quantity=form.cleaned_data["quantity"],
                 billing_amount=form.cleaned_data["billing_amount"],
                 vendor=form.cleaned_data.get("resolved_vendor"),
+                invoice_number=form.cleaned_data.get("invoice_number") or "",
+                invoice_pdf=form.cleaned_data.get("invoice_pdf"),
             )
             extra["deal_status"] = ClientSubscription.DealStatus.WIN
         else:
@@ -516,6 +617,13 @@ def client_renewal_set_deal_status(request, pk):
                 extra["open_win_form"] = subscription_id
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception:
+        logger.exception(
+            "client_renewal_set_deal_status failed company_id=%s invite_id=%s",
+            company.pk,
+            invite.pk,
+        )
+        return _json_error("Could not update deal status.")
 
     invite = SubscriptionRenewalInvite.objects.prefetch_related(
         _renewal_invite_line_prefetch()
@@ -607,7 +715,15 @@ def client_renewal_send_quotation(request, pk):
     except Exception as exc:
         invite.quotation_error = str(exc)[:2000]
         invite.save(update_fields=["quotation_error"])
-        messages.error(request, f"Could not create Zoho quotation: {exc}")
+        logger.exception(
+            "Zoho quotation failed company_id=%s invite_id=%s",
+            company.pk,
+            invite.pk,
+        )
+        messages.error(
+            request,
+            "Could not create Zoho quotation. Check the Zoho connection and try again.",
+        )
     return redirect("client_renewal_detail", pk=invite.pk)
 
 
@@ -687,13 +803,13 @@ def vendor_export(request):
     from .vendor_import import build_vendor_export_bytes
 
     company = _company(request)
-    content = build_vendor_export_bytes(company)
-    response = HttpResponse(
-        content,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    response["Content-Disposition"] = 'attachment; filename="vendors_export.xlsx"'
-    return response
+    try:
+        content = build_vendor_export_bytes(company)
+    except Exception:
+        logger.exception("Vendor export failed company_id=%s", company.pk)
+        messages.error(request, "Could not export vendors.")
+        return redirect("vendor_list")
+    return _xlsx_response(content, "vendors_export.xlsx")
 
 
 def _vendor_import_messages(
@@ -732,11 +848,23 @@ def vendor_import(request):
             return redirect("vendor_import")
         from .vendor_import import import_vendors_from_file
 
-        created, updated, errs = import_vendors_from_file(
-            company,
-            upload.read(),
-            upload.name or "",
-        )
+        try:
+            created, updated, errs = import_vendors_from_file(
+                company,
+                upload.read(),
+                upload.name or "",
+            )
+        except Exception:
+            logger.exception(
+                "Vendor import failed company_id=%s filename=%s",
+                company.pk,
+                upload.name,
+            )
+            messages.error(
+                request,
+                "Could not read the vendor file. Upload a valid .xlsx or .csv file.",
+            )
+            return redirect("vendor_import")
         _vendor_import_messages(request, created, updated, errs)
         return redirect("vendor_list")
 
@@ -817,13 +945,13 @@ def client_export(request):
     from .client_import import build_client_export_bytes
 
     company = _company(request)
-    content = build_client_export_bytes(company)
-    response = HttpResponse(
-        content,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    response["Content-Disposition"] = 'attachment; filename="clients_export.xlsx"'
-    return response
+    try:
+        content = build_client_export_bytes(company)
+    except Exception:
+        logger.exception("Client export failed company_id=%s", company.pk)
+        messages.error(request, "Could not export clients.")
+        return redirect("client_list")
+    return _xlsx_response(content, "clients_export.xlsx")
 
 
 def _client_import_messages(
@@ -862,11 +990,23 @@ def client_import(request):
             return redirect("client_import")
         from .client_import import import_clients_from_file
 
-        created, updated, errs = import_clients_from_file(
-            company,
-            upload.read(),
-            upload.name or "",
-        )
+        try:
+            created, updated, errs = import_clients_from_file(
+                company,
+                upload.read(),
+                upload.name or "",
+            )
+        except Exception:
+            logger.exception(
+                "Client import failed company_id=%s filename=%s",
+                company.pk,
+                upload.name,
+            )
+            messages.error(
+                request,
+                "Could not read the client file. Upload a valid .xlsx or .csv file.",
+            )
+            return redirect("client_import")
         _client_import_messages(request, created, updated, errs)
         return redirect("client_list")
 
@@ -1066,13 +1206,13 @@ def product_export(request):
     from .product_bulk_edit import build_product_export_bytes
 
     company = _company(request)
-    content = build_product_export_bytes(company)
-    response = HttpResponse(
-        content,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    response["Content-Disposition"] = 'attachment; filename="products_export.xlsx"'
-    return response
+    try:
+        content = build_product_export_bytes(company)
+    except Exception:
+        logger.exception("Product export failed company_id=%s", company.pk)
+        messages.error(request, "Could not export products.")
+        return redirect("product_list")
+    return _xlsx_response(content, "products_export.xlsx")
 
 
 def _product_bulk_import_messages(
@@ -1111,11 +1251,23 @@ def product_import(request):
             return redirect("product_import")
         from .product_bulk_edit import import_products_bulk_from_file
 
-        created, updated, errs = import_products_bulk_from_file(
-            company,
-            upload.read(),
-            upload.name or "",
-        )
+        try:
+            created, updated, errs = import_products_bulk_from_file(
+                company,
+                upload.read(),
+                upload.name or "",
+            )
+        except Exception:
+            logger.exception(
+                "Product bulk import failed company_id=%s filename=%s",
+                company.pk,
+                upload.name,
+            )
+            messages.error(
+                request,
+                "Could not read the product file. Upload a valid .xlsx or .csv file.",
+            )
+            return redirect("product_import")
         _product_bulk_import_messages(request, created, updated, errs)
         return redirect("product_list")
 
@@ -1135,7 +1287,25 @@ def product_import_advanced(request):
         if not (name_lower.endswith(".xlsx") or name_lower.endswith(".csv")):
             messages.error(request, "Please upload a .xlsx or .csv file.")
             return redirect("product_import_advanced")
-        _stash_product_import(request, upload.read(), upload.name or "")
+        try:
+            _stash_product_import(request, upload.read(), upload.name or "")
+        except OSError:
+            logger.exception(
+                "Product import stash failed user_id=%s", request.user.pk
+            )
+            messages.error(request, "Could not save the uploaded file. Try again.")
+            return redirect("product_import_advanced")
+        except Exception:
+            logger.exception(
+                "Product import parse failed company_id=%s filename=%s",
+                company.pk,
+                upload.name,
+            )
+            messages.error(
+                request,
+                "Could not read the product file. Upload a valid .xlsx or .csv file.",
+            )
+            return redirect("product_import_advanced")
         messages.info(request, "Review the column mapping, then run import.")
         return redirect("product_import_map")
 
@@ -1509,13 +1679,31 @@ def subscription_import(request):
             messages.error(request, "Please upload a .xlsx or .csv file.")
             return redirect("subscription_import")
         vendor = ensure_import_vendor(company, vendor_name)
-        _stash_import_upload(
-            request,
-            upload.read(),
-            upload.name or "",
-            vendor.pk,
-            vendor.name,
-        )
+        try:
+            _stash_import_upload(
+                request,
+                upload.read(),
+                upload.name or "",
+                vendor.pk,
+                vendor.name,
+            )
+        except OSError:
+            logger.exception(
+                "Subscription import stash failed user_id=%s", request.user.pk
+            )
+            messages.error(request, "Could not save the uploaded file. Try again.")
+            return redirect("subscription_import")
+        except Exception:
+            logger.exception(
+                "Subscription import parse failed company_id=%s filename=%s",
+                company.pk,
+                upload.name,
+            )
+            messages.error(
+                request,
+                "Could not read the subscription file. Upload a valid .xlsx or .csv file.",
+            )
+            return redirect("subscription_import")
         messages.info(request, "Map your file columns, then run import.")
         return redirect("subscription_import_map")
 
@@ -1666,14 +1854,25 @@ def subscription_add(request):
     if request.method == "POST":
         form = ClientSubscriptionForm(
             request.POST,
+            request.FILES,
             company=company,
             asset_type_prefilter=asset_type or None,
         )
         if form.is_valid():
-            s = form.save(commit=False)
-            s.company = company
-            s.save()
-            return redirect("subscription_list")
+            try:
+                s = form.save(commit=False)
+                s.company = company
+                s.save()
+            except (OSError, SuspiciousFileOperation):
+                logger.exception(
+                    "Subscription add save failed company_id=%s", company.pk
+                )
+                messages.error(
+                    request,
+                    "Could not save the subscription or invoice PDF. Try another file.",
+                )
+            else:
+                return redirect("subscription_list")
     else:
         form = ClientSubscriptionForm(
             company=company,
@@ -1743,28 +1942,42 @@ def subscription_renew(request, pk):
             return redirect(
                 f"{reverse('vendor_add')}?{urlencode({'next': renew_return})}"
             )
-        form = SubscriptionRenewForm(request.POST, company=company)
+        form = SubscriptionRenewForm(request.POST, request.FILES, company=company)
         if form.is_valid():
             new_start = form.cleaned_data["start_date"]
             new_end = form.cleaned_data["end_date"]
             new_qty = form.cleaned_data["quantity"]
             new_price = form.cleaned_data["billing_amount"]
             new_vendor = form.cleaned_data["resolved_vendor"]
-            obj.apply_saved_renewal(
-                start_date=new_start,
-                end_date=new_end,
-                quantity=new_qty,
-                billing_amount=new_price,
-                vendor=new_vendor,
-            )
-            end_label = new_end.strftime("%d %b %Y") if new_end else "no end date"
-            messages.success(
-                request,
-                f"Renewed {obj.client.name} — {obj.product.name}: "
-                f"{new_start.strftime('%d %b %Y')} to {end_label} "
-                f"(qty {new_qty}, price {new_price}).",
-            )
-            return redirect(next_url)
+            try:
+                obj.apply_saved_renewal(
+                    start_date=new_start,
+                    end_date=new_end,
+                    quantity=new_qty,
+                    billing_amount=new_price,
+                    vendor=new_vendor,
+                    invoice_number=form.cleaned_data.get("invoice_number") or "",
+                    invoice_pdf=form.cleaned_data.get("invoice_pdf"),
+                )
+            except (OSError, SuspiciousFileOperation):
+                logger.exception(
+                    "Subscription renew save failed company_id=%s subscription_id=%s",
+                    company.pk,
+                    obj.pk,
+                )
+                messages.error(
+                    request,
+                    "Could not save the renewal or invoice PDF. Try another file.",
+                )
+            else:
+                end_label = new_end.strftime("%d %b %Y") if new_end else "no end date"
+                messages.success(
+                    request,
+                    f"Renewed {obj.client.name} — {obj.product.name}: "
+                    f"{new_start.strftime('%d %b %Y')} to {end_label} "
+                    f"(qty {new_qty}, price {new_price}).",
+                )
+                return redirect(next_url)
     else:
         initial_vendor = initial["vendor"]
         preselect = (request.GET.get("preselect_vendor") or "").strip()
@@ -1782,6 +1995,7 @@ def subscription_renew(request, pk):
                 "quantity": initial["quantity"],
                 "billing_amount": initial["billing_amount"],
                 "vendor": initial_vendor,
+                "invoice_number": initial.get("invoice_number") or "",
             },
         )
 
@@ -1805,11 +2019,23 @@ def subscription_edit(request, pk):
     obj = get_object_or_404(ClientSubscription, pk=pk, company=company)
     if request.method == "POST":
         form = ClientSubscriptionForm(
-            request.POST, instance=obj, company=company
+            request.POST, request.FILES, instance=obj, company=company
         )
         if form.is_valid():
-            form.save()
-            return redirect("subscription_list")
+            try:
+                form.save()
+            except (OSError, SuspiciousFileOperation):
+                logger.exception(
+                    "Subscription edit save failed company_id=%s subscription_id=%s",
+                    company.pk,
+                    obj.pk,
+                )
+                messages.error(
+                    request,
+                    "Could not save the subscription or invoice PDF. Try another file.",
+                )
+            else:
+                return redirect("subscription_list")
     else:
         form = ClientSubscriptionForm(instance=obj, company=company)
     at = (obj.product.asset_type or "").strip()
@@ -1832,18 +2058,25 @@ def subscription_edit(request, pk):
     )
 
 
-def _support_ticket_list_data(company, *, status_filter: str = ""):
+def _support_ticket_list_data(
+    company, *, status_filter: str = "", source: str = "internal"
+):
     """Shared ticket list payload for HTML page and live JSON poll."""
     from business.sla import get_or_create_sla_settings
 
     status_filter = (status_filter or "").strip()
+    source = "oem" if source == "oem" else "internal"
     sla_settings = get_or_create_sla_settings(company)
 
-    all_wrapped = helpdesk_bridge.wrap_tickets(
-        helpdesk_bridge.tickets_for_company(company),
+    internal_wrapped = helpdesk_bridge.wrap_tickets(
+        helpdesk_bridge.tickets_for_company(company, oem=False),
         sla_settings=sla_settings,
     )
-    base = list(all_wrapped)
+    oem_wrapped = helpdesk_bridge.wrap_tickets(
+        helpdesk_bridge.tickets_for_company(company, oem=True),
+        sla_settings=sla_settings,
+    )
+    base = oem_wrapped if source == "oem" else internal_wrapped
 
     if status_filter in dict(helpdesk_bridge.STATUS_CHOICES):
         qs = [t for t in base if t.status == status_filter]
@@ -1852,20 +2085,41 @@ def _support_ticket_list_data(company, *, status_filter: str = ""):
         qs = base
 
     counts = {
-        "total": len(base),
-        "closed": sum(1 for t in base if t.status == "closed"),
-        "pending": sum(1 for t in base if t.status in ("open", "in_progress")),
-        "under_observation": sum(1 for t in base if t.status == "resolved"),
-        "sla_breached": sum(1 for t in base if t.sla and t.sla.get("any_breached")),
+        "total": len(internal_wrapped),
+        "closed": sum(1 for t in internal_wrapped if t.status == "closed"),
+        "pending": sum(1 for t in internal_wrapped if t.status in ("open", "in_progress")),
+        "under_observation": sum(1 for t in internal_wrapped if t.status == "resolved"),
+        "sla_breached": sum(
+            1 for t in internal_wrapped if t.sla and t.sla.get("any_breached")
+        ),
+    }
+    oem_counts = {
+        "total": len(oem_wrapped),
+        "active": sum(1 for t in oem_wrapped if t.status != "closed"),
+        "open": sum(1 for t in oem_wrapped if t.status in ("open", "in_progress")),
+        "closed": sum(1 for t in oem_wrapped if t.status == "closed"),
     }
     return {
         "object_list": qs,
         "status_filter": status_filter,
+        "source": source,
         "counts": counts,
+        "oem_counts": oem_counts,
         "assignees": company_users(company),
         "sla_settings": sla_settings,
-        "charts": ticket_charts_from_views(base),
+        "charts": ticket_charts_from_views(internal_wrapped),
     }
+
+
+def _ticket_list_source(request) -> str:
+    return "oem" if request.GET.get("source") == "oem" else "internal"
+
+
+def _validation_message(exc) -> str:
+    messages_list = getattr(exc, "messages", None)
+    if messages_list:
+        return "; ".join(str(m) for m in messages_list)
+    return str(exc)
 
 
 def _format_ticket_dt(value, fmt: str) -> str:
@@ -1895,6 +2149,7 @@ def support_ticket_list(request):
     data = _support_ticket_list_data(
         company,
         status_filter=request.GET.get("status", ""),
+        source=_ticket_list_source(request),
     )
 
     return render(
@@ -1904,8 +2159,10 @@ def support_ticket_list(request):
             "company": company,
             "object_list": data["object_list"],
             "status_filter": data["status_filter"],
+            "source": data["source"],
             "status_choices": helpdesk_bridge.STATUS_CHOICES,
             "counts": data["counts"],
+            "oem_counts": data["oem_counts"],
             "assignees": data["assignees"],
             "sla_settings": data["sla_settings"],
             "charts": data["charts"],
@@ -1917,35 +2174,37 @@ def support_ticket_list(request):
 def support_ticket_live(request):
     """Poll mailbox (throttled) and return current ticket list as JSON."""
     company = _company(request)
-    helpdesk_bridge.sync_company_queue(company)
+    try:
+        helpdesk_bridge.sync_company_queue(company)
 
-    from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
+        from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
 
-    fetch_result = maybe_fetch_on_dashboard(company) or {}
-    created = int(fetch_result.get("created") or 0)
-    inbox_errors = inbox_error_logs(fetch_result)
+        fetch_result = maybe_fetch_on_dashboard(company) or {}
+        created = int(fetch_result.get("created") or 0)
+        inbox_errors = inbox_error_logs(fetch_result)
 
-    data = _support_ticket_list_data(
-        company,
-        status_filter=request.GET.get("status", ""),
-    )
-    next_qs = request.GET.urlencode()
-    status_choices = [
-        {"value": value, "label": label}
-        for value, label in helpdesk_bridge.STATUS_CHOICES
-    ]
-    assignees = [
-        {"id": u.pk, "email": u.email or ""}
-        for u in data["assignees"]
-    ]
+        data = _support_ticket_list_data(
+            company,
+            status_filter=request.GET.get("status", ""),
+            source=_ticket_list_source(request),
+        )
+        next_qs = request.GET.urlencode()
+        status_choices = [
+            {"value": value, "label": label}
+            for value, label in helpdesk_bridge.STATUS_CHOICES
+        ]
+        assignees = [
+            {"id": u.pk, "email": u.email or ""}
+            for u in data["assignees"]
+        ]
 
-    rows = []
-    for t in data["object_list"]:
-        email = t.source_sender or getattr(t.created_by, "email", "") or ""
-        done = t.status in ("resolved", "closed")
-        sla = t.sla or {}
-        rows.append(
-            {
+        rows = []
+        source = data["source"]
+        for t in data["object_list"]:
+            email = t.source_sender or getattr(t.created_by, "email", "") or ""
+            done = t.status in ("resolved", "closed")
+            sla = t.sla or {}
+            row = {
                 "id": t.pk,
                 "reference": t.reference,
                 "created_at": _format_ticket_dt(t.created_at, "d/m/Y H:i"),
@@ -1969,25 +2228,48 @@ def support_ticket_live(request):
                 "detail_url": reverse("support_ticket_detail", kwargs={"pk": t.pk}),
                 "update_url": reverse("support_ticket_update", kwargs={"pk": t.pk}),
                 "is_closed": t.status == "closed",
+                "is_oem": bool(t.is_oem),
+                "oem_company": t.oem_company_name or "",
+                "oem_email": t.oem_to_email or "",
+                "subscription_id": t.subscription_id or "",
+                "transferred_to_id": t.transferred_to_id or "",
+                "transferred_to_reference": t.transferred_to_reference or "",
+                "transferred_to_url": (
+                    reverse("support_ticket_detail", kwargs={"pk": t.transferred_to_id})
+                    if t.transferred_to_id
+                    else ""
+                ),
+                "transfer_url": "",
+            }
+            if source != "oem" and not t.is_oem and not t.transferred_to_id:
+                row["transfer_url"] = reverse(
+                    "support_ticket_transfer_oem", kwargs={"pk": t.pk}
+                )
+            rows.append(row)
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "created": created,
+                "inbox_errors": inbox_errors,
+                "polled_at": _format_dt(timezone.now()),
+                "status_filter": data["status_filter"],
+                "source": source,
+                "next_qs": next_qs,
+                "counts": data["counts"],
+                "oem_counts": data["oem_counts"],
+                "status_choices": status_choices,
+                "assignees": assignees,
+                "sla_mode": data["sla_settings"].sla_mode,
+                "rows": rows,
+                "charts": data["charts"],
             }
         )
-
-    return JsonResponse(
-        {
-            "ok": True,
-            "created": created,
-            "inbox_errors": inbox_errors,
-            "polled_at": _format_dt(timezone.now()),
-            "status_filter": data["status_filter"],
-            "next_qs": next_qs,
-            "counts": data["counts"],
-            "status_choices": status_choices,
-            "assignees": assignees,
-            "sla_mode": data["sla_settings"].sla_mode,
-            "rows": rows,
-            "charts": data["charts"],
-        }
-    )
+    except Exception:
+        logger.exception(
+            "support_ticket_live failed company_id=%s", company.pk
+        )
+        return _json_error("Could not refresh tickets.")
 
 
 @support_ticket_access_required
@@ -2093,6 +2375,259 @@ def support_ticket_add(request):
             "priority_rules_json": json.dumps(priority_rules),
         },
     )
+
+
+def _oem_compose_initial(ticket=None) -> dict:
+    if ticket is None:
+        return {
+            "mode": "quick",
+            "to_email": "",
+            "cc": "",
+            "oem_company": "",
+            "subject": "",
+            "description": "",
+            "subscription_id": "",
+        }
+    wrapped = helpdesk_bridge.wrap_ticket(ticket)
+    return {
+        "mode": "transfer",
+        "to_email": "",
+        "cc": "",
+        "oem_company": "",
+        "subject": wrapped.subject or "",
+        "description": wrapped.description or "",
+        "subscription_id": "",
+    }
+
+
+@support_ticket_access_required
+@require_http_methods(["GET", "POST"])
+def support_oem_ticket_add(request):
+    from django.core.exceptions import ValidationError
+
+    from business.oem_tickets import create_oem_ticket_and_send
+
+    company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
+    mode = (request.POST.get("mode") or request.GET.get("mode") or "quick").strip()
+    if mode not in ("quick", "standard"):
+        mode = "quick"
+    form_data = _oem_compose_initial()
+    form_data["mode"] = mode
+    if request.method == "POST":
+        form_data.update(
+            {
+                "mode": mode,
+                "to_email": request.POST.get("to_email", "").strip(),
+                "cc": request.POST.get("cc", "").strip(),
+                "oem_company": request.POST.get("oem_company", "").strip(),
+                "subject": request.POST.get("subject", "").strip(),
+                "description": request.POST.get("description", "").strip(),
+                "subscription_id": request.POST.get("subscription_id", "").strip(),
+            }
+        )
+        try:
+            ticket = create_oem_ticket_and_send(
+                company=company,
+                user=request.user,
+                subject=form_data["subject"],
+                description=form_data["description"],
+                to_email=form_data["to_email"],
+                oem_company_name=form_data["oem_company"],
+                cc_raw=form_data["cc"],
+                subscription_id=form_data["subscription_id"],
+                attachments=request.FILES.getlist("attachments"),
+            )
+            messages.success(
+                request,
+                f"OEM ticket TK-{ticket.pk:05d} created and email sent.",
+            )
+            return redirect("support_ticket_detail", pk=ticket.pk)
+        except ValidationError as exc:
+            messages.error(request, _validation_message(exc))
+        except Exception:
+            logger.exception(
+                "OEM ticket create/send failed company_id=%s", company.pk
+            )
+            messages.error(
+                request,
+                "Could not create or send the OEM ticket. Check OEM email settings.",
+            )
+    return render(
+        request,
+        "business/support_oem_form.html",
+        {
+            "company": company,
+            "mode": mode,
+            "form_data": form_data,
+            "transfer_ticket": None,
+            "oem_from": (company.oem_email or "").strip(),
+        },
+    )
+
+
+@support_ticket_access_required
+@require_http_methods(["GET", "POST"])
+def support_ticket_transfer_oem(request, pk):
+    from django.core.exceptions import ValidationError
+
+    from business.oem_tickets import create_oem_ticket_and_send
+
+    company = _company(request)
+    try:
+        raw = helpdesk_bridge.get_company_ticket(company, pk)
+    except helpdesk_bridge.Ticket.DoesNotExist:
+        from django.http import Http404
+
+        raise Http404 from None
+
+    ticket = helpdesk_bridge.wrap_ticket(raw)
+    if ticket.is_oem:
+        messages.error(request, "OEM tickets cannot be transferred again.")
+        return redirect("support_ticket_detail", pk=raw.pk)
+    if ticket.transferred_to_id:
+        messages.info(
+            request,
+            f"Already transferred to {ticket.transferred_to_reference}.",
+        )
+        return redirect("support_ticket_detail", pk=raw.pk)
+
+    form_data = _oem_compose_initial(raw)
+    if request.method == "POST":
+        form_data.update(
+            {
+                "to_email": request.POST.get("to_email", "").strip(),
+                "cc": request.POST.get("cc", "").strip(),
+                "oem_company": request.POST.get("oem_company", "").strip(),
+                "subject": request.POST.get("subject", "").strip(),
+                "description": request.POST.get("description", "").strip(),
+                "subscription_id": request.POST.get("subscription_id", "").strip(),
+            }
+        )
+        try:
+            oem_ticket = create_oem_ticket_and_send(
+                company=company,
+                user=request.user,
+                subject=form_data["subject"],
+                description=form_data["description"],
+                to_email=form_data["to_email"],
+                oem_company_name=form_data["oem_company"],
+                cc_raw=form_data["cc"],
+                subscription_id=form_data["subscription_id"],
+                attachments=request.FILES.getlist("attachments"),
+                transferred_from=raw,
+                assignee=raw.assigned_to,
+            )
+            messages.success(
+                request,
+                f"Transferred to OEM TK-{oem_ticket.pk:05d}. Email sent.",
+            )
+            return redirect("support_ticket_detail", pk=oem_ticket.pk)
+        except ValidationError as exc:
+            messages.error(request, _validation_message(exc))
+        except Exception:
+            logger.exception(
+                "OEM transfer failed company_id=%s ticket_id=%s",
+                company.pk,
+                raw.pk,
+            )
+            messages.error(
+                request,
+                "Could not transfer this ticket to OEM. Check OEM email settings.",
+            )
+    return render(
+        request,
+        "business/support_oem_form.html",
+        {
+            "company": company,
+            "mode": "transfer",
+            "form_data": form_data,
+            "transfer_ticket": ticket,
+            "oem_from": (company.oem_email or "").strip(),
+        },
+    )
+
+
+@support_ticket_access_required
+@require_http_methods(["GET", "POST"])
+def support_oem_diary(request):
+    from django.core.exceptions import ValidationError
+
+    from business.oem_tickets import add_diary_company, add_diary_email, diary_rows
+
+    company = _company(request)
+    if request.method == "GET":
+        try:
+            return JsonResponse({"ok": True, "rows": diary_rows(company)})
+        except Exception:
+            logger.exception(
+                "OEM diary load failed company_id=%s", company.pk
+            )
+            return _json_error("Could not load email diary.")
+
+    action = (request.POST.get("action") or "").strip()
+    name = request.POST.get("name", "").strip()
+    email = request.POST.get("email", "").strip()
+    try:
+        if action == "add_company":
+            add_diary_company(company, name, email)
+        elif action == "add_email":
+            add_diary_email(company, name, email)
+        else:
+            return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
+    except ValidationError as exc:
+        return JsonResponse(
+            {"ok": False, "error": _validation_message(exc)}, status=400
+        )
+    except Exception:
+        logger.exception(
+            "OEM diary action failed company_id=%s action=%s",
+            company.pk,
+            action,
+        )
+        return _json_error("Could not update email diary.")
+    return JsonResponse({"ok": True, "rows": diary_rows(company)})
+
+
+@support_ticket_access_required
+@require_http_methods(["GET"])
+def support_oem_contacts(request):
+    from business.oem_tickets import contact_options
+
+    company = _company(request)
+    try:
+        return JsonResponse({"ok": True, "contacts": contact_options(company)})
+    except Exception:
+        logger.exception(
+            "OEM contacts lookup failed company_id=%s", company.pk
+        )
+        return _json_error("Could not load OEM contacts.")
+
+
+@support_ticket_access_required
+@require_http_methods(["GET"])
+def support_oem_subscription_lookup(request):
+    from business.oem_tickets import lookup_subscription, subscription_options
+
+    company = _company(request)
+    query = (request.GET.get("q") or request.GET.get("subscription_id") or "").strip()
+    try:
+        if not query:
+            return JsonResponse(
+                {"ok": True, "subscriptions": subscription_options(company)}
+            )
+        found = lookup_subscription(company, query)
+        if not found:
+            return JsonResponse({"ok": False, "error": "No subscription found."})
+        return JsonResponse({"ok": True, "subscription": found})
+    except Exception:
+        logger.exception(
+            "OEM subscription lookup failed company_id=%s query=%s",
+            company.pk,
+            query,
+        )
+        return _json_error("Could not look up the subscription.")
+
 
 
 @support_ticket_access_required
@@ -2328,7 +2863,7 @@ def _annotate_new_product_forms(formset, name_by_id):
 
 
 def _renewal_quantity_page(
-    request, invite, lines, formset, new_product_formset=None
+    request, invite, lines, formset, new_product_formset=None, save_error=""
 ):
     excluded_ids = _invite_excluded_product_ids(lines)
     available_products = _available_renewal_products(invite.company, excluded_ids)
@@ -2349,6 +2884,7 @@ def _renewal_quantity_page(
             "new_product_formset": new_product_formset,
             "available_products": available_products,
             "public_page": True,
+            "save_error": save_error,
         },
     )
 
@@ -2458,13 +2994,26 @@ def renewal_confirm_public(request, invite_id, token=""):
                         "public_page": True,
                     },
                 )
-            saved_new = _save_renewal_confirmation(
-                invite,
-                lines,
-                formset,
-                submitter_email,
-                new_product_formset=new_product_formset,
-            )
+            try:
+                saved_new = _save_renewal_confirmation(
+                    invite,
+                    lines,
+                    formset,
+                    submitter_email,
+                    new_product_formset=new_product_formset,
+                )
+            except Exception:
+                logger.exception(
+                    "Renewal confirm save failed invite_id=%s", invite.pk
+                )
+                return _renewal_quantity_page(
+                    request,
+                    invite,
+                    lines,
+                    formset,
+                    new_product_formset=new_product_formset,
+                    save_error="Could not save this confirmation. Try again.",
+                )
             return render(
                 request,
                 "business/renewal_confirm_thanks_guest.html",
@@ -2510,12 +3059,22 @@ def caselock_public_form(request, invite_id):
             product = form.cleaned_data["product"]
             sub.product = product
             sub.product_name = product.name
-            sub.save()
-            return render(
-                request,
-                "business/caselock_public_thanks_guest.html",
-                {"invite": invite, "public_page": True},
-            )
+            try:
+                sub.save()
+            except Exception:
+                logger.exception(
+                    "Case lock public save failed invite_id=%s", invite.pk
+                )
+                form.add_error(
+                    None,
+                    "Could not save this form. Try again.",
+                )
+            else:
+                return render(
+                    request,
+                    "business/caselock_public_thanks_guest.html",
+                    {"invite": invite, "public_page": True},
+                )
     else:
         form = CaseLockPublicForm(company=company)
     return render(
@@ -2655,22 +3214,28 @@ def caselock_inbox_list(request):
 def caselock_inbox_live(request):
     """Return current Case lock rows as JSON. Mailbox poll is local-only; server uses Celery."""
     company = _company(request)
-    fetch_result = _maybe_poll_caselock_mailbox(company)
-    created = int(fetch_result.get("created") or 0)
-    payload = _caselock_live_payload(company)
-    return JsonResponse(
-        {
-            "ok": True,
-            "created": created,
-            "inbox_errors": poll_error_logs(fetch_result),
-            "polled_at": _format_dt(timezone.now()),
-            "mailbox_poll_on_request": should_poll_mailbox_on_request(),
-            "mail_rows": payload["mail_rows"],
-            "submission_rows": payload["submission_rows"],
-            "mail_count": payload["mail_count"],
-            "submission_count": payload["submission_count"],
-        }
-    )
+    try:
+        fetch_result = _maybe_poll_caselock_mailbox(company)
+        created = int(fetch_result.get("created") or 0)
+        payload = _caselock_live_payload(company)
+        return JsonResponse(
+            {
+                "ok": True,
+                "created": created,
+                "inbox_errors": poll_error_logs(fetch_result),
+                "polled_at": _format_dt(timezone.now()),
+                "mailbox_poll_on_request": should_poll_mailbox_on_request(),
+                "mail_rows": payload["mail_rows"],
+                "submission_rows": payload["submission_rows"],
+                "mail_count": payload["mail_count"],
+                "submission_count": payload["submission_count"],
+            }
+        )
+    except Exception:
+        logger.exception(
+            "caselock_inbox_live failed company_id=%s", company.pk
+        )
+        return _json_error("Could not refresh Case lock inbox.")
 
 
 @company_owner_required

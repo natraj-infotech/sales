@@ -1,0 +1,193 @@
+<div class="oem-diary-backdrop" id="oem-diary-modal" hidden>
+  <div class="oem-diary-modal" role="dialog" aria-labelledby="oem-diary-title">
+    <div class="oem-diary-head">
+      <span id="oem-diary-title">Email Diary</span>
+      <button type="button" id="oem-diary-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="oem-diary-body">
+      <p class="muted" style="margin-top:0;">
+        Manufacturers from your products are listed. You can also add a new company.
+        Use + on a row to add another email for that company.
+      </p>
+      <div class="oem-field">
+        <label for="oem-diary-search">Search Company</label>
+        <input type="search" id="oem-diary-search" placeholder="Search / select company...">
+      </div>
+      <div class="oem-diary-new" id="oem-diary-new">
+        <input type="text" id="oem-new-name" placeholder="New company name">
+        <input type="email" id="oem-new-email" placeholder="Email address">
+        <button type="button" class="btn btn-primary" id="oem-new-save">Add company</button>
+      </div>
+      <p id="oem-diary-error" class="muted" style="color:#b91c1c;display:none;"></p>
+      <div class="oem-diary-table-wrap">
+        <table class="oem-diary-table">
+          <thead>
+            <tr>
+              <th>Company name</th>
+              <th>Email addresses</th>
+              <th>Add</th>
+            </tr>
+          </thead>
+          <tbody id="oem-diary-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById("oem-diary-modal");
+  if (!modal) return;
+  var tbody = document.getElementById("oem-diary-tbody");
+  var search = document.getElementById("oem-diary-search");
+  var err = document.getElementById("oem-diary-error");
+  var DIARY_URL = "{% url 'support_oem_diary' %}";
+  var CSRF = "{{ csrf_token }}";
+  var rows = [];
+
+  function showError(text) {
+    if (!err) return;
+    if (!text) {
+      err.style.display = "none";
+      err.textContent = "";
+      return;
+    }
+    err.style.display = "block";
+    err.textContent = text;
+  }
+
+  function openModal() {
+    modal.hidden = false;
+    modal.classList.add("is-open");
+    loadRows();
+  }
+  function closeModal() {
+    modal.hidden = true;
+    modal.classList.remove("is-open");
+  }
+  window.openOemDiary = openModal;
+
+  document.querySelectorAll("[data-open-oem-diary]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      openModal();
+    });
+  });
+  var closeBtn = document.getElementById("oem-diary-close");
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) closeModal();
+  });
+
+  function emailChips(row) {
+    return (row.emails || []).map(function (item) {
+      var cls = item.source === "product" ? "oem-mail-chip is-product" : "oem-mail-chip";
+      var tag = item.source === "product" ? " <em>Product email</em>" : "";
+      return '<span class="' + cls + '">' + escapeHtml(item.email) + tag + "</span>";
+    }).join("");
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function render() {
+    var q = ((search && search.value) || "").trim().toLowerCase();
+    var filtered = rows.filter(function (row) {
+      if (!q) return true;
+      var blob = (row.name + " " + (row.emails || []).map(function (e) { return e.email; }).join(" ")).toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="muted" style="text-align:center;padding:1.4rem;">No companies yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filtered.map(function (row) {
+      return (
+        '<tr data-name="' + escapeHtml(row.name) + '">' +
+          '<td class="oem-diary-company">' + escapeHtml(row.name) + "</td>" +
+          '<td><div class="oem-diary-mails">' + emailChips(row) + "</div>" +
+            '<form class="oem-add-form" data-add-email>' +
+              '<input type="email" name="email" placeholder="another@email.com" required>' +
+              '<button type="submit" class="btn btn-primary">Save</button>' +
+            "</form>" +
+          "</td>" +
+          '<td><button type="button" class="oem-add-btn" data-toggle-add title="Add email">+</button></td>' +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function loadRows() {
+    fetch(DIARY_URL, { credentials: "same-origin", headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        rows = data.rows || [];
+        render();
+      })
+      .catch(function () { showError("Could not load Email Diary."); });
+  }
+
+  function postDiary(payload) {
+    var body = new URLSearchParams(payload);
+    body.set("csrfmiddlewaretoken", CSRF);
+    return fetch(DIARY_URL, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: body.toString(),
+    }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); });
+  }
+
+  if (search) search.addEventListener("input", render);
+  tbody.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-toggle-add]");
+    if (!btn) return;
+    var form = btn.closest("tr").querySelector("[data-add-email]");
+    if (form) form.classList.toggle("is-open");
+  });
+  tbody.addEventListener("submit", function (e) {
+    var form = e.target.closest("[data-add-email]");
+    if (!form) return;
+    e.preventDefault();
+    var tr = form.closest("tr");
+    var email = (form.querySelector('input[name="email"]').value || "").trim();
+    postDiary({ action: "add_email", name: tr.getAttribute("data-name"), email: email })
+      .then(function (res) {
+        if (!res.data.ok) {
+          showError(res.data.error || "Could not add email.");
+          return;
+        }
+        showError("");
+        rows = res.data.rows || [];
+        render();
+        if (window.refreshOemContacts) window.refreshOemContacts();
+      });
+  });
+  var saveNew = document.getElementById("oem-new-save");
+  if (saveNew) {
+    saveNew.addEventListener("click", function () {
+      var name = (document.getElementById("oem-new-name").value || "").trim();
+      var email = (document.getElementById("oem-new-email").value || "").trim();
+      postDiary({ action: "add_company", name: name, email: email })
+        .then(function (res) {
+          if (!res.data.ok) {
+            showError(res.data.error || "Could not add company.");
+            return;
+          }
+          showError("");
+          document.getElementById("oem-new-name").value = "";
+          document.getElementById("oem-new-email").value = "";
+          rows = res.data.rows || [];
+          render();
+          if (window.refreshOemContacts) window.refreshOemContacts();
+        });
+    });
+  }
+})();
+</script>

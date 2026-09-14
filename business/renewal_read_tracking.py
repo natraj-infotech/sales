@@ -361,7 +361,16 @@ def poll_outlook_read_receipts_for_all_companies() -> dict[str, int | list[str]]
     from accounts.models import CompanyProfile
 
     for company in CompanyProfile.objects.order_by("pk"):
-        updated, company_logs = poll_outlook_read_receipts_for_company(company)
+        try:
+            updated, company_logs = poll_outlook_read_receipts_for_company(company)
+        except Exception as exc:
+            logger.exception(
+                "Renewal read poll crashed company_id=%s", company.pk
+            )
+            logs.append(
+                f"{company.company_name}: read poll crashed: {exc}"
+            )
+            continue
         total += updated
         logs.extend(company_logs)
     return {"matched": total, "logs": logs[-30:]}

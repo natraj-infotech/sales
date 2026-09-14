@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -14,6 +15,8 @@ from business.import_io import (
     norm_header as _norm_header_io,
 )
 from business.models import Client, ClientSubscription, Product, Vendor
+
+logger = logging.getLogger(__name__)
 
 PRESET_VENDOR_CHOICES: tuple[tuple[str, str], ...] = (
     ("redington", "Redington"),
@@ -30,6 +33,7 @@ IMPORT_HEADERS: tuple[str, ...] = (
     "End Date",
     "Quantity",
     "Price",
+    "Invoice Number",
 )
 
 IMPORT_SAMPLE_ROW: tuple[str, ...] = (
@@ -40,6 +44,7 @@ IMPORT_SAMPLE_ROW: tuple[str, ...] = (
     "2027-01-01",
     1,
     1200.00,
+    "INV-001",
 )
 
 HEADER_ALIASES: dict[str, str] = {
@@ -103,6 +108,11 @@ HEADER_ALIASES: dict[str, str] = {
     "billing_amount": "billing_amount",
     "price": "billing_amount",
     "amount": "billing_amount",
+    "invoice_number": "invoice_number",
+    "invoicenumber": "invoice_number",
+    "invoice_no": "invoice_number",
+    "invoiceno": "invoice_number",
+    "invoice": "invoice_number",
     "subscription_code": "subscription_code",
     "subscription_id": "subscription_code",
     "subscriptionid": "subscription_code",
@@ -143,6 +153,7 @@ MAPPING_UI_FIELDS: tuple[tuple[str, str, bool], ...] = (
     ("end_date", "End date", True),
     ("quantity", "Quantity", True),
     ("billing_amount", "Price", False),
+    ("invoice_number", "Invoice number", False),
 )
 
 ALLOWED_FIELDS = frozenset(HEADER_ALIASES.values()) | frozenset(
@@ -472,6 +483,11 @@ def count_subscription_data_rows(
     try:
         rows = list(iter_spreadsheet_rows(file_bytes, filename))
     except Exception:
+        logger.warning(
+            "Could not count subscription import rows filename=%s",
+            filename,
+            exc_info=True,
+        )
         return 0
     return max(0, len(rows) - header_row_index - 1)
 
@@ -614,6 +630,8 @@ def _import_subscription_rows(
             existing.quantity = _parse_quantity(get("quantity"))
             if "billing_amount" in col_map:
                 existing.billing_amount = billing_amount
+            if "invoice_number" in col_map:
+                existing.invoice_number = _cell_str(get("invoice_number"))[:128]
             existing.save()
             updated += 1
             continue
@@ -628,7 +646,7 @@ def _import_subscription_rows(
             end_date=end_d,
             quantity=_parse_quantity(get("quantity")),
             billing_amount=billing_amount,
-            invoice_number="",
+            invoice_number=_cell_str(get("invoice_number"))[:128],
             serial_number="",
             subscription_code=sub_code[:64],
             notes="",
@@ -681,6 +699,13 @@ def import_subscriptions_from_file(
             file_bytes, filename, min_cols=min_cols
         )
     except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Could not read subscription import file %s: %s",
+            filename,
+            exc,
+            extra={"company_id": company.pk},
+            exc_info=True,
+        )
         kind = "CSV" if lower.endswith(".csv") else "Excel"
         return 0, 0, [(0, f"Could not read {kind} file: {exc}")]
 

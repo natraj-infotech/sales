@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 from helpdesk.models import FollowUp, Queue, Ticket
@@ -111,19 +112,34 @@ def get_company_queue(company: CompanyProfile) -> Queue:
     return sync_company_queue(company)
 
 
-def tickets_for_company(company: CompanyProfile):
+def tickets_for_company(company: CompanyProfile, *, oem: bool | None = None):
     queue = get_company_queue(company)
-    return (
+    qs = (
         Ticket.objects.filter(queue=queue)
-        .select_related("assigned_to", "queue", "crm_meta", "crm_meta__created_by")
+        .select_related(
+            "assigned_to",
+            "queue",
+            "crm_meta",
+            "crm_meta__created_by",
+            "crm_meta__transferred_to",
+        )
         .order_by("-created", "-id")
     )
+    if oem is True:
+        qs = qs.filter(crm_meta__is_oem=True)
+    elif oem is False:
+        qs = qs.filter(Q(crm_meta__isnull=True) | Q(crm_meta__is_oem=False))
+    return qs
 
 
 def get_company_ticket(company: CompanyProfile, pk: int) -> Ticket:
     queue = get_company_queue(company)
     return Ticket.objects.select_related(
-        "assigned_to", "queue", "crm_meta", "crm_meta__created_by"
+        "assigned_to",
+        "queue",
+        "crm_meta",
+        "crm_meta__created_by",
+        "crm_meta__transferred_to",
     ).get(pk=pk, queue=queue)
 
 
@@ -254,6 +270,37 @@ class TicketView:
         """Attached by wrap_* when company settings are provided."""
         return getattr(self, "_sla", None)
 
+    @property
+    def is_oem(self):
+        return bool(self._meta and self._meta.is_oem)
+
+    @property
+    def oem_company_name(self):
+        return (self._meta.oem_company_name if self._meta else "") or ""
+
+    @property
+    def oem_to_email(self):
+        return (self._meta.oem_to_email if self._meta else "") or ""
+
+    @property
+    def oem_cc_emails(self):
+        return (self._meta.oem_cc_emails if self._meta else "") or ""
+
+    @property
+    def subscription_id(self):
+        return (self._meta.subscription_id if self._meta else "") or ""
+
+    @property
+    def transferred_to_id(self):
+        return self._meta.transferred_to_id if self._meta else None
+
+    @property
+    def transferred_to_reference(self):
+        pk = self.transferred_to_id
+        if not pk:
+            return ""
+        return f"TK-{pk:05d}"
+
 
 def wrap_ticket(ticket: Ticket, *, sla_settings=None) -> TicketView:
     view = TicketView(ticket)
@@ -277,6 +324,11 @@ def ensure_meta(
     department: str = "general",
     remarks: str = "",
     is_internal: bool = True,
+    is_oem: bool = False,
+    oem_company_name: str = "",
+    oem_to_email: str = "",
+    oem_cc_emails: str = "",
+    subscription_id: str = "",
 ) -> SupportTicketMeta:
     meta, created = SupportTicketMeta.objects.get_or_create(
         ticket=ticket,
@@ -285,6 +337,11 @@ def ensure_meta(
             "department": department or "general",
             "remarks": remarks or "",
             "is_internal": is_internal,
+            "is_oem": is_oem,
+            "oem_company_name": oem_company_name or "",
+            "oem_to_email": oem_to_email or "",
+            "oem_cc_emails": oem_cc_emails or "",
+            "subscription_id": subscription_id or "",
         },
     )
     if not created:
@@ -344,6 +401,66 @@ def create_internal_ticket(
         ticket,
         priority=ui_priority,
         priority_source=priority_source,
+    )
+    return ticket
+
+
+def create_oem_ticket(
+    *,
+    company: CompanyProfile,
+    user,
+    subject: str,
+    description: str,
+    oem_company_name: str = "",
+    oem_to_email: str = "",
+    oem_cc_emails: str = "",
+    subscription_id: str = "",
+    assignee=None,
+    department: str = "technical",
+    priority: str = "medium",
+) -> Ticket:
+    from business.sla import apply_sla_to_ticket
+
+    queue = get_company_queue(company)
+    now = timezone.now()
+    ui_priority = priority if priority in PRIORITY_UI_TO_HD else "medium"
+    ticket = Ticket(
+        title=subject[:200],
+        queue=queue,
+        created=now,
+        modified=now,
+        submitter_email=(oem_to_email or "").strip() or None,
+        status=Ticket.OPEN_STATUS,
+        description=description,
+        priority=PRIORITY_UI_TO_HD.get(ui_priority, 3),
+        assigned_to=assignee,
+    )
+    ticket.save()
+    ensure_meta(
+        ticket,
+        created_by=user,
+        department=department,
+        is_internal=True,
+        is_oem=True,
+        oem_company_name=oem_company_name,
+        oem_to_email=oem_to_email,
+        oem_cc_emails=oem_cc_emails,
+        subscription_id=subscription_id,
+    )
+    FollowUp.objects.create(
+        ticket=ticket,
+        date=now,
+        title="OEM ticket opened",
+        comment="",
+        public=False,
+        user=user,
+        new_status=Ticket.OPEN_STATUS,
+    )
+    apply_sla_to_ticket(
+        company,
+        ticket,
+        priority=ui_priority,
+        priority_source="manual",
     )
     return ticket
 

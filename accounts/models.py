@@ -80,6 +80,17 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="App password for the Case lock mailbox (e.g. Gmail app password).",
     )
+    oem_email = models.EmailField(
+        "OEM email",
+        blank=True,
+        help_text="From address used when sending OEM support tickets.",
+    )
+    oem_email_app_password = models.CharField(
+        "OEM email app password",
+        max_length=256,
+        blank=True,
+        help_text="App password for the OEM mailbox (e.g. Gmail app password).",
+    )
     outgoing_email = models.EmailField(
         "outgoing / SMTP email",
         blank=True,

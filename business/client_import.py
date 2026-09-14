@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from io import BytesIO
 from typing import Any
@@ -13,6 +14,8 @@ from accounts.models import CompanyProfile
 from business.import_io import cell_str, detect_header_row, iter_spreadsheet_rows, norm_header
 from business.models import Client
 from openpyxl import Workbook
+
+logger = logging.getLogger(__name__)
 
 EXPORT_HEADERS: tuple[str, ...] = (
     "Client ID",
@@ -300,13 +303,24 @@ def import_clients_from_file(
     file_bytes: bytes,
     filename: str = "",
 ) -> tuple[int, int, list[tuple[int, str]]]:
-    header_row_index, _header = detect_header_row(
-        file_bytes,
-        filename,
-        HEADER_ALIASES,
-        HINT_WORDS,
-    )
-    rows = iter_spreadsheet_rows(file_bytes, filename)
+    try:
+        header_row_index, _header = detect_header_row(
+            file_bytes,
+            filename,
+            HEADER_ALIASES,
+            HINT_WORDS,
+        )
+        rows = iter_spreadsheet_rows(file_bytes, filename)
+    except Exception as exc:
+        logger.warning(
+            "Could not read client import file %s: %s",
+            filename,
+            exc,
+            extra={"company_id": company.pk},
+            exc_info=True,
+        )
+        kind = "CSV" if (filename or "").lower().endswith(".csv") else "Excel"
+        return 0, 0, [(0, f"Could not read {kind} file: {exc}")]
     return _import_client_rows(
         company,
         rows,

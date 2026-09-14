@@ -1160,6 +1160,19 @@
       border-color: var(--header-blue);
       box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.15);
     }
+    .tracker-mock-field input[type="file"] {
+      padding: 0.4rem 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+    }
+    .tracker-mock-file-current {
+      display: inline-block;
+      margin-top: 0.35rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--header-blue);
+    }
     .tracker-mock-readonly {
       padding: 0.55rem 0.75rem;
       border-radius: var(--radius-sm);
@@ -2587,10 +2600,10 @@
 <body>
   {% include "includes/tracker_svg_sprite.html" %}
   {% if user.is_authenticated and not public_page and request.resolver_match.url_name != "account_logout" %}
-  <div class="layout" id="app-layout">
+  <div class="layout sidebar-collapsed" id="app-layout">
     <aside class="sidebar" id="app-sidebar">
       <div class="sidebar-top">
-        <button type="button" class="sidebar-hamburger-btn" id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="app-sidebar">
+        <button type="button" class="sidebar-hamburger-btn" id="sidebar-toggle" title="Expand sidebar" aria-label="Expand sidebar" aria-expanded="false" aria-controls="app-sidebar">
           <svg class="sidebar-toggle-icon-collapse" aria-hidden="true"><use href="#i-chevron-left"/></svg>
           <svg class="sidebar-toggle-icon-expand" aria-hidden="true"><use href="#i-chevron-right"/></svg>
         </button>
@@ -2692,8 +2705,11 @@
       } catch (e) {}
     }
     try {
-      if (localStorage.getItem(KEY) === "1") setCollapsed(true);
-    } catch (e) {}
+      if (localStorage.getItem(KEY) === "0") setCollapsed(false);
+      else setCollapsed(true);
+    } catch (e) {
+      setCollapsed(true);
+    }
     toggleBtn.addEventListener("click", function () {
       setCollapsed(!layout.classList.contains("sidebar-collapsed"));
     });

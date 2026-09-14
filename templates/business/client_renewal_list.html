@@ -328,6 +328,18 @@
     color: #0f172a;
     background: #fff;
   }
+  .cr-win-form-field input[type="file"] {
+    padding: 0.35rem 0;
+    border: none;
+    background: transparent;
+  }
+  .cr-win-form-file-current {
+    display: inline-block;
+    margin-top: 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #2563eb;
+  }
   .cr-win-form-actions {
     display: flex;
     flex-wrap: wrap;
@@ -338,7 +350,26 @@
   @media (max-width: 640px) {
     .cr-win-form-grid { grid-template-columns: 1fr; }
   }
-  .cr-tabs { margin-bottom: 0; }
+  .cr-renewals-card {
+    padding: 0;
+    overflow: hidden;
+  }
+  .cr-tabs.subnav-tabs {
+    margin: 0;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+  }
+  .cr-tabs .subnav-tab {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    max-width: none;
+    justify-content: center;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
   .cr-tab-panel[hidden] {
     display: none;
   }
@@ -346,11 +377,17 @@
     color: #1d4ed8;
     font-weight: 700;
   }
-  .cr-grid-table.tracker-table-pro,
-  .cr-grid-table.tracker-table-pro--wide {
+  .cr-renewals-card .tracker-table-scroll {
+    margin: 0;
     width: 100%;
-    min-width: 0;
-    max-width: 100%;
+    overflow-x: auto;
+  }
+  .cr-grid-table.tracker-table-pro,
+  .cr-grid-table.tracker-table-pro--wide,
+  #cr-table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: none !important;
     table-layout: fixed;
   }
   .cr-grid-table.tracker-table-pro thead th,
@@ -358,7 +395,7 @@
     border: 1px solid #d0d7e2;
     padding: 0.55rem 0.7rem;
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
     word-break: break-word;
     vertical-align: middle;
   }
@@ -387,20 +424,14 @@
   #cr-existing-table td:nth-child(5) { width: 12%; }
   #cr-existing-table th:nth-child(6),
   #cr-existing-table td:nth-child(6) { width: 12%; }
-  #cr-table th:nth-child(1),
-  #cr-table td:nth-child(1) { width: 18%; }
-  #cr-table th:nth-child(2),
-  #cr-table td:nth-child(2) { width: 14%; }
-  #cr-table th:nth-child(3),
-  #cr-table td:nth-child(3) { width: 14%; }
-  #cr-table th:nth-child(4),
-  #cr-table td:nth-child(4) { width: 22%; }
-  #cr-table th:nth-child(5),
-  #cr-table td:nth-child(5) { width: 12%; }
-  #cr-table th:nth-child(6),
-  #cr-table td:nth-child(6) { width: 6%; text-align: center; }
-  #cr-table th:nth-child(7),
-  #cr-table td:nth-child(7) { width: 14%; }
+  #cr-table col.cr-col-company { width: 16%; }
+  #cr-table col.cr-col-email { width: 15%; }
+  #cr-table col.cr-col-sent { width: 12%; }
+  #cr-table col.cr-col-read { width: 12%; }
+  #cr-table col.cr-col-resp { width: 13%; }
+  #cr-table col.cr-col-quote { width: 8%; }
+  #cr-table col.cr-col-product { width: 14%; }
+  #cr-table col.cr-col-deal { width: 10%; }
   .cr-grid-table .cr-col-qty {
     text-align: center;
     white-space: nowrap;
@@ -411,12 +442,12 @@
   .cr-grid-table .cr-col-response .cr-meta,
   .cr-grid-table td[data-col="response"] .cr-meta {
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
     line-height: 1.35;
   }
 </style>
 
-<div class="tracker-card tracker-card--flush-bottom">
+<div class="tracker-card tracker-card--flush-bottom cr-renewals-card">
   <div class="subnav-tabs cr-tabs" role="tablist" aria-label="Client renewal views">
     <button type="button" class="subnav-tab is-active" role="tab" id="cr-tab-new" data-tab="new" aria-selected="true" aria-controls="cr-panel-new">
       <svg aria-hidden="true"><use href="#i-plus"/></svg>
@@ -428,7 +459,7 @@
     </button>
     <button type="button" class="subnav-tab" role="tab" id="cr-tab-all" data-tab="all" aria-selected="false" aria-controls="cr-panel-all">
       <svg aria-hidden="true"><use href="#i-mail"/></svg>
-      All emails <span class="subnav-tab-count" id="cr-count-all">{{ object_list|length }}</span>
+      All emails <span class="subnav-tab-count" id="cr-count-all">{{ all_email_rows|length }}</span>
     </button>
   </div>
 
@@ -534,51 +565,65 @@
 
   <div class="cr-tab-panel" id="cr-panel-all" data-panel="all" role="tabpanel" aria-labelledby="cr-tab-all" hidden>
   <div class="tracker-table-scroll">
-    <table class="tracker-table-pro tracker-table-pro--wide cr-grid-table" id="cr-table">
+    <table class="tracker-table-pro cr-grid-table" id="cr-table">
+      <colgroup>
+        <col class="cr-col-company">
+        <col class="cr-col-email">
+        <col class="cr-col-sent">
+        <col class="cr-col-read">
+        <col class="cr-col-resp">
+        <col class="cr-col-quote">
+        <col class="cr-col-product">
+        <col class="cr-col-deal">
+      </colgroup>
       <thead>
         <tr>
+          <th>Company</th>
           <th>Client email</th>
           <th>Email sent</th>
           <th>Email read</th>
           <th class="cr-col-response">Response received</th>
           <th>Quotation</th>
-          <th>Items</th>
+          <th>Product</th>
           <th>Deal Status</th>
         </tr>
       </thead>
       <tbody id="cr-tbody">
-        {% for invite in object_list %}
+        {% for row in all_email_rows %}
         <tr
-          data-id="{{ invite.pk }}"
-          {% if invite.submitted_at %}
+          data-id="{{ row.id }}"
+          data-invite-id="{{ row.invite_id }}"
+          {% if row.subscription_id %}data-subscription-id="{{ row.subscription_id }}"{% endif %}
+          {% if row.submitted_at %}
           class="cr-row--clickable"
-          data-href="{% url 'client_renewal_detail' invite.pk %}"
+          data-href="{{ row.detail_url }}"
           role="link"
           tabindex="0"
           {% endif %}
         >
+          <td data-col="company">{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
           <td data-col="email">
-            {% for email in invite.sent_to_emails %}
+            {% for email in row.recipient_emails %}
               {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
             {% empty %}
-              {{ invite.client_email }}
+              {{ row.client_email }}
             {% endfor %}
           </td>
           <td>
-            {% if invite.email_sent_at %}
+            {% if row.email_sent_at %}
             <span class="cr-status cr-status--yes">Sent</span>
-            <span class="cr-meta">{{ invite.email_sent_at|date:"d M Y, H:i:s" }}</span>
+            <span class="cr-meta">{{ row.email_sent_at|date:"d M Y, H:i:s" }}</span>
             {% else %}
             <span class="cr-status cr-status--no">—</span>
             {% endif %}
           </td>
           <td data-col="read">
-            {% if invite.read_at %}
+            {% if row.read_at %}
             <span class="cr-status cr-status--yes">Read</span>
-            <span class="cr-meta">{{ invite.read_at|date:"d M Y, H:i:s" }}</span>
-            {% if invite.read_source == "outlook_receipt" %}
+            <span class="cr-meta">{{ row.read_at|date:"d M Y, H:i:s" }}</span>
+            {% if row.read_source == "outlook_receipt" %}
             <span class="cr-meta">Outlook read receipt</span>
-            {% elif invite.read_source == "outlook_open" %}
+            {% elif row.read_source == "outlook_open" %}
             <span class="cr-meta">Opened in Outlook</span>
             {% endif %}
             {% else %}
@@ -586,70 +631,69 @@
             {% endif %}
           </td>
           <td data-col="response" class="cr-col-response">
-            {% if invite.submitted_at %}
+            {% if row.submitted_at %}
             <span class="cr-status cr-status--yes">Received</span>
-            <span class="cr-meta">{{ invite.submitted_at|date:"d M Y, H:i:s" }}</span>
-            {% if invite.submitted_by_email %}
-            <span class="cr-meta">Quantity sent by {{ invite.submitted_by_email }}</span>
+            <span class="cr-meta">{{ row.submitted_at|date:"d M Y, H:i:s" }}</span>
+            {% if row.submitted_by_email %}
+            <span class="cr-meta">Quantity sent by {{ row.submitted_by_email }}</span>
             {% endif %}
             {% else %}
             <span class="cr-status cr-status--pending">Pending</span>
             {% endif %}
           </td>
           <td data-col="quote">
-            {% if invite.quotation_sent_at %}
+            {% if row.quotation_sent_at %}
             <span class="cr-status cr-status--yes">Zoho</span>
-            <span class="cr-meta">{{ invite.quotation_sent_at|date:"d M Y, H:i:s" }}</span>
-            {% elif invite.submitted_at %}
+            <span class="cr-meta">{{ row.quotation_sent_at|date:"d M Y, H:i:s" }}</span>
+            {% elif row.submitted_at %}
             <span class="cr-status cr-status--pending">Not sent</span>
             {% else %}
             <span class="cr-status cr-status--no">—</span>
             {% endif %}
           </td>
-          <td data-col="items">{{ invite.line_count }}</td>
+          <td data-col="product">{% if row.product_name %}{{ row.product_name }}{% else %}—{% endif %}</td>
           <td data-col="deal" class="cr-deal-cell">
-            {% with deal=invite.deal_table_state %}
-            {% if deal.pending and not deal.badges %}
+            {% if row.deal_pending and not row.deal_badges %}
             <button
               type="button"
               class="cr-deal-set cr-deal-btn"
-              data-deal-url="{% url 'client_renewal_set_deal_status' invite.pk %}"
+              data-deal-url="{{ row.deal_status_url }}"
             >
               <svg class="cr-deal-set-icon" aria-hidden="true"><use href="#i-bell"/></svg>
               Set status
             </button>
-            {% elif deal.badges %}
-              {% if deal.pending or deal.form_empty %}
+            {% elif row.deal_badges %}
+              {% if row.deal_pending or row.deal_form_empty %}
               <button
                 type="button"
                 class="cr-deal-open cr-deal-btn"
-                data-deal-url="{% url 'client_renewal_set_deal_status' invite.pk %}"
+                data-deal-url="{{ row.deal_status_url }}"
               >
               {% else %}
               <div class="cr-deal-stack">
               {% endif %}
                 <span class="cr-deal-pills">
-                  {% for badge in deal.badges %}
+                  {% for badge in row.deal_badges %}
                   <span class="cr-deal-pill cr-status--{{ badge }}">
                     {% if badge == "win" %}Win{% elif badge == "lost" %}Lost{% elif badge == "cancel" %}Cancel{% else %}{{ badge }}{% endif %}
-                    {% if badge == "win" and deal.form_empty %}
+                    {% if badge == "win" and row.deal_form_empty %}
                     <span class="cr-deal-dot" aria-hidden="true"></span>
                     {% endif %}
                   </span>
                   {% endfor %}
                 </span>
-                {% if deal.form_empty %}
+                {% if row.deal_form_empty %}
                 <span class="cr-deal-hint">
-                  {% if deal.form_empty_count > 1 or deal.badges|length > 1 %}
-                    {{ deal.form_empty_count }} form empty
+                  {% if row.deal_form_empty_count > 1 or row.deal_badges|length > 1 %}
+                    {{ row.deal_form_empty_count }} form empty
                   {% else %}
                     Form empty
                   {% endif %}
                 </span>
-                {% elif deal.pending %}
+                {% elif row.deal_pending %}
                 <span class="cr-deal-hint">Set remaining</span>
                 {% endif %}
-              {% if deal.pending or deal.form_empty %}
+              {% if row.deal_pending or row.deal_form_empty %}
               </button>
               {% else %}
               </div>
@@ -657,12 +701,11 @@
             {% else %}
             <span class="cr-status cr-status--no">—</span>
             {% endif %}
-            {% endwith %}
           </td>
         </tr>
         {% empty %}
         <tr id="cr-empty-row">
-          <td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">
+          <td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">
             No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
           </td>
         </tr>
@@ -907,6 +950,10 @@
   function createRow(row) {
     var tr = document.createElement("tr");
     tr.setAttribute("data-id", row.id);
+    if (row.invite_id) tr.setAttribute("data-invite-id", row.invite_id);
+    if (row.subscription_id) {
+      tr.setAttribute("data-subscription-id", row.subscription_id);
+    }
     if (row.detail_url) {
       tr.className = "cr-row--clickable";
       tr.setAttribute("data-href", row.detail_url);
@@ -914,12 +961,13 @@
       tr.setAttribute("tabindex", "0");
     }
     tr.innerHTML =
-      "<td data-col=\"email\">" + clientEmailHtml(row) + "</td>" +
+      '<td data-col="company">' + dash(row.company_name) + "</td>" +
+      '<td data-col="email">' + clientEmailHtml(row) + "</td>" +
       "<td>" + sentHtml(row) + "</td>" +
       '<td data-col="read">' + readHtml(row) + "</td>" +
       '<td data-col="response" class="cr-col-response">' + responseHtml(row) + "</td>" +
       '<td data-col="quote">' + quoteHtml(row) + "</td>" +
-      '<td data-col="items">' + escapeHtml(row.line_count) + "</td>" +
+      '<td data-col="product">' + dash(row.product_name) + "</td>" +
       '<td data-col="deal" class="cr-deal-cell">' + dealHtml(row) + "</td>";
     bindRow(tr);
     bindDealButton(tr.querySelector(".cr-deal-btn"));
@@ -1028,7 +1076,7 @@
     if (!rows.length) {
       if (!empty) {
         tbody.innerHTML =
-          '<tr id="cr-empty-row"><td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">' +
+          '<tr id="cr-empty-row"><td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">' +
           "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
           "</td></tr>";
       }
@@ -1056,20 +1104,30 @@
         return;
       }
 
+      var nextCompany = dash(row.company_name);
       var nextEmail = clientEmailHtml(row);
       var nextRead = readHtml(row);
       var nextResponse = responseHtml(row);
       var nextQuote = quoteHtml(row);
+      var nextProduct = dash(row.product_name);
       var nextDeal = dealHtml(row);
-      var nextItems = String(row.line_count);
+      var companyCell = tr.querySelector('[data-col="company"]');
       var emailCell = tr.querySelector('[data-col="email"]');
       var readCell = tr.querySelector('[data-col="read"]');
       var responseCell = tr.querySelector('[data-col="response"]');
       var quoteCell = tr.querySelector('[data-col="quote"]');
-      var itemsCell = tr.querySelector('[data-col="items"]');
+      var productCell = tr.querySelector('[data-col="product"]');
       var dealCell = tr.querySelector('[data-col="deal"]');
       var changed = false;
 
+      if (row.invite_id) tr.setAttribute("data-invite-id", row.invite_id);
+      if (row.subscription_id) {
+        tr.setAttribute("data-subscription-id", row.subscription_id);
+      }
+      if (companyCell && companyCell.innerHTML !== nextCompany) {
+        companyCell.innerHTML = nextCompany;
+        changed = true;
+      }
       if (emailCell && emailCell.innerHTML !== nextEmail) {
         emailCell.innerHTML = nextEmail;
         changed = true;
@@ -1086,8 +1144,8 @@
         quoteCell.innerHTML = nextQuote;
         changed = true;
       }
-      if (itemsCell && itemsCell.textContent !== nextItems) {
-        itemsCell.textContent = nextItems;
+      if (productCell && productCell.innerHTML !== nextProduct) {
+        productCell.innerHTML = nextProduct;
         changed = true;
       }
       if (dealCell && dealCell.innerHTML !== nextDeal) {
@@ -1158,16 +1216,37 @@
     return match ? match[1] : "";
   }
 
-  function applyInviteDealCell(data) {
-    if (!activeInviteId) return;
-    var tr = tbody.querySelector('tr[data-id="' + activeInviteId + '"]');
-    if (!tr) return;
-    paintDealCell(tr, {
-      deal_pending: data.deal_pending,
-      deal_badges: data.deal_badges || [],
-      deal_form_empty: data.deal_form_empty,
-      deal_form_empty_count: data.deal_form_empty_count,
+  function lineDealPayload(item, data) {
+    var status = item && item.deal_status ? item.deal_status : "";
+    return {
+      deal_pending: !status,
+      deal_badges: status ? [status] : [],
+      deal_form_empty: !!(item && item.form_empty),
+      deal_form_empty_count: item && item.form_empty ? 1 : 0,
       deal_status_url: data.deal_status_url || activeDealUrl,
+    };
+  }
+
+  function applyInviteDealCell(data) {
+    if (!activeInviteId || !tbody) return;
+    var itemsBySub = {};
+    (data.items || []).forEach(function (item) {
+      itemsBySub[String(item.subscription_id)] = item;
+    });
+    tbody.querySelectorAll('tr[data-invite-id="' + activeInviteId + '"]').forEach(function (tr) {
+      var item = itemsBySub[tr.getAttribute("data-subscription-id") || ""];
+      paintDealCell(
+        tr,
+        item
+          ? lineDealPayload(item, data)
+          : {
+              deal_pending: data.deal_pending,
+              deal_badges: data.deal_badges || [],
+              deal_form_empty: data.deal_form_empty,
+              deal_form_empty_count: data.deal_form_empty_count,
+              deal_status_url: data.deal_status_url || activeDealUrl,
+            }
+      );
     });
   }
 
@@ -1273,15 +1352,20 @@
           "</div>" +
         "</section>" +
         '<section class="cr-win-form-section">' +
+          '<h4 class="cr-win-form-section-title">New vendor</h4>' +
+          '<div class="cr-win-form-grid" style="grid-template-columns:1fr;">' +
+            fieldHtml(
+              "cr-win-vendor",
+              "New vendor",
+              '<select id="cr-win-vendor" name="vendor">' +
+                vendorOptionsHtml(draft.vendor) +
+              "</select>"
+            ) +
+          "</div>" +
+        "</section>" +
+        '<section class="cr-win-form-section">' +
           '<h4 class="cr-win-form-section-title">New quantity &amp; price</h4>' +
           '<div class="cr-win-form-grid">' +
-            fieldHtml(
-              "cr-win-qty",
-              "New quantity",
-              '<input id="cr-win-qty" name="quantity" type="number" min="0" required value="' +
-                escapeHtml(draft.quantity != null ? draft.quantity : "") +
-                '">'
-            ) +
             fieldHtml(
               "cr-win-price",
               "New price",
@@ -1289,14 +1373,36 @@
                 escapeHtml(draft.billing_amount || "") +
                 '">'
             ) +
-          "</div>" +
-          '<div class="cr-win-form-grid" style="margin-top:0.75rem;grid-template-columns:1fr;">' +
             fieldHtml(
-              "cr-win-vendor",
-              "New vendor",
-              '<select id="cr-win-vendor" name="vendor">' +
-                vendorOptionsHtml(draft.vendor) +
-              "</select>"
+              "cr-win-qty",
+              "New quantity",
+              '<input id="cr-win-qty" name="quantity" type="number" min="0" required value="' +
+                escapeHtml(draft.quantity != null ? draft.quantity : "") +
+                '">'
+            ) +
+          "</div>" +
+        "</section>" +
+        '<section class="cr-win-form-section">' +
+          '<h4 class="cr-win-form-section-title">New invoice</h4>' +
+          '<div class="cr-win-form-grid">' +
+            fieldHtml(
+              "cr-win-invoice",
+              "New invoice number",
+              '<input id="cr-win-invoice" name="invoice_number" type="text" maxlength="128" value="' +
+                escapeHtml(draft.invoice_number || "") +
+                '">'
+            ) +
+            fieldHtml(
+              "cr-win-invoice-pdf",
+              "New invoice PDF",
+              '<input id="cr-win-invoice-pdf" name="invoice_pdf" type="file" accept="application/pdf,.pdf">' +
+                (draft.invoice_pdf_url
+                  ? '<a class="cr-win-form-file-current" href="' +
+                    escapeHtml(draft.invoice_pdf_url) +
+                    '" target="_blank" rel="noopener">' +
+                    escapeHtml(draft.invoice_pdf_name || "View current PDF") +
+                    "</a>"
+                  : "")
             ) +
           "</div>" +
         "</section>" +
@@ -1316,18 +1422,21 @@
     if (form) {
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        postDealStatus(
-          {
-            action: "save_win_form",
-            subscription_id: item.subscription_id,
-            start_date: form.start_date.value,
-            end_date: form.end_date.value,
-            quantity: form.quantity.value,
-            billing_amount: form.billing_amount.value,
-            vendor: form.vendor.value,
-          },
-          handleSaved
-        );
+        var payload = {
+          action: "save_win_form",
+          subscription_id: item.subscription_id,
+          start_date: form.start_date.value,
+          end_date: form.end_date.value,
+          quantity: form.quantity.value,
+          billing_amount: form.billing_amount.value,
+          vendor: form.vendor.value,
+          invoice_number: form.invoice_number.value,
+        };
+        var pdfInput = form.querySelector('[name="invoice_pdf"]');
+        if (pdfInput && pdfInput.files && pdfInput.files[0]) {
+          payload.invoice_pdf = pdfInput.files[0];
+        }
+        postDealStatus(payload, handleSaved);
       });
     }
   }

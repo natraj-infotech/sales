@@ -7,12 +7,15 @@ imports work behind multiple Gunicorn/uwsgi workers (LocMemCache is per-process)
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 IMPORT_TMP_DIR = settings.BASE_DIR / ".import_tmp"
 
@@ -68,10 +71,18 @@ class ImportStash:
         return None
 
     def stash(self, request, file_bytes: bytes, meta: dict[str, Any]) -> str:
-        IMPORT_TMP_DIR.mkdir(parents=True, exist_ok=True)
-        token = str(uuid.uuid4())
-        file_path = self.upload_path(request.user.pk, token)
-        file_path.write_bytes(file_bytes)
+        try:
+            IMPORT_TMP_DIR.mkdir(parents=True, exist_ok=True)
+            token = str(uuid.uuid4())
+            file_path = self.upload_path(request.user.pk, token)
+            file_path.write_bytes(file_bytes)
+        except OSError:
+            logger.exception(
+                "Import stash write failed user_id=%s prefix=%s",
+                getattr(request.user, "pk", None),
+                self.config.prefix,
+            )
+            raise
         request.session[self.config.session_token_key] = token
         request.session[self.config.session_meta_key] = meta
         request.session.modified = True
@@ -96,7 +107,11 @@ class ImportStash:
         if path:
             file_path = Path(path)
             if file_path.is_file():
-                return file_path.read_bytes()
+                try:
+                    return file_path.read_bytes()
+                except OSError:
+                    logger.exception("Import stash read failed path=%s", path)
+                    return b""
         legacy = data.get("bytes")
         if isinstance(legacy, (bytes, bytearray)) and legacy:
             return bytes(legacy)
@@ -105,9 +120,19 @@ class ImportStash:
     def clear(self, request, token: str) -> None:
         path = self.resolve_upload_path(request.user.pk, token)
         if path:
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Import stash cleanup failed path=%s", path, exc_info=True
+                )
         for legacy in self._legacy_paths(request.user.pk, token):
-            legacy.unlink(missing_ok=True)
+            try:
+                legacy.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Import stash cleanup failed path=%s", legacy, exc_info=True
+                )
         request.session.pop(self.config.session_token_key, None)
         request.session.pop(self.config.session_meta_key, None)
         request.session.modified = True

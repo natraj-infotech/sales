@@ -1,4 +1,5 @@
 from django import forms
+from django.core.validators import FileExtensionValidator
 from django.forms import BaseFormSet, formset_factory
 from django.db.models import Q
 from django.db.models.functions import Trim
@@ -371,6 +372,7 @@ class ClientSubscriptionForm(forms.ModelForm):
             "vendor",
             "billing_amount",
             "invoice_number",
+            "invoice_pdf",
             "serial_number",
             "subscription_code",
             "status",
@@ -387,6 +389,9 @@ class ClientSubscriptionForm(forms.ModelForm):
                 attrs={"type": "date", "placeholder": "dd-mm-yyyy"},
                 format="%Y-%m-%d",
             ),
+            "invoice_pdf": forms.FileInput(
+                attrs={"accept": "application/pdf,.pdf"}
+            ),
         }
 
     def __init__(self, *args, company=None, asset_type_prefilter=None, **kwargs):
@@ -399,6 +404,13 @@ class ClientSubscriptionForm(forms.ModelForm):
 
         self.fields["billing_amount"].label = "Price"
         self.fields["invoice_number"].label = "Invoice number"
+        self.fields["invoice_number"].required = False
+        self.fields["invoice_pdf"].label = "Invoice PDF copy"
+        self.fields["invoice_pdf"].required = False
+        self.fields["invoice_pdf"].help_text = "Optional. PDF only."
+        self.fields["invoice_pdf"].validators.append(
+            FileExtensionValidator(allowed_extensions=["pdf"])
+        )
         self.fields["subscription_code"].label = "Subscription id"
 
         cats = set()
@@ -692,6 +704,17 @@ class SubscriptionRenewForm(forms.Form):
     vendor = forms.ChoiceField(
         label="New vendor",
         required=False,
+    )
+    invoice_number = forms.CharField(
+        label="New invoice number",
+        required=False,
+        max_length=128,
+    )
+    invoice_pdf = forms.FileField(
+        label="New invoice PDF",
+        required=False,
+        validators=[FileExtensionValidator(allowed_extensions=["pdf"])],
+        widget=forms.FileInput(attrs={"accept": "application/pdf,.pdf"}),
     )
 
     def __init__(self, *args, company=None, **kwargs):

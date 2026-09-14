@@ -9,6 +9,28 @@ from django.utils import timezone
 from accounts.models import CompanyProfile
 
 
+def subscription_invoice_upload_to(instance, filename):
+    company_id = getattr(instance, "company_id", None) or "unknown"
+    return f"subscription_invoices/{company_id}/{filename}"
+
+
+def subscription_draft_invoice_upload_to(instance, filename):
+    company_id = getattr(instance, "company_id", None) or "unknown"
+    return f"subscription_invoice_drafts/{company_id}/{filename}"
+
+
+def _field_file_meta(field_file) -> tuple[str, str]:
+    if not field_file:
+        return "", ""
+    raw = field_file.name or ""
+    name = raw.rsplit("/", 1)[-1]
+    try:
+        url = field_file.url
+    except ValueError:
+        url = ""
+    return name, url
+
+
 class Vendor(models.Model):
     company = models.ForeignKey(
         CompanyProfile, on_delete=models.CASCADE, related_name="vendors"
@@ -194,11 +216,24 @@ class ClientSubscription(models.Model):
         blank=True,
         related_name="renewal_draft_subscriptions",
     )
+    renewal_draft_invoice_number = models.CharField(max_length=128, blank=True)
+    renewal_draft_invoice_pdf = models.FileField(
+        "new invoice PDF",
+        upload_to=subscription_draft_invoice_upload_to,
+        blank=True,
+        null=True,
+    )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     billing_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     invoice_number = models.CharField(max_length=128, blank=True)
+    invoice_pdf = models.FileField(
+        "invoice PDF",
+        upload_to=subscription_invoice_upload_to,
+        blank=True,
+        null=True,
+    )
     serial_number = models.CharField(max_length=128, blank=True)
     subscription_code = models.CharField("subscription id", max_length=64, blank=True)
     notes = models.TextField(blank=True)
@@ -274,21 +309,38 @@ class ClientSubscription(models.Model):
                 else self.billing_amount
             )
             vendor_id = self.renewal_draft_vendor_id
+            invoice_number = self.renewal_draft_invoice_number
+            pdf_name, pdf_url = _field_file_meta(
+                self.renewal_draft_invoice_pdf or self.invoice_pdf
+            )
         else:
             start, end = suggested_start, suggested_end
             quantity = self.quantity
             amount = self.billing_amount
             vendor_id = self.vendor_id
+            invoice_number = self.invoice_number
+            pdf_name, pdf_url = _field_file_meta(self.invoice_pdf)
         return {
             "start_date": start,
             "end_date": end,
             "quantity": quantity,
             "billing_amount": amount,
             "vendor": str(vendor_id) if vendor_id else "",
+            "invoice_number": invoice_number or "",
+            "invoice_pdf_name": pdf_name,
+            "invoice_pdf_url": pdf_url,
         }
 
     def _set_renewal_draft(
-        self, *, start_date, end_date, quantity, billing_amount, vendor
+        self,
+        *,
+        start_date,
+        end_date,
+        quantity,
+        billing_amount,
+        vendor,
+        invoice_number="",
+        invoice_pdf=None,
     ) -> None:
         self.deal_status = self.DealStatus.WIN
         self.win_form_completed = True
@@ -297,9 +349,20 @@ class ClientSubscription(models.Model):
         self.renewal_draft_quantity = quantity
         self.renewal_draft_billing_amount = billing_amount
         self.renewal_draft_vendor = vendor
+        self.renewal_draft_invoice_number = invoice_number or ""
+        if invoice_pdf:
+            self.renewal_draft_invoice_pdf = invoice_pdf
 
     def save_renewal_draft(
-        self, *, start_date, end_date, quantity, billing_amount, vendor
+        self,
+        *,
+        start_date,
+        end_date,
+        quantity,
+        billing_amount,
+        vendor,
+        invoice_number="",
+        invoice_pdf=None,
     ) -> None:
         """Store intended renewal terms. Does not change the live subscription."""
         self._set_renewal_draft(
@@ -308,21 +371,33 @@ class ClientSubscription(models.Model):
             quantity=quantity,
             billing_amount=billing_amount,
             vendor=vendor,
+            invoice_number=invoice_number,
+            invoice_pdf=invoice_pdf,
         )
-        self.save(
-            update_fields=[
-                "deal_status",
-                "win_form_completed",
-                "renewal_draft_start_date",
-                "renewal_draft_end_date",
-                "renewal_draft_quantity",
-                "renewal_draft_billing_amount",
-                "renewal_draft_vendor",
-            ]
-        )
+        update_fields = [
+            "deal_status",
+            "win_form_completed",
+            "renewal_draft_start_date",
+            "renewal_draft_end_date",
+            "renewal_draft_quantity",
+            "renewal_draft_billing_amount",
+            "renewal_draft_vendor",
+            "renewal_draft_invoice_number",
+        ]
+        if invoice_pdf:
+            update_fields.append("renewal_draft_invoice_pdf")
+        self.save(update_fields=update_fields)
 
     def apply_saved_renewal(
-        self, *, start_date, end_date, quantity, billing_amount, vendor
+        self,
+        *,
+        start_date,
+        end_date,
+        quantity,
+        billing_amount,
+        vendor,
+        invoice_number="",
+        invoice_pdf=None,
     ) -> None:
         """Apply renewal to the live subscription and mark the Win form filled."""
         self.start_date = start_date
@@ -331,30 +406,39 @@ class ClientSubscription(models.Model):
         self.billing_amount = billing_amount
         self.vendor = vendor
         self.status = self.Status.ACTIVE
+        self.invoice_number = invoice_number or ""
+        applied_pdf = invoice_pdf or self.renewal_draft_invoice_pdf
+        if applied_pdf:
+            self.invoice_pdf = applied_pdf
         self._set_renewal_draft(
             start_date=start_date,
             end_date=end_date,
             quantity=quantity,
             billing_amount=billing_amount,
             vendor=vendor,
+            invoice_number=self.invoice_number,
+            invoice_pdf=applied_pdf,
         )
-        self.save(
-            update_fields=[
-                "start_date",
-                "end_date",
-                "quantity",
-                "billing_amount",
-                "vendor",
-                "status",
-                "deal_status",
-                "win_form_completed",
-                "renewal_draft_start_date",
-                "renewal_draft_end_date",
-                "renewal_draft_quantity",
-                "renewal_draft_billing_amount",
-                "renewal_draft_vendor",
-            ]
-        )
+        update_fields = [
+            "start_date",
+            "end_date",
+            "quantity",
+            "billing_amount",
+            "vendor",
+            "status",
+            "invoice_number",
+            "deal_status",
+            "win_form_completed",
+            "renewal_draft_start_date",
+            "renewal_draft_end_date",
+            "renewal_draft_quantity",
+            "renewal_draft_billing_amount",
+            "renewal_draft_vendor",
+            "renewal_draft_invoice_number",
+        ]
+        if applied_pdf:
+            update_fields.extend(["invoice_pdf", "renewal_draft_invoice_pdf"])
+        self.save(update_fields=update_fields)
 
 
 class SubscriptionExpiryNotice(models.Model):
@@ -533,6 +617,9 @@ class SubscriptionRenewalInvite(models.Model):
                             f"{amount:.2f}" if amount is not None else ""
                         ),
                         "vendor": initial["vendor"],
+                        "invoice_number": initial.get("invoice_number") or "",
+                        "invoice_pdf_name": initial.get("invoice_pdf_name") or "",
+                        "invoice_pdf_url": initial.get("invoice_pdf_url") or "",
                     },
                 }
             )
@@ -551,7 +638,16 @@ class SubscriptionRenewalInvite(models.Model):
         sub.save(update_fields=["deal_status"])
 
     def save_line_renewal_draft(
-        self, subscription_id: int, *, start_date, end_date, quantity, billing_amount, vendor
+        self,
+        subscription_id: int,
+        *,
+        start_date,
+        end_date,
+        quantity,
+        billing_amount,
+        vendor,
+        invoice_number="",
+        invoice_pdf=None,
     ) -> None:
         sub = self._line_subscription(subscription_id)
         if sub.deal_status == ClientSubscription.DealStatus.LOST:
@@ -562,6 +658,8 @@ class SubscriptionRenewalInvite(models.Model):
             quantity=quantity,
             billing_amount=billing_amount,
             vendor=vendor,
+            invoice_number=invoice_number,
+            invoice_pdf=invoice_pdf,
         )
 
     @property
@@ -1043,6 +1141,22 @@ class SupportTicketMeta(models.Model):
         default=True,
         help_text="True for tickets created in Ticket360 UI; False for email/IMAP.",
     )
+    is_oem = models.BooleanField(
+        default=False,
+        help_text="True for External (OEM) tickets sent to a manufacturer.",
+    )
+    oem_company_name = models.CharField(max_length=255, blank=True)
+    oem_to_email = models.EmailField(blank=True)
+    oem_cc_emails = models.TextField(blank=True)
+    subscription_id = models.CharField(max_length=64, blank=True)
+    transferred_to = models.ForeignKey(
+        "helpdesk.Ticket",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="oem_transfer_sources",
+        help_text="OEM ticket created when this internal ticket was transferred.",
+    )
     completed_at = models.DateTimeField(null=True, blank=True)
     first_response_due_at = models.DateTimeField(null=True, blank=True)
     resolve_due_at = models.DateTimeField(null=True, blank=True)
@@ -1165,3 +1279,53 @@ class TicketPriorityRule(models.Model):
             for part in (self.keywords or "").split(",")
             if part.strip()
         ]
+
+
+class OemDiaryCompany(models.Model):
+    """OEM Email Diary company (product manufacturers plus custom names)."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="oem_diary_companies",
+    )
+    name = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("name")),
+                models.F("company"),
+                name="unique_oem_diary_company_name",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class OemDiaryEmail(models.Model):
+    """Extra OEM contact email stored against an Email Diary company."""
+
+    diary_company = models.ForeignKey(
+        OemDiaryCompany,
+        on_delete=models.CASCADE,
+        related_name="emails",
+    )
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                models.F("diary_company"),
+                name="unique_oem_diary_email",
+            ),
+        ]
+
+    def __str__(self):
+        return self.email

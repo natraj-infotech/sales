@@ -11,7 +11,7 @@
       <p class="tracker-mock-form-card-subtitle">{{ subtitle }}</p>
     </header>
     <div class="tracker-mock-form-body">
-      <form method="post" id="subscription-form" novalidate>
+      <form method="post" id="subscription-form" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
         {% if asset_type_locked %}
         <input type="hidden" name="asset_type" value="{{ asset_type_locked }}">
@@ -54,6 +54,15 @@
           <h2 id="sub-section-ids" class="tracker-mock-section-title">Identifiers</h2>
           <div class="tracker-mock-grid">
             {% include "includes/form_field_mock.html" with field=form.invoice_number %}
+            <div class="tracker-mock-field">
+              <label class="tracker-mock-label" for="{{ form.invoice_pdf.id_for_label }}">{{ form.invoice_pdf.label }}</label>
+              {{ form.invoice_pdf }}
+              {% if form.invoice_pdf.help_text %}<span class="tracker-mock-helptext">{{ form.invoice_pdf.help_text }}</span>{% endif %}
+              {% if object.invoice_pdf %}
+              <a class="tracker-mock-file-current" href="{{ object.invoice_pdf.url }}" target="_blank" rel="noopener">View current PDF</a>
+              {% endif %}
+              {{ form.invoice_pdf.errors }}
+            </div>
             {% include "includes/form_field_mock.html" with field=form.serial_number %}
             {% include "includes/form_field_mock.html" with field=form.subscription_code extra_class="tracker-mock-field--qty" %}
           </div>

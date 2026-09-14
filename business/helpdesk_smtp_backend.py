@@ -103,7 +103,12 @@ class CompanySMTPEmailBackend(BaseEmailBackend):
                 if ok:
                     sent += 1
                 else:
-                    logger.error("Helpdesk SMTP send failed: %s", err)
+                    logger.error(
+                        "Helpdesk SMTP send failed from=%s subject=%s error=%s",
+                        from_email,
+                        (message.subject or "")[:120],
+                        err,
+                    )
                     if not self.fail_silently:
                         raise SMTPException(err or "SMTP send failed")
             except SMTPException:

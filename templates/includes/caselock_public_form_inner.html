@@ -89,6 +89,9 @@
 </style>
 <h2 {% if use_tracker %}class="tracker-card-section-title"{% else %}style="margin-top:0;"{% endif %}>Case lock details</h2>
 <p class="muted">All fields are required. Search and choose a product from the list.</p>
+{% if form.non_field_errors %}
+<p class="cl-product-error">{{ form.non_field_errors|striptags }}</p>
+{% endif %}
 <form method="post" id="cl-public-form">
   {% csrf_token %}
   <div class="form-row cl-product-field">

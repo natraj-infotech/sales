@@ -291,6 +291,16 @@
       {% include "includes/form_field_tracker.html" with field=form.caselock_email_app_password icon="lock" %}
     </div>
 
+    <h3 class="tracker-card-section-title">OEM email</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Used as the <strong>From</strong> address when sending External (OEM) support tickets.
+      Add the mailbox app password so OEM mail can be sent.
+    </p>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.oem_email icon="mail" %}
+      {% include "includes/form_field_tracker.html" with field=form.oem_email_app_password icon="lock" %}
+    </div>
+
     <h3 class="tracker-card-section-title">Outgoing email (SMTP)</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
       Required for client expiry reminders and the daily team digest. Use the same app password approach as support mail.

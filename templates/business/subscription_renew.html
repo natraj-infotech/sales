@@ -54,7 +54,7 @@
         </p>
       </section>
 
-      <form method="post" novalidate>
+      <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next_url }}">
         {% if form.non_field_errors %}
@@ -69,12 +69,35 @@
           </div>
         </section>
 
+        <section class="tracker-mock-section" aria-labelledby="renew-section-vendor" style="margin-top:1.25rem;">
+          <h2 id="renew-section-vendor" class="tracker-mock-section-title">New vendor</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.vendor %}
+          </div>
+        </section>
+
         <section class="tracker-mock-section" aria-labelledby="renew-section-qty" style="margin-top:1.25rem;">
           <h2 id="renew-section-qty" class="tracker-mock-section-title">New quantity &amp; price</h2>
           <div class="tracker-mock-grid">
-            {% include "includes/form_field_mock.html" with field=form.quantity %}
             {% include "includes/form_field_mock.html" with field=form.billing_amount %}
-            {% include "includes/form_field_mock.html" with field=form.vendor %}
+            {% include "includes/form_field_mock.html" with field=form.quantity %}
+          </div>
+        </section>
+
+        <section class="tracker-mock-section" aria-labelledby="renew-section-invoice" style="margin-top:1.25rem;">
+          <h2 id="renew-section-invoice" class="tracker-mock-section-title">New invoice</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.invoice_number %}
+            <div class="tracker-mock-field">
+              <label class="tracker-mock-label" for="{{ form.invoice_pdf.id_for_label }}">{{ form.invoice_pdf.label }}</label>
+              {{ form.invoice_pdf }}
+              {% if subscription.win_form_completed and subscription.renewal_draft_invoice_pdf %}
+              <a class="tracker-mock-file-current" href="{{ subscription.renewal_draft_invoice_pdf.url }}" target="_blank" rel="noopener">View saved PDF</a>
+              {% elif subscription.invoice_pdf %}
+              <a class="tracker-mock-file-current" href="{{ subscription.invoice_pdf.url }}" target="_blank" rel="noopener">View current PDF</a>
+              {% endif %}
+              {{ form.invoice_pdf.errors }}
+            </div>
           </div>
         </section>
 

@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -6,6 +7,8 @@ from django.core.cache import cache
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
+
+logger = logging.getLogger(__name__)
 
 from .forms import (
     AddCompanyMemberForm,
@@ -91,7 +94,15 @@ def company_setup(request):
 
                 sync_company_queue(obj)
             except Exception:
-                pass
+                logger.exception(
+                    "Support queue sync failed after company setup company_id=%s",
+                    obj.pk,
+                )
+                messages.warning(
+                    request,
+                    "Company saved, but the support ticket queue could not be synced. "
+                    "Try saving Company profile again.",
+                )
             return redirect("dashboard")
     else:
         form = CompanyProfileForm(instance=profile)
@@ -438,8 +449,14 @@ def zoho_callback(request):
             company.zoho_connected_email = email
             company.save(update_fields=["zoho_connected_email", "updated_at"])
         messages.success(request, "Zoho CRM connected successfully.")
-    except Exception as exc:
-        messages.error(request, f"Could not connect Zoho CRM: {exc}")
+    except Exception:
+        logger.exception(
+            "Zoho OAuth callback failed company_id=%s", company.pk
+        )
+        messages.error(
+            request,
+            "Could not connect Zoho CRM. Try again or check Zoho settings.",
+        )
     return redirect("company_setup")
 
 
@@ -487,7 +504,14 @@ def company_send_expiry_notifications(request):
 
         sync_company_queue(company)
     except Exception:
-        pass
+        logger.exception(
+            "Support queue sync failed before expiry send company_id=%s",
+            company.pk,
+        )
+        messages.warning(
+            request,
+            "Company settings saved, but the support ticket queue could not be synced.",
+        )
 
     action = request.POST.get("action", "").strip()
     if action not in {"client", "team", "both"}:
@@ -514,14 +538,26 @@ def company_send_expiry_notifications(request):
     team_sent = 0
     logs: list[str] = []
 
-    if action in {"client", "both"}:
-        count, client_logs = send_client_expiry_emails(company, force=True)
-        client_sent += count
-        logs.extend(client_logs)
-    if action in {"team", "both"}:
-        count, team_logs = send_team_expiry_digest(company, force=True)
-        team_sent += count
-        logs.extend(team_logs)
+    try:
+        if action in {"client", "both"}:
+            count, client_logs = send_client_expiry_emails(company, force=True)
+            client_sent += count
+            logs.extend(client_logs)
+        if action in {"team", "both"}:
+            count, team_logs = send_team_expiry_digest(company, force=True)
+            team_sent += count
+            logs.extend(team_logs)
+    except Exception:
+        logger.exception(
+            "Manual expiry send failed company_id=%s action=%s",
+            company.pk,
+            action,
+        )
+        messages.error(
+            request,
+            "Could not send expiry notifications. Check email settings and try again.",
+        )
+        return redirect("company_setup")
 
     for line in logs:
         if any(word in line.lower() for word in ("failed", "skipped")):

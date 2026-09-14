@@ -18,6 +18,8 @@ from .models import (
     SupportTicketMeta,
     SupportSLASettings,
     TicketPriorityRule,
+    OemDiaryCompany,
+    OemDiaryEmail,
 )
 
 
@@ -95,6 +97,7 @@ class ClientSubscriptionAdmin(admin.ModelAdmin):
         "serial_number",
         "subscription_code",
         "invoice_number",
+        "invoice_pdf",
         "status",
         "deal_status",
         "start_date",
@@ -200,6 +203,10 @@ class SupportTicketMetaAdmin(admin.ModelAdmin):
         "ticket",
         "department",
         "is_internal",
+        "is_oem",
+        "oem_company_name",
+        "oem_to_email",
+        "subscription_id",
         "priority_source",
         "first_response_due_at",
         "resolve_due_at",
@@ -208,8 +215,8 @@ class SupportTicketMetaAdmin(admin.ModelAdmin):
         "completed_at",
         "updated_at",
     )
-    list_filter = ("department", "is_internal", "priority_source")
-    search_fields = ("ticket__title", "remarks", "created_by__email")
+    list_filter = ("department", "is_internal", "is_oem", "priority_source")
+    search_fields = ("ticket__title", "remarks", "created_by__email", "oem_company_name", "oem_to_email")
 
 
 @admin.register(SupportSLASettings)
@@ -296,3 +303,16 @@ class CaseLockSubmissionAdmin(admin.ModelAdmin):
         "vendor_gst",
         "client_gst",
     )
+
+
+class OemDiaryEmailInline(admin.TabularInline):
+    model = OemDiaryEmail
+    extra = 1
+
+
+@admin.register(OemDiaryCompany)
+class OemDiaryCompanyAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "created_at")
+    list_filter = ("company",)
+    search_fields = ("name",)
+    inlines = [OemDiaryEmailInline]

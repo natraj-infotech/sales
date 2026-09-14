@@ -3,6 +3,7 @@
 
 {% block extra_css %}
 {% include "includes/analytics_dash.css.html" %}
+{% include "includes/oem_tickets.css.html" %}
 {% endblock %}
 
 {% block page_header %}
@@ -19,14 +20,84 @@
   </div>
   <div class="tracker-page-actions">
     <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_sla_settings' %}">SLA &amp; priority</a>
+    {% if source == "oem" %}
+    <a class="btn-tracker-header btn-tracker-ghost" href="#" data-open-oem-diary>Email Diary</a>
+    <a class="btn-tracker-header btn-tracker-on-blue" href="{% url 'support_oem_ticket_add' %}?mode=quick">+ OEM ticket</a>
+    {% else %}
     <a class="btn-tracker-header btn-tracker-on-blue" href="{% url 'support_ticket_add' %}">+ Create Ticket</a>
     <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_ticket_add' %}">+ Create Offline Ticket</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="ticket360-page">
+  <div class="oem-source-tabs">
+    <a class="oem-source-tab {% if source != 'oem' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}">
+      Internal <span class="oem-source-tab-count" id="st-count-internal">{{ counts.total }}</span>
+    </a>
+    <a class="oem-source-tab {% if source == 'oem' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}?source=oem">
+      External (OEM) <span class="oem-source-tab-count" id="st-count-oem">{{ oem_counts.total }}</span>
+    </a>
+  </div>
+
+  {% if source == "oem" %}
+  <div class="oem-stats">
+    <div class="oem-stat is-active">
+      <div class="num" id="oem-count-active">{{ oem_counts.active }}</div>
+      <div class="lbl">Active External</div>
+    </div>
+    <div class="oem-stat">
+      <div class="num" id="oem-count-open">{{ oem_counts.open }}</div>
+      <div class="lbl">Open</div>
+    </div>
+    <div class="oem-stat">
+      <div class="num" id="oem-count-closed">{{ oem_counts.closed }}</div>
+      <div class="lbl">Closed</div>
+    </div>
+  </div>
+
+  <div class="tracker-card tracker-card--flush-bottom ticket360-card">
+    <div class="ticket360-table-wrap tracker-table-scroll">
+      <table class="tracker-table-pro tracker-table-pro--wide oem-table" id="st-table">
+        <thead>
+          <tr>
+            <th>Ticket ID</th>
+            <th>Created At</th>
+            <th>Subject</th>
+            <th>OEM Company</th>
+            <th>OEM Email</th>
+            <th>Subscription ID</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="st-tbody">
+          {% for t in object_list %}
+          <tr data-ticket-id="{{ t.pk }}" data-search="{{ t.reference }} {{ t.subject }} {{ t.oem_company_name }} {{ t.oem_to_email }} {{ t.subscription_id }}">
+            <td><span class="ticket-ref">{{ t.reference }}</span></td>
+            <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ t.subject }}</td>
+            <td>{{ t.oem_company_name|default:"—" }}</td>
+            <td>{{ t.oem_to_email|default:"—" }}</td>
+            <td>{{ t.subscription_id|default:"—" }}</td>
+            <td class="col-actions">
+              <a class="ticket360-view-link" href="{% url 'support_ticket_detail' t.pk %}">View →</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="st-empty-row">
+            <td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">
+              No OEM tickets yet. <a href="{% url 'support_oem_ticket_add' %}">Create an OEM ticket</a>.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% include "includes/oem_email_diary_modal.html" %}
+  {% else %}
   <div class="ticket360-stats">
     <div class="ticket360-stat is-active">
       <div class="num" id="st-count-total">{{ counts.total }}</div>
@@ -177,7 +248,12 @@
           <tr data-ticket-id="{{ t.pk }}" data-search="{{ t.reference }} {{ t.subject }} {{ t.source_sender|default:t.created_by.email }} {{ t.get_priority_display }}">
             <td><span class="ticket-ref">{{ t.reference }}</span></td>
             <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
-            <td>{{ t.subject }}</td>
+            <td>
+              {{ t.subject }}
+              {% if t.transferred_to_id %}
+              <div class="oem-transferred">Transferred to <a href="{% url 'support_ticket_detail' t.transferred_to_id %}">{{ t.transferred_to_reference }}</a></div>
+              {% endif %}
+            </td>
             <td>{{ t.source_sender|default:t.created_by.email }}</td>
             <td>{{ t.get_department_display }}</td>
             <td><span class="prio-pill prio-pill--{{ t.priority }}">{{ t.get_priority_display }}</span></td>
@@ -239,6 +315,9 @@
             <td class="col-actions">
               <div class="ticket360-actions-cell">
                 <a class="ticket360-view-link" href="{% url 'support_ticket_detail' t.pk %}">View →</a>
+                {% if not t.transferred_to_id %}
+                <a class="ticket360-view-link" href="{% url 'support_ticket_transfer_oem' t.pk %}">Transfer to OEM</a>
+                {% endif %}
                 {% if t.status != "closed" %}
                 <form method="post" action="{% url 'support_ticket_detail' t.pk %}" style="display:inline;margin:0;">
                   {% csrf_token %}
@@ -260,6 +339,7 @@
       </table>
     </div>
   </div>
+  {% endif %}
 </div>
 
 {{ charts|json_script:"ticket-charts-data" }}
@@ -269,9 +349,12 @@
 (function () {
   var LIVE_URL = "{% url 'support_ticket_live' %}";
   var ADD_URL = "{% url 'support_ticket_add' %}";
+  var OEM_ADD_URL = "{% url 'support_oem_ticket_add' %}";
   var POLL_MS = 20000;
   var CSRF = "{{ csrf_token }}";
   var STATUS = "{{ status_filter|escapejs }}";
+  var SOURCE = "{{ source|escapejs }}";
+  var IS_OEM = SOURCE === "oem";
   var TRACKS_RESPONSE = {% if sla_settings.tracks_response %}true{% else %}false{% endif %};
   var TRACKS_RESOLVE = {% if sla_settings.tracks_resolve %}true{% else %}false{% endif %};
   var tbody = document.getElementById("st-tbody");
@@ -294,7 +377,7 @@
   }
 
   function renderTicketCharts(c) {
-    if (!window.Adash || !c) return;
+    if (IS_OEM || !window.Adash || !c) return;
     if (!ticketCharts.volume) {
       ticketCharts.volume = Adash.line("chart-ticket-volume", c.volume_labels, c.volume_values, "Tickets");
       ticketCharts.mix = Adash.doughnut(
@@ -330,6 +413,7 @@
   function qs() {
     var params = new URLSearchParams();
     if (STATUS) params.set("status", STATUS);
+    if (IS_OEM) params.set("source", "oem");
     var q = params.toString();
     return q ? ("?" + q) : "";
   }
@@ -432,10 +516,27 @@
   }
 
   function colCount() {
+    if (IS_OEM) return 7;
     return 12 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
   }
 
+  function oemRowHtml(r) {
+    return (
+      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-search="' +
+        escapeHtml([r.reference, r.subject, r.oem_company, r.oem_email, r.subscription_id].join(" ")) + '">' +
+        '<td><span class="ticket-ref">' + escapeHtml(r.reference) + "</span></td>" +
+        "<td>" + escapeHtml(r.created_at) + "</td>" +
+        "<td>" + escapeHtml(r.subject) + "</td>" +
+        "<td>" + escapeHtml(r.oem_company || "—") + "</td>" +
+        "<td>" + escapeHtml(r.oem_email || "—") + "</td>" +
+        "<td>" + escapeHtml(r.subscription_id || "—") + "</td>" +
+        '<td class="col-actions"><a class="ticket360-view-link" href="' + escapeHtml(r.detail_url) + '">View →</a></td>' +
+      "</tr>"
+    );
+  }
+
   function rowHtml(r, data) {
+    if (IS_OEM) return oemRowHtml(r);
     var nextQs = escapeHtml(data.next_qs || "");
     var searchBlob = escapeHtml([r.reference, r.subject, r.email, r.priority_label || r.priority].join(" "));
     var closeBtn = r.is_closed
@@ -447,6 +548,13 @@
           '<button type="submit" class="ticket360-close-btn">Close</button>' +
         "</form>"
       );
+    var transferBtn = r.transfer_url
+      ? '<a class="ticket360-view-link" href="' + escapeHtml(r.transfer_url) + '">Transfer to OEM</a> '
+      : "";
+    var transferred = r.transferred_to_reference
+      ? '<div class="oem-transferred">Transferred to <a href="' + escapeHtml(r.transferred_to_url || r.detail_url) + '">' +
+          escapeHtml(r.transferred_to_reference) + "</a></div>"
+      : "";
     var dueCols = "";
     if (TRACKS_RESPONSE) dueCols += slaCell(r.response_due, r.response_label, r.response_status);
     if (TRACKS_RESOLVE) dueCols += slaCell(r.resolve_due, r.resolve_label, r.resolve_status);
@@ -454,7 +562,7 @@
       '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-search="' + searchBlob + '">' +
         '<td><span class="ticket-ref">' + escapeHtml(r.reference) + "</span></td>" +
         "<td>" + escapeHtml(r.created_at) + "</td>" +
-        "<td>" + escapeHtml(r.subject) + "</td>" +
+        "<td>" + escapeHtml(r.subject) + transferred + "</td>" +
         "<td>" + escapeHtml(r.email) + "</td>" +
         "<td>" + escapeHtml(r.department) + "</td>" +
         "<td>" + priorityPill(r.priority, r.priority_label) + "</td>" +
@@ -492,6 +600,7 @@
         '<td class="col-actions">' +
           '<div class="ticket360-actions-cell">' +
             '<a class="ticket360-view-link" href="' + escapeHtml(r.detail_url) + '">View →</a> ' +
+            transferBtn +
             closeBtn +
           "</div>" +
         "</td>" +
@@ -500,6 +609,15 @@
   }
 
   function emptyHtml() {
+    if (IS_OEM) {
+      return (
+        '<tr class="st-empty-row">' +
+          '<td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">' +
+            'No OEM tickets yet. <a href="' + OEM_ADD_URL + '">Create an OEM ticket</a>.' +
+          "</td>" +
+        "</tr>"
+      );
+    }
     return (
       '<tr class="st-empty-row">' +
         '<td colspan="' + colCount() + '" class="muted" style="padding:1.25rem;text-align:center;">' +
@@ -521,6 +639,12 @@
     setText("st-count-pending", c.pending != null ? c.pending : "0");
     setText("st-count-observation", c.under_observation != null ? c.under_observation : "0");
     setText("st-count-breached", c.sla_breached != null ? c.sla_breached : "0");
+    setText("st-count-internal", c.total != null ? c.total : "0");
+    var oem = data.oem_counts || {};
+    setText("st-count-oem", oem.total != null ? oem.total : "0");
+    setText("oem-count-active", oem.active != null ? oem.active : "0");
+    setText("oem-count-open", oem.open != null ? oem.open : "0");
+    setText("oem-count-closed", oem.closed != null ? oem.closed : "0");
     var breachedStat = document.getElementById("st-stat-breached");
     if (breachedStat) {
       if (c.sla_breached) breachedStat.classList.add("is-warn");
