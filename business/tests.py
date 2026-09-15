@@ -349,6 +349,12 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(rows["Antivirus"]["previous_quantity"], 5)
         self.assertEqual(rows["Antivirus"]["renewal_quantity"], 8)
         self.assertFalse(rows["Antivirus"]["is_new"])
+        self.assertTrue(rows["Antivirus"]["start_date"])
+        self.assertTrue(rows["Antivirus"]["end_date"])
+        self.assertEqual(rows["VPN"]["start_date"], "")
+        self.assertEqual(rows["VPN"]["end_date"], "")
+        self.assertEqual(rows["Antivirus"]["ref_id"], "")
+        self.assertEqual(rows["VPN"]["ref_id"], "")
 
     def test_list_page_uses_single_grouped_table(self):
         self.client.force_login(self.user)
@@ -366,13 +372,22 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, "Prev qty")
         self.assertContains(response, "Renewal qty")
         self.assertContains(response, "VPN")
-        self.assertContains(response, "pending@example.com")
+        self.assertContains(response, "Quotation ID")
+        self.assertContains(response, 'class="cr-th-ref"')
+        self.assertNotContains(response, 'class="cr-th-email"')
         self.assertContains(response, "Connect Zoho")
         self.assertContains(response, ">Win</button>")
         self.assertContains(response, ">Lost</button>")
         self.assertNotContains(response, "cr-deal-pill cr-status--pending")
-        self.assertContains(response, '<td class="cr-company-cell">Acme</td>', html=False)
+        self.assertContains(response, "Acme")
+        self.assertContains(response, 'class="cr-expand-btn"')
+        self.assertContains(response, 'data-company="Acme"')
+        self.assertContains(response, 'id="cr-info-modal"')
+        self.assertContains(response, "Product info")
+        self.assertContains(response, "Email info")
         self.assertContains(response, 'class="cr-products"')
+        self.assertNotContains(response, "Show timestamps")
+        self.assertNotContains(response, "cr-ts-row")
         self.assertNotContains(response, "New subscriptions")
         self.assertNotContains(response, "Renewal requests")
         self.assertNotContains(response, "All emails")
@@ -393,11 +408,24 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(rows["Antivirus"]["renewal_quantity"], 8)
         self.assertTrue(rows["Antivirus"]["subscription_id"])
         self.assertIn("sent", rows["Antivirus"]["timestamps"])
+        self.assertTrue(rows["Antivirus"]["start_date"])
+        self.assertTrue(rows["Antivirus"]["end_date"])
+        self.assertEqual(rows["VPN"]["start_date"], "")
+        self.assertEqual(rows["VPN"]["end_date"], "")
 
     def test_zoho_payload_includes_open_quote_url(self):
         self.invite.zoho_quote_url = "https://crm.zoho.com/crm/quote/1"
+        self.invite.zoho_quote_id = "zquote-1"
+        self.invite.zoho_quote_number = "QT-91"
         self.invite.quotation_sent_at = timezone.now()
-        self.invite.save(update_fields=["zoho_quote_url", "quotation_sent_at"])
+        self.invite.save(
+            update_fields=[
+                "zoho_quote_url",
+                "zoho_quote_id",
+                "zoho_quote_number",
+                "quotation_sent_at",
+            ]
+        )
         groups = _renewal_product_groups(
             self._invites(), zoho_connected=True, zoho_configured=True
         )
@@ -412,8 +440,49 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertEqual(
             antivirus["zoho"]["quote_url"], "https://crm.zoho.com/crm/quote/1"
         )
+        self.assertEqual(antivirus["ref_id"], "QT-91")
         vpn = next(row for row in rows if row["product_name"] == "VPN")
         self.assertEqual(vpn["zoho"]["quote_url"], "https://crm.zoho.com/crm/quote/1")
+        self.assertEqual(vpn["ref_id"], "QT-91")
+        pending = next(
+            row
+            for row in rows
+            if row["product_name"] == "Antivirus"
+            and row["client_email"] == "pending@example.com"
+        )
+        self.assertEqual(pending["zoho"]["kind"], "send")
+        self.assertTrue(pending["zoho"]["send_url"])
+
+    def _quote_payload(self, invite):
+        from business.zoho_crm import create_quote_from_renewal_invite
+
+        self.company.zoho_refresh_token = "refresh-token"
+        self.company.save(update_fields=["zoho_refresh_token"])
+        with (
+            patch("business.zoho_crm.zoho_configured", return_value=True),
+            patch("business.zoho_crm.find_or_create_account", return_value="acc-1"),
+            patch("business.zoho_crm.find_or_create_product", return_value="prod-1"),
+            patch(
+                "business.zoho_crm._create_record",
+                return_value={"id": "q-1", "Quoted_Items": "QT-1"},
+            ) as create_record,
+            patch("business.zoho_crm.requests.get") as get_quote,
+        ):
+            get_quote.return_value.ok = False
+            create_quote_from_renewal_invite(self.company, invite)
+        return create_record.call_args.args[2]
+
+    def test_quote_uses_renewal_qty_when_present(self):
+        payload = self._quote_payload(self.invite)
+        self.assertEqual(payload["Product_Details"][0]["quantity"], 8)
+
+    def test_quote_uses_current_qty_when_renewal_qty_missing(self):
+        pending = SubscriptionRenewalInvite.objects.get(
+            client_email="pending@example.com"
+        )
+        payload = self._quote_payload(pending)
+        self.assertEqual(payload["Product_Details"][0]["quantity"], 5)
+        self.assertIn("no renewal qty yet", payload["Description"])
 
 
 class ReminderScheduleOverlapTests(SimpleTestCase):

@@ -387,7 +387,7 @@
   }
   .cr-th-company { width: 18%; }
   .cr-th-product { width: 21%; }
-  .cr-th-email { width: 18%; }
+  .cr-th-ref { width: 18%; }
   .cr-th-qty { width: 7%; text-align: center; }
   .cr-th-renew { width: 8%; text-align: center; }
   .cr-th-zoho { width: 15%; }
@@ -411,6 +411,15 @@
     vertical-align: middle;
     overflow-wrap: anywhere;
   }
+  .cr-company-cell-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+  .cr-company-cell-inner > span {
+    min-width: 0;
+  }
   .cr-products-cell {
     width: 82%;
     padding: 0;
@@ -422,7 +431,7 @@
     table-layout: fixed;
   }
   .cr-products .cr-col-product { width: 25.61%; }
-  .cr-products .cr-col-email { width: 21.95%; }
+  .cr-products .cr-col-ref { width: 21.95%; }
   .cr-products .cr-col-qty { width: 8.54%; text-align: center; white-space: nowrap; }
   .cr-products .cr-col-renew { width: 9.76%; text-align: center; white-space: nowrap; }
   .cr-products .cr-col-zoho { width: 18.29%; }
@@ -435,12 +444,6 @@
   }
   .cr-products tr:last-child td {
     border-bottom: none;
-  }
-  .cr-product-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    min-width: 0;
   }
   .cr-product-new {
     display: inline-block;
@@ -455,17 +458,21 @@
     vertical-align: middle;
   }
   .cr-expand-btn {
-    width: 1.45rem;
-    height: 1.45rem;
+    width: 1.1rem;
+    height: 1.1rem;
     flex-shrink: 0;
     border-radius: 999px;
     border: 1px solid #d1d5db;
     background: #fff;
     color: #334155;
-    font-size: 0.95rem;
+    font-size: 0.72rem;
     font-weight: 650;
     line-height: 1;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
   .cr-expand-btn:hover,
   .cr-expand-btn:focus-visible {
@@ -473,19 +480,99 @@
     border-color: #93c5fd;
     color: #1d4ed8;
   }
-  .cr-product-row.is-expanded td {
-    background: #f8fbff;
+  .cr-info-modal-card {
+    width: min(64rem, calc(100vw - 2rem));
   }
-  .cr-ts-row td {
-    background: #f8fafc;
-    padding: 0.55rem 1rem 0.7rem;
-    text-align: left;
+  .cr-info-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.95rem;
   }
-  .cr-ts-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.78rem;
-    font-weight: 700;
+  .cr-info-tab {
+    border: 1px solid #cbd5e1;
+    background: #fff;
     color: #334155;
+    border-radius: 999px;
+    padding: 0.38rem 0.9rem;
+    font-size: 0.8rem;
+    font-weight: 650;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .cr-info-tab:hover,
+  .cr-info-tab:focus-visible {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .cr-info-tab.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  .cr-info-body {
+    margin-top: 0.9rem;
+  }
+  .cr-info-hint {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.84rem;
+  }
+  .cr-info-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+  table.cr-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+  }
+  .cr-info-table th,
+  .cr-info-table td {
+    padding: 0.7rem 0.85rem;
+    text-align: left;
+    border-bottom: 1px solid #eef2f7;
+    vertical-align: middle;
+  }
+  .cr-info-table th {
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .cr-info-table tr:last-child td {
+    border-bottom: none;
+  }
+  .cr-info-table td:nth-child(2),
+  .cr-info-table td:nth-child(5),
+  .cr-info-table td:nth-child(6),
+  .cr-info-table td:nth-child(8) {
+    white-space: nowrap;
+  }
+  .cr-info-email-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .cr-info-email-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem 0.85rem;
+    background: #f8fafc;
+  }
+  .cr-info-email-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .cr-info-email-card .cr-ts-grid {
+    margin-top: 0.55rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .cr-ts-grid {
     display: grid;
@@ -561,6 +648,7 @@
   }
   @media (max-width: 720px) {
     .cr-ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cr-info-email-card .cr-ts-grid { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -572,7 +660,7 @@
         <tr>
           <th class="cr-th-company">Company</th>
           <th class="cr-th-product">Product</th>
-          <th class="cr-th-email">Client email</th>
+          <th class="cr-th-ref">Quotation ID</th>
           <th class="cr-th-qty">Prev qty</th>
           <th class="cr-th-renew">Renewal qty</th>
           <th class="cr-th-zoho">Zoho</th>
@@ -582,27 +670,23 @@
       <tbody id="cr-tbody">
         {% for group in renewal_groups %}
         <tr class="cr-company-row">
-          <td class="cr-company-cell">{{ group.company_name }}</td>
+          <td class="cr-company-cell">
+            <div class="cr-company-cell-inner">
+              <button type="button" class="cr-expand-btn" data-company="{{ group.company_name }}" aria-label="Show {{ group.company_name }} details">+</button>
+              <span>{{ group.company_name }}</span>
+            </div>
+          </td>
           <td class="cr-products-cell" colspan="6">
             <table class="cr-products">
               <tbody>
                 {% for row in group.rows %}
                 <tr class="cr-product-row" data-id="{{ row.id }}">
                   <td class="cr-col-product">
-                    <div class="cr-product-cell">
-                      <button type="button" class="cr-expand-btn" aria-expanded="false" aria-label="Show timestamps">+</button>
-                      <span>
-                        {{ row.product_name }}
-                        {% if row.is_new %}<span class="cr-product-new">NEW</span>{% endif %}
-                      </span>
-                    </div>
+                    {{ row.product_name }}
+                    {% if row.is_new %}<span class="cr-product-new">NEW</span>{% endif %}
                   </td>
-                  <td class="cr-col-email" data-col="email">
-                    {% for email in row.recipient_emails %}
-                      {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
-                    {% empty %}
-                      {{ row.client_email }}
-                    {% endfor %}
+                  <td class="cr-col-ref" data-col="ref">
+                    {% if row.ref_id %}{{ row.ref_id }}{% else %}—{% endif %}
                   </td>
                   <td class="cr-col-qty">{% if row.previous_quantity is None %}—{% else %}{{ row.previous_quantity }}{% endif %}</td>
                   <td class="cr-col-renew">
@@ -673,62 +757,6 @@
                     {% endif %}
                   </td>
                 </tr>
-                <tr class="cr-ts-row" data-for="{{ row.id }}" hidden>
-                  <td colspan="6">
-                    <p class="cr-ts-title">Timestamps</p>
-                    <div class="cr-ts-grid">
-                      <div class="cr-ts-item">
-                        {% if row.timestamps.sent %}
-                        <span class="cr-status cr-status--yes">Sent</span>
-                        <span class="cr-meta">{{ row.timestamps.sent.0 }}</span>
-                        {% if row.timestamps.sent|length > 1 %}
-                        <span class="cr-meta">Also sent {% for at in row.timestamps.sent %}{% if not forloop.first %}{{ at }}{% if not forloop.last %} · {% endif %}{% endif %}{% endfor %}</span>
-                        {% endif %}
-                        {% else %}
-                        <span class="cr-status cr-status--no">—</span>
-                        <span class="cr-meta">Email sent</span>
-                        {% endif %}
-                      </div>
-                      <div class="cr-ts-item">
-                        {% if row.timestamps.read_at %}
-                        <span class="cr-status cr-status--yes">Read</span>
-                        <span class="cr-meta">{{ row.timestamps.read_at }}</span>
-                        {% if row.timestamps.read_source == "outlook_receipt" %}
-                        <span class="cr-meta">Outlook read receipt</span>
-                        {% elif row.timestamps.read_source == "outlook_open" %}
-                        <span class="cr-meta">Opened in Outlook</span>
-                        {% endif %}
-                        {% else %}
-                        <span class="cr-status cr-status--pending">Not read</span>
-                        {% endif %}
-                      </div>
-                      <div class="cr-ts-item">
-                        {% if row.timestamps.submitted_at %}
-                        <span class="cr-status cr-status--yes">Received</span>
-                        <span class="cr-meta">{{ row.timestamps.submitted_at }}</span>
-                        {% if row.timestamps.submitted_by_email %}
-                        <span class="cr-meta">Quantity sent by {{ row.timestamps.submitted_by_email }}</span>
-                        {% endif %}
-                        {% else %}
-                        <span class="cr-status cr-status--pending">Pending</span>
-                        {% endif %}
-                      </div>
-                      <div class="cr-ts-item">
-                        {% if row.timestamps.deal %}
-                        <span class="cr-deal-pill cr-status--{{ row.timestamps.deal.status }}">
-                          {% if row.timestamps.deal.status == "win" %}Win{% elif row.timestamps.deal.status == "lost" %}Lost{% elif row.timestamps.deal.status == "cancel" %}Cancel{% else %}{{ row.timestamps.deal.status }}{% endif %}
-                        </span>
-                        {% if row.timestamps.deal.at %}
-                        <span class="cr-meta">{{ row.timestamps.deal.at }}</span>
-                        {% endif %}
-                        {% else %}
-                        <span class="cr-status cr-status--pending">Pending</span>
-                        <span class="cr-meta">Deal status</span>
-                        {% endif %}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -760,6 +788,27 @@
     <p id="cr-deal-error" class="cr-modal-error" hidden></p>
   </div>
 </div>
+
+<div id="cr-info-modal" class="cr-modal" hidden>
+  <div class="cr-modal-backdrop" data-info-close="1"></div>
+  <div class="cr-modal-card cr-info-modal-card" role="dialog" aria-modal="true" aria-labelledby="cr-info-title">
+    <div class="cr-modal-head">
+      <div>
+        <h3 id="cr-info-title">Company details</h3>
+        <p id="cr-info-sub" class="cr-modal-sub">Choose Product info or Email info.</p>
+      </div>
+      <button type="button" class="cr-modal-x" data-info-close="1">Close</button>
+    </div>
+    <div class="cr-info-tabs" role="tablist">
+      <button type="button" class="cr-info-tab" id="cr-info-tab-product" data-tab="product">Product info</button>
+      <button type="button" class="cr-info-tab" id="cr-info-tab-email" data-tab="email">Email info</button>
+    </div>
+    <div id="cr-info-body" class="cr-info-body">
+      <p class="cr-info-hint">Select Product info or Email info to view details.</p>
+    </div>
+  </div>
+</div>
+{{ renewal_groups|json_script:"cr-groups-data" }}
 <input type="hidden" id="cr-csrf" value="{{ csrf_token }}">
 
 <script>
@@ -781,6 +830,21 @@
   var activeDealUrl = "";
   var dealItems = [];
   var dealVendors = [];
+  var infoModal = document.getElementById("cr-info-modal");
+  var infoTitle = document.getElementById("cr-info-title");
+  var infoSub = document.getElementById("cr-info-sub");
+  var infoBody = document.getElementById("cr-info-body");
+  var infoTabProduct = document.getElementById("cr-info-tab-product");
+  var infoTabEmail = document.getElementById("cr-info-tab-email");
+  var currentGroups = [];
+  var openInfoCompany = "";
+  var openInfoTab = "";
+  try {
+    var groupsEl = document.getElementById("cr-groups-data");
+    currentGroups = groupsEl ? JSON.parse(groupsEl.textContent) : [];
+  } catch (err) {
+    currentGroups = [];
+  }
 
   function escapeHtml(text) {
     return String(text || "")
@@ -788,6 +852,11 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function refIdHtml(row) {
+    var value = (row.ref_id || "").trim();
+    return value ? escapeHtml(value) : "—";
   }
 
   function clientEmailHtml(row) {
@@ -901,7 +970,7 @@
     return '<div class="cr-zoho-actions">' + parts.join("") + "</div>";
   }
 
-  function timestampsHtml(row) {
+  function emailTimelineHtml(row) {
     var ts = row.timestamps || {};
     var sent = ts.sent || [];
     var sentBlock = sent.length
@@ -945,52 +1014,145 @@
       responseBlock = '<span class="cr-status cr-status--pending">Pending</span>';
     }
 
-    var dealBlock;
-    if (ts.deal && ts.deal.status) {
-      dealBlock = dealPillHtml(ts.deal.status);
-      if (ts.deal.at) dealBlock += '<span class="cr-meta">' + escapeHtml(ts.deal.at) + "</span>";
-    } else {
-      dealBlock =
-        '<span class="cr-status cr-status--pending">Pending</span><span class="cr-meta">Deal status</span>';
-    }
-
     return (
-      '<p class="cr-ts-title">Timestamps</p><div class="cr-ts-grid">' +
+      '<div class="cr-ts-grid">' +
       '<div class="cr-ts-item">' + sentBlock + "</div>" +
       '<div class="cr-ts-item">' + readBlock + "</div>" +
-      '<div class="cr-ts-item">' + responseBlock + "</div>" +
-      '<div class="cr-ts-item">' + dealBlock + "</div></div>"
+      '<div class="cr-ts-item">' + responseBlock + "</div></div>"
     );
   }
 
-  function expandedIds() {
-    var ids = {};
-    if (!tbody) return ids;
-    tbody.querySelectorAll("tr.cr-product-row.is-expanded").forEach(function (tr) {
-      ids[tr.getAttribute("data-id")] = true;
-    });
-    return ids;
-  }
-
-  function setExpanded(tr, tsRow, open) {
-    tr.classList.toggle("is-expanded", open);
-    var btn = tr.querySelector(".cr-expand-btn");
-    if (btn) {
-      btn.textContent = open ? "−" : "+";
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-      btn.setAttribute("aria-label", open ? "Hide timestamps" : "Show timestamps");
+  function productInfoHtml(group) {
+    var rows = (group && group.rows) || [];
+    if (!rows.length) {
+      return '<p class="cr-info-hint">No products for this company.</p>';
     }
-    if (tsRow) tsRow.hidden = !open;
+    var html =
+      '<div class="cr-info-table-wrap"><table class="cr-info-table"><thead><tr>' +
+      "<th>Product</th><th>Subscription ID</th><th>Prev qty</th><th>Renewal qty</th>" +
+      "<th>Start date</th><th>End date</th><th>Deal status</th><th>Client email</th>" +
+      "</tr></thead><tbody>";
+    rows.forEach(function (row) {
+      var changed =
+        row.previous_quantity !== null &&
+        row.previous_quantity !== undefined &&
+        row.renewal_quantity !== null &&
+        row.renewal_quantity !== undefined &&
+        Number(row.renewal_quantity) !== Number(row.previous_quantity);
+      var deal =
+        row.deal_status
+          ? dealPillHtml(row.deal_status)
+          : '<span class="cr-status cr-status--no">—</span>';
+      html +=
+        "<tr><td>" +
+        escapeHtml(row.product_name || "") +
+        (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
+        "</td><td>" +
+        qtyHtml(row.subscription_list_id, false) +
+        "</td><td>" +
+        qtyHtml(row.previous_quantity, false) +
+        "</td><td>" +
+        qtyHtml(row.renewal_quantity, changed) +
+        "</td><td>" +
+        qtyHtml(row.start_date, false) +
+        "</td><td>" +
+        qtyHtml(row.end_date, false) +
+        "</td><td>" +
+        deal +
+        "</td><td>" +
+        clientEmailHtml(row) +
+        "</td></tr>";
+    });
+    return html + "</tbody></table></div>";
   }
 
-  function bindExpand(tr, tsRow) {
-    var btn = tr.querySelector(".cr-expand-btn");
-    if (!btn || btn.dataset.bound === "1") return;
-    btn.dataset.bound = "1";
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      setExpanded(tr, tsRow, !tr.classList.contains("is-expanded"));
+  function emailInfoHtml(group) {
+    var rows = (group && group.rows) || [];
+    if (!rows.length) {
+      return '<p class="cr-info-hint">No email activity for this company.</p>';
+    }
+    var html = '<div class="cr-info-email-list">';
+    rows.forEach(function (row) {
+      html +=
+        '<section class="cr-info-email-card">' +
+        '<h4 class="cr-info-email-title">' +
+        escapeHtml(row.product_name || "") +
+        (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
+        "</h4>" +
+        '<div class="cr-meta">' +
+        clientEmailHtml(row) +
+        "</div>" +
+        emailTimelineHtml(row) +
+        "</section>";
+    });
+    return html + "</div>";
+  }
+
+  function findGroup(name) {
+    for (var i = 0; i < currentGroups.length; i++) {
+      if ((currentGroups[i].company_name || "") === name) return currentGroups[i];
+    }
+    return null;
+  }
+
+  function setInfoTab(tab) {
+    openInfoTab = tab || "";
+    if (infoTabProduct) infoTabProduct.classList.toggle("is-active", openInfoTab === "product");
+    if (infoTabEmail) infoTabEmail.classList.toggle("is-active", openInfoTab === "email");
+  }
+
+  function renderInfoBody() {
+    if (!infoBody) return;
+    var group = findGroup(openInfoCompany);
+    if (!group) {
+      infoBody.innerHTML = '<p class="cr-info-hint">This company is no longer in the list.</p>';
+      return;
+    }
+    if (openInfoTab === "product") {
+      infoBody.innerHTML = productInfoHtml(group);
+      return;
+    }
+    if (openInfoTab === "email") {
+      infoBody.innerHTML = emailInfoHtml(group);
+      return;
+    }
+    infoBody.innerHTML =
+      '<p class="cr-info-hint">Select Product info or Email info to view details.</p>';
+  }
+
+  function openInfoModal(companyName) {
+    if (!infoModal) return;
+    openInfoCompany = companyName || "";
+    if (infoTitle) infoTitle.textContent = openInfoCompany || "Company details";
+    if (infoSub) infoSub.textContent = "Choose Product info or Email info.";
+    setInfoTab("");
+    renderInfoBody();
+    infoModal.hidden = false;
+  }
+
+  function closeInfoModal() {
+    if (!infoModal) return;
+    infoModal.hidden = true;
+    openInfoCompany = "";
+    setInfoTab("");
+    if (infoTitle) infoTitle.textContent = "Company details";
+    if (infoSub) infoSub.textContent = "Choose Product info or Email info.";
+    if (infoBody) {
+      infoBody.innerHTML =
+        '<p class="cr-info-hint">Select Product info or Email info to view details.</p>';
+    }
+  }
+
+  function bindInfoButtons() {
+    if (!tbody) return;
+    tbody.querySelectorAll(".cr-company-row .cr-expand-btn").forEach(function (btn) {
+      if (btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openInfoModal(btn.getAttribute("data-company") || "");
+      });
     });
   }
 
@@ -1007,7 +1169,7 @@
     });
   }
 
-  function createProductRows(row, keepOpen) {
+  function createProductRow(row) {
     var tr = document.createElement("tr");
     tr.className = "cr-product-row";
     tr.setAttribute("data-id", row.id);
@@ -1018,68 +1180,66 @@
       row.renewal_quantity !== undefined &&
       Number(row.renewal_quantity) !== Number(row.previous_quantity);
     tr.innerHTML =
-      '<td class="cr-col-product"><div class="cr-product-cell">' +
-      '<button type="button" class="cr-expand-btn" aria-expanded="false" aria-label="Show timestamps">+</button>' +
-      "<span>" +
+      '<td class="cr-col-product">' +
       escapeHtml(row.product_name || "") +
       (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
-      "</span></div></td>" +
-      '<td class="cr-col-email" data-col="email">' + clientEmailHtml(row) + "</td>" +
+      "</td>" +
+      '<td class="cr-col-ref" data-col="ref">' + refIdHtml(row) + "</td>" +
       '<td class="cr-col-qty">' + qtyHtml(row.previous_quantity, false) + "</td>" +
       '<td class="cr-col-renew">' + qtyHtml(row.renewal_quantity, changed) + "</td>" +
       '<td class="cr-col-zoho" data-col="zoho">' + zohoHtml(row) + "</td>" +
       '<td class="cr-col-deal cr-deal-cell" data-col="deal">' + dealHtml(row) + "</td>";
 
-    var tsRow = document.createElement("tr");
-    tsRow.className = "cr-ts-row";
-    tsRow.setAttribute("data-for", row.id);
-    tsRow.hidden = true;
-    tsRow.innerHTML = '<td colspan="6">' + timestampsHtml(row) + "</td>";
-
-    bindExpand(tr, tsRow);
     bindZoho(tr);
     bindRowDealActions(tr);
-    if (keepOpen) setExpanded(tr, tsRow, true);
-    return [tr, tsRow];
+    return tr;
   }
 
   function applyGroups(groups) {
     if (!tbody) return;
-    var open = expandedIds();
+    currentGroups = groups || [];
     tbody.innerHTML = "";
-    if (!groups.length) {
+    if (!currentGroups.length) {
       tbody.innerHTML =
         '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="7">' +
         "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
         "</td></tr>";
+      if (infoModal && !infoModal.hidden) renderInfoBody();
       return;
     }
-    groups.forEach(function (group) {
+    currentGroups.forEach(function (group) {
+      var companyName = group.company_name || "—";
       var companyTr = document.createElement("tr");
       companyTr.className = "cr-company-row";
       companyTr.innerHTML =
-        '<td class="cr-company-cell">' +
-        escapeHtml(group.company_name || "—") +
-        '</td><td class="cr-products-cell" colspan="6"><table class="cr-products"><tbody></tbody></table></td>';
+        '<td class="cr-company-cell"><div class="cr-company-cell-inner">' +
+        '<button type="button" class="cr-expand-btn" data-company="' +
+        escapeHtml(companyName) +
+        '" aria-label="Show ' +
+        escapeHtml(companyName) +
+        ' details">+</button>' +
+        "<span>" +
+        escapeHtml(companyName) +
+        "</span></div></td>" +
+        '<td class="cr-products-cell" colspan="6"><table class="cr-products"><tbody></tbody></table></td>';
       var innerBody = companyTr.querySelector("tbody");
       (group.rows || []).forEach(function (row) {
-        var parts = createProductRows(row, !!open[row.id]);
-        innerBody.appendChild(parts[0]);
-        innerBody.appendChild(parts[1]);
+        innerBody.appendChild(createProductRow(row));
       });
       tbody.appendChild(companyTr);
     });
+    bindInfoButtons();
+    if (infoModal && !infoModal.hidden) renderInfoBody();
   }
 
 
   function bindServerRows() {
     if (!tbody) return;
     tbody.querySelectorAll("tr.cr-product-row").forEach(function (tr) {
-      var tsRow = tbody.querySelector('tr.cr-ts-row[data-for="' + tr.getAttribute("data-id") + '"]');
-      bindExpand(tr, tsRow);
       bindZoho(tr);
       bindRowDealActions(tr);
     });
+    bindInfoButtons();
   }
 
   function closeDealModal() {
@@ -1374,8 +1534,30 @@
       if (e.target && e.target.getAttribute("data-close") === "1") closeDealModal();
     });
   }
+  if (infoModal) {
+    infoModal.addEventListener("click", function (e) {
+      if (e.target && e.target.getAttribute("data-info-close") === "1") closeInfoModal();
+    });
+  }
+  if (infoTabProduct) {
+    infoTabProduct.addEventListener("click", function () {
+      setInfoTab("product");
+      renderInfoBody();
+    });
+  }
+  if (infoTabEmail) {
+    infoTabEmail.addEventListener("click", function () {
+      setInfoTab("email");
+      renderInfoBody();
+    });
+  }
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && dealModal && !dealModal.hidden) closeDealModal();
+    if (e.key !== "Escape") return;
+    if (dealModal && !dealModal.hidden) {
+      closeDealModal();
+      return;
+    }
+    if (infoModal && !infoModal.hidden) closeInfoModal();
   });
 
   function setMeta(text, isError) {

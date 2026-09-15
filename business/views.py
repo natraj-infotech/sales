@@ -348,15 +348,12 @@ def _format_dt(value):
     return date_format(timezone.localtime(value), "d M Y, H:i:s")
 
 
+def _format_date(value):
+    if not value:
+        return ""
+    return date_format(value, "d M Y")
 
 
-def _invite_is_quoteable(invite):
-    if not invite.submitted_at:
-        return False
-    return any(
-        line.renewal_count is not None and int(line.renewal_count) > 0
-        for line in invite.lines.all()
-    )
 
 
 def _company_group_key(name):
@@ -407,7 +404,7 @@ def _zoho_payload(invite, *, zoho_connected, zoho_configured, quote_url=""):
             "send_url": "",
             "quote_url": quote_url,
         }
-    if invite and _invite_is_quoteable(invite):
+    if invite:
         return {
             "kind": "send",
             "setup_url": "",
@@ -422,6 +419,13 @@ def _zoho_payload(invite, *, zoho_connected, zoho_configured, quote_url=""):
         "send_url": "",
         "quote_url": quote_url,
     }
+
+
+def _display_ref_id(row):
+    return (
+        (row.get("zoho_quote_number") or "").strip()
+        or (row.get("zoho_quote_id") or "").strip()
+    )
 
 
 def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=False):
@@ -458,21 +462,35 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                     "form_empty": bool(getattr(sub, "win_form_empty", False))
                     if sub
                     else False,
-                    "zoho_invite": invite if invite.submitted_at else None,
-                    "zoho_quote_url": (invite.zoho_quote_url or "")
-                    if invite.submitted_at
-                    else "",
+                    "zoho_invite": invite,
+                    "zoho_quote_url": invite.zoho_quote_url or "",
+                    "zoho_quote_id": invite.zoho_quote_id or "",
+                    "zoho_quote_number": invite.zoho_quote_number or "",
                     "events": [],
                     "deal_status_set_at": getattr(sub, "deal_status_set_at", None)
                     if sub
                     else None,
+                    "start_date": _format_date(getattr(sub, "start_date", None))
+                    if sub
+                    else "",
+                    "end_date": _format_date(getattr(sub, "end_date", None))
+                    if sub
+                    else "",
+                    "subscription_list_id": (
+                        getattr(sub, "subscription_list_id", "") if sub else ""
+                    )
+                    or "",
                 }
                 row = buckets[key]
             _append_invite_event(row["events"], invite)
-            if invite.submitted_at and row["zoho_invite"] is None:
+            if invite.submitted_at:
                 row["zoho_invite"] = invite
             if invite.zoho_quote_url:
                 row["zoho_quote_url"] = invite.zoho_quote_url
+            if invite.zoho_quote_id:
+                row["zoho_quote_id"] = invite.zoho_quote_id
+            if invite.zoho_quote_number:
+                row["zoho_quote_number"] = invite.zoho_quote_number
             if row["renewal_quantity"] is None and line.renewal_count is not None:
                 row["renewal_quantity"] = line.renewal_count
                 row["previous_quantity"] = line.current_quantity
@@ -504,13 +522,22 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                     "form_empty": False,
                     "zoho_invite": invite,
                     "zoho_quote_url": invite.zoho_quote_url or "",
+                    "zoho_quote_id": invite.zoho_quote_id or "",
+                    "zoho_quote_number": invite.zoho_quote_number or "",
                     "events": [],
                     "deal_status_set_at": None,
+                    "start_date": "",
+                    "end_date": "",
+                    "subscription_list_id": "",
                 }
                 row = buckets[key]
             _append_invite_event(row["events"], invite)
             if invite.zoho_quote_url:
                 row["zoho_quote_url"] = invite.zoho_quote_url
+            if invite.zoho_quote_id:
+                row["zoho_quote_id"] = invite.zoho_quote_id
+            if invite.zoho_quote_number:
+                row["zoho_quote_number"] = invite.zoho_quote_number
 
     grouped = {}
     for row in buckets.values():
@@ -528,6 +555,12 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             "deal_status_url": row["deal_status_url"],
             "subscription_id": row.get("subscription_id"),
             "form_empty": row.get("form_empty", False),
+            "start_date": row.get("start_date") or "",
+            "end_date": row.get("end_date") or "",
+            "subscription_list_id": row.get("subscription_list_id") or "",
+            "zoho_quote_id": row.get("zoho_quote_id") or "",
+            "zoho_quote_number": row.get("zoho_quote_number") or "",
+            "ref_id": _display_ref_id(row),
             "zoho": _zoho_payload(
                 row["zoho_invite"],
                 zoho_connected=zoho_connected,
@@ -751,7 +784,6 @@ def client_renewal_send_quotation(request, pk):
         ),
         pk=pk,
         company=company,
-        submitted_at__isnull=False,
     )
     from business.zoho_crm import create_quote_from_renewal_invite, zoho_configured
 
@@ -800,7 +832,8 @@ def client_renewal_send_quotation(request, pk):
         )
         messages.error(
             request,
-            "Could not create Zoho quotation. Check the Zoho connection and try again.",
+            str(exc).strip()
+            or "Could not create Zoho quotation. Check the Zoho connection and try again.",
         )
     return _after_quotation_redirect(request, invite)
 

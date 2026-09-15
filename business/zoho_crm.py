@@ -366,6 +366,17 @@ def _quote_ui_url(company: CompanyProfile, quote_id: str) -> str:
     return f"{crm_ui_base_url(dc)}/crm/tab/Quotes/{quote_id}"
 
 
+def _quote_quantity_for_line(line: SubscriptionRenewalInviteLine) -> int | None:
+    if line.renewal_count is not None:
+        return int(line.renewal_count)
+    if line.current_quantity is not None:
+        return int(line.current_quantity)
+    subscription = getattr(line, "subscription", None)
+    if subscription is not None and getattr(subscription, "quantity", None) is not None:
+        return int(subscription.quantity)
+    return None
+
+
 def create_quote_from_renewal_invite(
     company: CompanyProfile,
     invite: SubscriptionRenewalInvite,
@@ -382,17 +393,18 @@ def create_quote_from_renewal_invite(
     lines = list(
         invite.lines.select_related("subscription", "subscription__product").order_by("id")
     )
-    quote_lines = [
-        line
-        for line in lines
-        if line.renewal_count is not None and int(line.renewal_count) > 0
-    ]
-    if not quote_lines:
+    quote_items = []
+    for line in lines:
+        qty = _quote_quantity_for_line(line)
+        if qty is None:
+            continue
+        quote_items.append((line, qty))
+    if not quote_items:
         raise RuntimeError(
-            "No renewal quantities greater than zero to include in the quotation."
+            "No product quantity is available to include in the quotation."
         )
 
-    account_name = quote_lines[0].company_name or invite.client_email
+    account_name = quote_items[0][0].company_name or invite.client_email
     account_id = find_or_create_account(
         company,
         account_name=account_name,
@@ -400,7 +412,8 @@ def create_quote_from_renewal_invite(
     )
 
     product_details = []
-    for line in quote_lines:
+    description_lines = []
+    for line, qty in quote_items:
         unit_price = (
             line.subscription.billing_amount
             if line.subscription_id
@@ -411,7 +424,6 @@ def create_quote_from_renewal_invite(
             product_name=line.product_name,
             unit_price=unit_price,
         )
-        qty = int(line.renewal_count or 0)
         product_details.append(
             {
                 "product": {"id": product_id},
@@ -422,13 +434,17 @@ def create_quote_from_renewal_invite(
                 "tax": 0,
             }
         )
+        if line.renewal_count is not None:
+            description_lines.append(
+                f"- {line.product_name}: renew qty {qty} "
+                f"(current {line.current_quantity})"
+            )
+        else:
+            description_lines.append(
+                f"- {line.product_name}: qty {qty} (current, no renewal qty yet)"
+            )
 
     subject = f"Renewal quotation — {account_name}"[:120]
-    description_lines = [
-        f"- {line.product_name}: renew qty {line.renewal_count} "
-        f"(current {line.current_quantity})"
-        for line in quote_lines
-    ]
     payload = {
         "Subject": subject,
         "Account_Name": {"id": account_id},
