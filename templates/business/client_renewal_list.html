@@ -83,6 +83,7 @@
   .cr-deal-pill.cr-status--win { background: #16a34a; color: #fff; }
   .cr-deal-pill.cr-status--lost { background: #f43f5e; color: #fff; }
   .cr-deal-pill.cr-status--cancel { background: #94a3b8; color: #fff; }
+  .cr-deal-pill.cr-status--pending { background: #f59e0b; color: #fff; }
   .cr-deal-dot {
     width: 0.42rem;
     height: 0.42rem;
@@ -350,369 +351,398 @@
   @media (max-width: 640px) {
     .cr-win-form-grid { grid-template-columns: 1fr; }
   }
-  .cr-renewals-card {
-    padding: 0;
-    overflow: hidden;
-  }
-  .cr-tabs.subnav-tabs {
-    margin: 0;
-    width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    flex-wrap: nowrap;
-  }
-  .cr-tabs .subnav-tab {
-    flex: 1 1 0;
-    width: 0;
-    min-width: 0;
-    max-width: none;
-    justify-content: center;
-    white-space: nowrap;
-    box-sizing: border-box;
-  }
-  .cr-tab-panel[hidden] {
-    display: none;
-  }
   .cr-qty-changed {
-    color: #1d4ed8;
+    color: #b45309;
     font-weight: 700;
   }
-  .cr-renewals-card .tracker-table-scroll {
-    margin: 0;
-    width: 100%;
+
+  .cr-sheet {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .cr-sheet-scroll {
     overflow-x: auto;
   }
-  .cr-grid-table.tracker-table-pro,
-  .cr-grid-table.tracker-table-pro--wide,
-  #cr-table {
-    width: 100% !important;
-    min-width: 100% !important;
-    max-width: none !important;
+  table.cr-table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: collapse;
     table-layout: fixed;
+    font-size: 0.84rem;
+    background: #fff;
   }
-  .cr-grid-table.tracker-table-pro thead th,
-  .cr-grid-table.tracker-table-pro tbody td {
-    border: 1px solid #d0d7e2;
-    padding: 0.55rem 0.7rem;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+  .cr-table thead th {
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .cr-th-company { width: 18%; }
+  .cr-th-product { width: 21%; }
+  .cr-th-email { width: 18%; }
+  .cr-th-qty { width: 7%; text-align: center; }
+  .cr-th-renew { width: 8%; text-align: center; }
+  .cr-th-zoho { width: 15%; }
+  .cr-th-deal { width: 13%; }
+  .cr-company-row > td {
+    border-bottom: 1px solid #e5e7eb;
+    background: #fff;
     vertical-align: middle;
   }
-  .cr-grid-table.tracker-table-pro thead th {
-    border-color: rgba(255, 255, 255, 0.38);
+  .cr-company-row:last-child > td {
+    border-bottom: none;
   }
-  #cr-new-table th:nth-child(1),
-  #cr-new-table td:nth-child(1) { width: 22%; }
-  #cr-new-table th:nth-child(2),
-  #cr-new-table td:nth-child(2) { width: 13%; }
-  #cr-new-table th:nth-child(3),
-  #cr-new-table td:nth-child(3) { width: 18%; }
-  #cr-new-table th:nth-child(4),
-  #cr-new-table td:nth-child(4) { width: 37%; }
-  #cr-new-table th:nth-child(5),
-  #cr-new-table td:nth-child(5) { width: 10%; }
-  #cr-existing-table th:nth-child(1),
-  #cr-existing-table td:nth-child(1) { width: 18%; }
-  #cr-existing-table th:nth-child(2),
-  #cr-existing-table td:nth-child(2) { width: 12%; }
-  #cr-existing-table th:nth-child(3),
-  #cr-existing-table td:nth-child(3) { width: 16%; }
-  #cr-existing-table th:nth-child(4),
-  #cr-existing-table td:nth-child(4) { width: 30%; }
-  #cr-existing-table th:nth-child(5),
-  #cr-existing-table td:nth-child(5) { width: 12%; }
-  #cr-existing-table th:nth-child(6),
-  #cr-existing-table td:nth-child(6) { width: 12%; }
-  #cr-table col.cr-col-company { width: 16%; }
-  #cr-table col.cr-col-email { width: 15%; }
-  #cr-table col.cr-col-sent { width: 12%; }
-  #cr-table col.cr-col-read { width: 12%; }
-  #cr-table col.cr-col-resp { width: 13%; }
-  #cr-table col.cr-col-quote { width: 8%; }
-  #cr-table col.cr-col-product { width: 14%; }
-  #cr-table col.cr-col-deal { width: 10%; }
-  .cr-grid-table .cr-col-qty {
-    text-align: center;
-    white-space: nowrap;
-  }
-  .cr-grid-table .cr-col-timestamp {
-    white-space: nowrap;
-  }
-  .cr-grid-table .cr-col-response .cr-meta,
-  .cr-grid-table td[data-col="response"] .cr-meta {
-    white-space: normal;
-    overflow-wrap: anywhere;
+
+  .cr-company-cell {
+    width: 18%;
+    padding: 1rem 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
     line-height: 1.35;
+    border-right: 1px solid #e5e7eb;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+  .cr-products-cell {
+    width: 82%;
+    padding: 0;
+    vertical-align: top;
+  }
+  table.cr-products {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .cr-products .cr-col-product { width: 25.61%; }
+  .cr-products .cr-col-email { width: 21.95%; }
+  .cr-products .cr-col-qty { width: 8.54%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-renew { width: 9.76%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-zoho { width: 18.29%; }
+  .cr-products .cr-col-deal { width: 15.85%; }
+  .cr-products td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #eef2f7;
+    vertical-align: middle;
+    color: #0f172a;
+  }
+  .cr-products tr:last-child td {
+    border-bottom: none;
+  }
+  .cr-product-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+  .cr-product-new {
+    display: inline-block;
+    margin-left: 0.3rem;
+    padding: 0.08rem 0.4rem;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+  }
+  .cr-expand-btn {
+    width: 1.45rem;
+    height: 1.45rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #334155;
+    font-size: 0.95rem;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .cr-expand-btn:hover,
+  .cr-expand-btn:focus-visible {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .cr-product-row.is-expanded td {
+    background: #f8fbff;
+  }
+  .cr-ts-row td {
+    background: #f8fafc;
+    padding: 0.55rem 1rem 0.7rem;
+    text-align: left;
+  }
+  .cr-ts-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+  }
+  .cr-ts-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .cr-ts-item {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 0;
+  }
+  .cr-ts-item .cr-meta {
+    margin-top: 0.15rem;
+    overflow-wrap: anywhere;
+  }
+  .cr-empty-row td {
+    padding: 1.4rem 1rem;
+    text-align: center;
+    color: #64748b;
+  }
+  .cr-zoho-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.28rem 0.7rem;
+    border-radius: 8px;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 650;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .cr-zoho-btn:hover {
+    background: #1d4ed8;
+    color: #fff;
+  }
+  a.cr-zoho-btn.cr-zoho-btn--ghost,
+  .cr-zoho-btn--ghost {
+    background: #fff;
+    color: #2563eb;
+  }
+  a.cr-zoho-btn.cr-zoho-btn--ghost:hover,
+  .cr-zoho-btn--ghost:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+  .cr-zoho-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .cr-zoho-form {
+    display: inline;
+    margin: 0;
+  }
+  .cr-row-deal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .cr-row-deal-actions .btn-table-edit {
+    padding: 0.28rem 0.7rem;
+    font-size: 0.75rem;
+    min-height: 0;
+  }
+  @media (max-width: 720px) {
+    .cr-ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 </style>
 
-<div class="tracker-card tracker-card--flush-bottom cr-renewals-card">
-  <div class="subnav-tabs cr-tabs" role="tablist" aria-label="Client renewal views">
-    <button type="button" class="subnav-tab is-active" role="tab" id="cr-tab-new" data-tab="new" aria-selected="true" aria-controls="cr-panel-new">
-      <svg aria-hidden="true"><use href="#i-plus"/></svg>
-      New subscriptions <span class="subnav-tab-count" id="cr-count-new">{{ new_subscription_rows|length }}</span>
-    </button>
-    <button type="button" class="subnav-tab" role="tab" id="cr-tab-existing" data-tab="existing" aria-selected="false" aria-controls="cr-panel-existing">
-      <svg aria-hidden="true"><use href="#i-refresh"/></svg>
-      Renewal requests <span class="subnav-tab-count" id="cr-count-existing">{{ existing_expiry_rows|length }}</span>
-    </button>
-    <button type="button" class="subnav-tab" role="tab" id="cr-tab-all" data-tab="all" aria-selected="false" aria-controls="cr-panel-all">
-      <svg aria-hidden="true"><use href="#i-mail"/></svg>
-      All emails <span class="subnav-tab-count" id="cr-count-all">{{ all_email_rows|length }}</span>
-    </button>
-  </div>
 
-  <div class="cr-tab-panel" id="cr-panel-new" data-panel="new" role="tabpanel" aria-labelledby="cr-tab-new">
-    <div class="tracker-table-scroll">
-      <table class="tracker-table-pro cr-grid-table" id="cr-new-table">
-        <thead>
-          <tr>
-            <th>Client email</th>
-            <th class="cr-col-timestamp">Date and Timestamp</th>
-            <th>Company</th>
-            <th>Product</th>
-            <th class="cr-col-qty">Quantity</th>
-          </tr>
-        </thead>
-        <tbody id="cr-new-tbody">
-          {% for row in new_subscription_rows %}
-          <tr
-            data-id="{{ row.id }}"
-            class="cr-row--clickable"
-            data-href="{{ row.detail_url }}"
-            role="link"
-            tabindex="0"
-          >
-            <td>
-              {% for email in row.recipient_emails %}
-                {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
-              {% empty %}
-                {{ row.client_email }}
-              {% endfor %}
-            </td>
-            <td class="cr-col-timestamp">{% if row.submitted_at %}{{ row.submitted_at|date:"d M Y, H:i:s" }}{% else %}—{% endif %}</td>
-            <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
-            <td>{{ row.product_name }}</td>
-            <td class="cr-col-qty"><strong>{{ row.quantity }}</strong></td>
-          </tr>
-          {% empty %}
-          <tr id="cr-new-empty-row">
-            <td colspan="5" class="muted" style="padding:1.25rem;text-align:center;">
-              No new subscriptions yet. They appear here after a client uses Add on the renewal form.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="cr-tab-panel" id="cr-panel-existing" data-panel="existing" role="tabpanel" aria-labelledby="cr-tab-existing" hidden>
-    <div class="tracker-table-scroll">
-      <table class="tracker-table-pro cr-grid-table" id="cr-existing-table">
-        <thead>
-          <tr>
-            <th>Client email</th>
-            <th class="cr-col-timestamp">Date and Timestamp</th>
-            <th>Company</th>
-            <th>Product</th>
-            <th class="cr-col-qty">Previous quantity</th>
-            <th class="cr-col-qty">New quantity</th>
-          </tr>
-        </thead>
-        <tbody id="cr-existing-tbody">
-          {% for row in existing_expiry_rows %}
-          <tr
-            data-id="{{ row.id }}"
-            class="cr-row--clickable"
-            data-href="{{ row.detail_url }}"
-            role="link"
-            tabindex="0"
-          >
-            <td>
-              {% for email in row.recipient_emails %}
-                {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
-              {% empty %}
-                {{ row.client_email }}
-              {% endfor %}
-            </td>
-            <td class="cr-col-timestamp">{% if row.submitted_at %}{{ row.submitted_at|date:"d M Y, H:i:s" }}{% else %}—{% endif %}</td>
-            <td>{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
-            <td>{{ row.product_name }}</td>
-            <td class="cr-col-qty">{{ row.previous_quantity }}</td>
-            <td class="cr-col-qty">
-              {% if row.new_quantity is None %}
-              —
-              {% elif row.new_quantity != row.previous_quantity %}
-              <span class="cr-qty-changed">{{ row.new_quantity }}</span>
-              {% else %}
-              {{ row.new_quantity }}
-              {% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr id="cr-existing-empty-row">
-            <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;">
-              No renewal requests yet. They appear here after a client submits renewal quantities.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="cr-tab-panel" id="cr-panel-all" data-panel="all" role="tabpanel" aria-labelledby="cr-tab-all" hidden>
-  <div class="tracker-table-scroll">
-    <table class="tracker-table-pro cr-grid-table" id="cr-table">
-      <colgroup>
-        <col class="cr-col-company">
-        <col class="cr-col-email">
-        <col class="cr-col-sent">
-        <col class="cr-col-read">
-        <col class="cr-col-resp">
-        <col class="cr-col-quote">
-        <col class="cr-col-product">
-        <col class="cr-col-deal">
-      </colgroup>
+<div class="cr-sheet">
+  <div class="cr-sheet-scroll">
+    <table class="cr-table" id="cr-table">
       <thead>
         <tr>
-          <th>Company</th>
-          <th>Client email</th>
-          <th>Email sent</th>
-          <th>Email read</th>
-          <th class="cr-col-response">Response received</th>
-          <th>Quotation</th>
-          <th>Product</th>
-          <th>Deal Status</th>
+          <th class="cr-th-company">Company</th>
+          <th class="cr-th-product">Product</th>
+          <th class="cr-th-email">Client email</th>
+          <th class="cr-th-qty">Prev qty</th>
+          <th class="cr-th-renew">Renewal qty</th>
+          <th class="cr-th-zoho">Zoho</th>
+          <th class="cr-th-deal">Deal Status</th>
         </tr>
       </thead>
       <tbody id="cr-tbody">
-        {% for row in all_email_rows %}
-        <tr
-          data-id="{{ row.id }}"
-          data-invite-id="{{ row.invite_id }}"
-          {% if row.subscription_id %}data-subscription-id="{{ row.subscription_id }}"{% endif %}
-          {% if row.submitted_at %}
-          class="cr-row--clickable"
-          data-href="{{ row.detail_url }}"
-          role="link"
-          tabindex="0"
-          {% endif %}
-        >
-          <td data-col="company">{% if row.company_name %}{{ row.company_name }}{% else %}—{% endif %}</td>
-          <td data-col="email">
-            {% for email in row.recipient_emails %}
-              {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
-            {% empty %}
-              {{ row.client_email }}
-            {% endfor %}
-          </td>
-          <td>
-            {% if row.email_sent_at %}
-            <span class="cr-status cr-status--yes">Sent</span>
-            <span class="cr-meta">{{ row.email_sent_at|date:"d M Y, H:i:s" }}</span>
-            {% else %}
-            <span class="cr-status cr-status--no">—</span>
-            {% endif %}
-          </td>
-          <td data-col="read">
-            {% if row.read_at %}
-            <span class="cr-status cr-status--yes">Read</span>
-            <span class="cr-meta">{{ row.read_at|date:"d M Y, H:i:s" }}</span>
-            {% if row.read_source == "outlook_receipt" %}
-            <span class="cr-meta">Outlook read receipt</span>
-            {% elif row.read_source == "outlook_open" %}
-            <span class="cr-meta">Opened in Outlook</span>
-            {% endif %}
-            {% else %}
-            <span class="cr-status cr-status--pending">Not read</span>
-            {% endif %}
-          </td>
-          <td data-col="response" class="cr-col-response">
-            {% if row.submitted_at %}
-            <span class="cr-status cr-status--yes">Received</span>
-            <span class="cr-meta">{{ row.submitted_at|date:"d M Y, H:i:s" }}</span>
-            {% if row.submitted_by_email %}
-            <span class="cr-meta">Quantity sent by {{ row.submitted_by_email }}</span>
-            {% endif %}
-            {% else %}
-            <span class="cr-status cr-status--pending">Pending</span>
-            {% endif %}
-          </td>
-          <td data-col="quote">
-            {% if row.quotation_sent_at %}
-            <span class="cr-status cr-status--yes">Zoho</span>
-            <span class="cr-meta">{{ row.quotation_sent_at|date:"d M Y, H:i:s" }}</span>
-            {% elif row.submitted_at %}
-            <span class="cr-status cr-status--pending">Not sent</span>
-            {% else %}
-            <span class="cr-status cr-status--no">—</span>
-            {% endif %}
-          </td>
-          <td data-col="product">{% if row.product_name %}{{ row.product_name }}{% else %}—{% endif %}</td>
-          <td data-col="deal" class="cr-deal-cell">
-            {% if row.deal_pending and not row.deal_badges %}
-            <button
-              type="button"
-              class="cr-deal-set cr-deal-btn"
-              data-deal-url="{{ row.deal_status_url }}"
-            >
-              <svg class="cr-deal-set-icon" aria-hidden="true"><use href="#i-bell"/></svg>
-              Set status
-            </button>
-            {% elif row.deal_badges %}
-              {% if row.deal_pending or row.deal_form_empty %}
-              <button
-                type="button"
-                class="cr-deal-open cr-deal-btn"
-                data-deal-url="{{ row.deal_status_url }}"
-              >
-              {% else %}
-              <div class="cr-deal-stack">
-              {% endif %}
-                <span class="cr-deal-pills">
-                  {% for badge in row.deal_badges %}
-                  <span class="cr-deal-pill cr-status--{{ badge }}">
-                    {% if badge == "win" %}Win{% elif badge == "lost" %}Lost{% elif badge == "cancel" %}Cancel{% else %}{{ badge }}{% endif %}
-                    {% if badge == "win" and row.deal_form_empty %}
-                    <span class="cr-deal-dot" aria-hidden="true"></span>
+        {% for group in renewal_groups %}
+        <tr class="cr-company-row">
+          <td class="cr-company-cell">{{ group.company_name }}</td>
+          <td class="cr-products-cell" colspan="6">
+            <table class="cr-products">
+              <tbody>
+                {% for row in group.rows %}
+                <tr class="cr-product-row" data-id="{{ row.id }}">
+                  <td class="cr-col-product">
+                    <div class="cr-product-cell">
+                      <button type="button" class="cr-expand-btn" aria-expanded="false" aria-label="Show timestamps">+</button>
+                      <span>
+                        {{ row.product_name }}
+                        {% if row.is_new %}<span class="cr-product-new">NEW</span>{% endif %}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="cr-col-email" data-col="email">
+                    {% for email in row.recipient_emails %}
+                      {% if forloop.first %}{{ email }}{% else %}<span class="cr-meta">{{ email }}</span>{% endif %}
+                    {% empty %}
+                      {{ row.client_email }}
+                    {% endfor %}
+                  </td>
+                  <td class="cr-col-qty">{% if row.previous_quantity is None %}—{% else %}{{ row.previous_quantity }}{% endif %}</td>
+                  <td class="cr-col-renew">
+                    {% if row.renewal_quantity is None %}
+                    —
+                    {% elif row.previous_quantity is not None and row.renewal_quantity != row.previous_quantity %}
+                    <span class="cr-qty-changed">{{ row.renewal_quantity }}</span>
+                    {% else %}
+                    {{ row.renewal_quantity }}
                     {% endif %}
-                  </span>
-                  {% endfor %}
-                </span>
-                {% if row.deal_form_empty %}
-                <span class="cr-deal-hint">
-                  {% if row.deal_form_empty_count > 1 or row.deal_badges|length > 1 %}
-                    {{ row.deal_form_empty_count }} form empty
-                  {% else %}
-                    Form empty
-                  {% endif %}
-                </span>
-                {% elif row.deal_pending %}
-                <span class="cr-deal-hint">Set remaining</span>
-                {% endif %}
-              {% if row.deal_pending or row.deal_form_empty %}
-              </button>
-              {% else %}
-              </div>
-              {% endif %}
-            {% else %}
-            <span class="cr-status cr-status--no">—</span>
-            {% endif %}
+                  </td>
+                  <td class="cr-col-zoho" data-col="zoho">
+                    {% if row.zoho.kind == "connect" %}
+                    <a class="cr-zoho-btn cr-zoho-btn--ghost" href="{{ row.zoho.setup_url }}">Connect Zoho</a>
+                    {% elif row.zoho.quote_url or row.zoho.kind == "send" %}
+                    <div class="cr-zoho-actions">
+                      {% if row.zoho.quote_url %}
+                      <a class="cr-zoho-btn cr-zoho-btn--ghost" href="{{ row.zoho.quote_url }}" target="_blank" rel="noopener">Open quote in Zoho</a>
+                      {% endif %}
+                      {% if row.zoho.kind == "send" %}
+                      <form method="post" action="{{ row.zoho.send_url }}" class="cr-zoho-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'client_renewal_list' %}">
+                        <button type="submit" class="cr-zoho-btn">Send to Zoho</button>
+                      </form>
+                      {% endif %}
+                    </div>
+                    {% else %}
+                    —
+                    {% endif %}
+                  </td>
+                  <td class="cr-col-deal cr-deal-cell" data-col="deal">
+                    {% if row.kind == "line" and row.deal_status_url and row.subscription_id %}
+                      {% if row.deal_status == "win" %}
+                      <div class="cr-row-deal-actions">
+                        <span class="cr-deal-pill cr-status--win">Win</span>
+                        {% if row.form_empty %}
+                        <button
+                          type="button"
+                          class="btn-table-edit cr-fill-form-btn"
+                          data-deal-url="{{ row.deal_status_url }}"
+                          data-subscription-id="{{ row.subscription_id }}"
+                        >Fill form</button>
+                        {% endif %}
+                      </div>
+                      {% elif row.deal_status == "lost" %}
+                      <span class="cr-deal-pill cr-status--lost">Lost</span>
+                      {% elif row.deal_status == "cancel" %}
+                      <span class="cr-deal-pill cr-status--cancel">Cancel</span>
+                      {% else %}
+                      <div class="cr-row-deal-actions">
+                        <button
+                          type="button"
+                          class="btn-table-edit cr-row-win"
+                          data-deal-url="{{ row.deal_status_url }}"
+                          data-subscription-id="{{ row.subscription_id }}"
+                        >Win</button>
+                        <button
+                          type="button"
+                          class="btn-table-edit cr-modal-btn-loss cr-row-lost"
+                          data-deal-url="{{ row.deal_status_url }}"
+                          data-subscription-id="{{ row.subscription_id }}"
+                        >Lost</button>
+                      </div>
+                      {% endif %}
+                    {% else %}
+                    <span class="cr-status cr-status--no">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr class="cr-ts-row" data-for="{{ row.id }}" hidden>
+                  <td colspan="6">
+                    <p class="cr-ts-title">Timestamps</p>
+                    <div class="cr-ts-grid">
+                      <div class="cr-ts-item">
+                        {% if row.timestamps.sent %}
+                        <span class="cr-status cr-status--yes">Sent</span>
+                        <span class="cr-meta">{{ row.timestamps.sent.0 }}</span>
+                        {% if row.timestamps.sent|length > 1 %}
+                        <span class="cr-meta">Also sent {% for at in row.timestamps.sent %}{% if not forloop.first %}{{ at }}{% if not forloop.last %} · {% endif %}{% endif %}{% endfor %}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="cr-status cr-status--no">—</span>
+                        <span class="cr-meta">Email sent</span>
+                        {% endif %}
+                      </div>
+                      <div class="cr-ts-item">
+                        {% if row.timestamps.read_at %}
+                        <span class="cr-status cr-status--yes">Read</span>
+                        <span class="cr-meta">{{ row.timestamps.read_at }}</span>
+                        {% if row.timestamps.read_source == "outlook_receipt" %}
+                        <span class="cr-meta">Outlook read receipt</span>
+                        {% elif row.timestamps.read_source == "outlook_open" %}
+                        <span class="cr-meta">Opened in Outlook</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="cr-status cr-status--pending">Not read</span>
+                        {% endif %}
+                      </div>
+                      <div class="cr-ts-item">
+                        {% if row.timestamps.submitted_at %}
+                        <span class="cr-status cr-status--yes">Received</span>
+                        <span class="cr-meta">{{ row.timestamps.submitted_at }}</span>
+                        {% if row.timestamps.submitted_by_email %}
+                        <span class="cr-meta">Quantity sent by {{ row.timestamps.submitted_by_email }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="cr-status cr-status--pending">Pending</span>
+                        {% endif %}
+                      </div>
+                      <div class="cr-ts-item">
+                        {% if row.timestamps.deal %}
+                        <span class="cr-deal-pill cr-status--{{ row.timestamps.deal.status }}">
+                          {% if row.timestamps.deal.status == "win" %}Win{% elif row.timestamps.deal.status == "lost" %}Lost{% elif row.timestamps.deal.status == "cancel" %}Cancel{% else %}{{ row.timestamps.deal.status }}{% endif %}
+                        </span>
+                        {% if row.timestamps.deal.at %}
+                        <span class="cr-meta">{{ row.timestamps.deal.at }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="cr-status cr-status--pending">Pending</span>
+                        <span class="cr-meta">Deal status</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </td>
         </tr>
         {% empty %}
-        <tr id="cr-empty-row">
-          <td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">
+        <tr id="cr-empty-row" class="cr-empty-row">
+          <td colspan="7">
             No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-  </div>
   </div>
 </div>
 
@@ -735,65 +765,22 @@
 <script>
 (function () {
   var LIVE_URL = "{% url 'client_renewal_live' %}";
+  var LIST_URL = "{% url 'client_renewal_list' %}";
   var POLL_MS = 15000;
   var tbody = document.getElementById("cr-tbody");
-  var newTbody = document.getElementById("cr-new-tbody");
-  var existingTbody = document.getElementById("cr-existing-tbody");
   var meta = document.getElementById("cr-live-meta");
   var refreshBtn = document.getElementById("cr-refresh-btn");
   var timer = null;
   var inFlight = false;
-  var VALID_TABS = { new: true, existing: true, all: true };
-
-  function currentTab() {
-    var hash = (window.location.hash || "").replace("#", "");
-    return VALID_TABS[hash] ? hash : "new";
-  }
-
-  function setActiveTab(name) {
-    var tabName = VALID_TABS[name] ? name : "new";
-    document.querySelectorAll(".cr-tabs .subnav-tab").forEach(function (btn) {
-      var active = btn.getAttribute("data-tab") === tabName;
-      btn.classList.toggle("is-active", active);
-      btn.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    document.querySelectorAll(".cr-tab-panel").forEach(function (panel) {
-      panel.hidden = panel.getAttribute("data-panel") !== tabName;
-    });
-    if (window.location.hash.replace("#", "") !== tabName) {
-      history.replaceState(null, "", "#" + tabName);
-    }
-  }
-
-  document.querySelectorAll(".cr-tabs .subnav-tab").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      setActiveTab(btn.getAttribute("data-tab"));
-    });
-  });
-  window.addEventListener("hashchange", function () {
-    setActiveTab(currentTab());
-  });
-  setActiveTab(currentTab());
-
-  function bindRow(row) {
-    if (!row || !row.classList.contains("cr-row--clickable")) return;
-    if (row.dataset.bound === "1") return;
-    row.dataset.bound = "1";
-    function go(e) {
-      if (e && e.target && e.target.closest && e.target.closest(".cr-deal-btn")) return;
-      var href = row.getAttribute("data-href");
-      if (href) window.location.href = href;
-    }
-    row.addEventListener("click", go);
-    row.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        go(e);
-      }
-    });
-  }
-
-  document.querySelectorAll("tr.cr-row--clickable").forEach(bindRow);
+  var CSRF = (document.getElementById("cr-csrf") || {}).value || "";
+  var dealModal = document.getElementById("cr-deal-modal");
+  var dealTitle = document.getElementById("cr-deal-title");
+  var dealText = document.getElementById("cr-deal-text");
+  var dealList = document.getElementById("cr-deal-list");
+  var dealError = document.getElementById("cr-deal-error");
+  var activeDealUrl = "";
+  var dealItems = [];
+  var dealVendors = [];
 
   function escapeHtml(text) {
     return String(text || "")
@@ -809,391 +796,296 @@
       : [row.client_email];
     var html = "";
     emails.forEach(function (email, index) {
-      if (index === 0) {
-        html += escapeHtml(email || "");
-      } else {
-        html += '<span class="cr-meta">' + escapeHtml(email) + "</span>";
-      }
+      if (index === 0) html += escapeHtml(email || "");
+      else html += '<span class="cr-meta">' + escapeHtml(email) + "</span>";
     });
     return html || escapeHtml(row.client_email || "");
   }
 
-  function readHtml(row) {
-    if (row.read_at) {
-      var source = "";
-      if (row.read_source === "outlook_receipt") {
-        source = '<span class="cr-meta">Outlook read receipt</span>';
-      } else if (row.read_source === "outlook_open") {
-        source = '<span class="cr-meta">Opened in Outlook</span>';
-      }
-      return (
-        '<span class="cr-status cr-status--yes">Read</span>' +
-        '<span class="cr-meta">' + escapeHtml(row.read_at) + "</span>" +
-        source
-      );
-    }
-    return '<span class="cr-status cr-status--pending">Not read</span>';
-  }
-
-  function responseHtml(row) {
-    if (row.submitted_at) {
-      var byline = "";
-      if (row.submitted_by_email) {
-        byline = '<span class="cr-meta">Quantity sent by ' + escapeHtml(row.submitted_by_email) + "</span>";
-      }
-      return (
-        '<span class="cr-status cr-status--yes">Received</span>' +
-        '<span class="cr-meta">' + escapeHtml(row.submitted_at) + "</span>" +
-        byline
-      );
-    }
-    return '<span class="cr-status cr-status--pending">Pending</span>';
-  }
-
-  function quoteHtml(row) {
-    if (row.quotation_sent_at) {
-      return (
-        '<span class="cr-status cr-status--yes">Zoho</span>' +
-        '<span class="cr-meta">' + escapeHtml(row.quotation_sent_at) + "</span>"
-      );
-    }
-    if (row.submitted_at) {
-      return '<span class="cr-status cr-status--pending">Not sent</span>';
-    }
-    return '<span class="cr-status cr-status--no">—</span>';
-  }
-
-  function sentHtml(row) {
-    if (row.email_sent_at) {
-      return (
-        '<span class="cr-status cr-status--yes">Sent</span>' +
-        '<span class="cr-meta">' + escapeHtml(row.email_sent_at) + "</span>"
-      );
-    }
-    return '<span class="cr-status cr-status--no">—</span>';
-  }
-
   function dealBadgeLabel(status) {
-    var labels = { win: "Win", lost: "Lost", cancel: "Cancel" };
+    var labels = { win: "Win", lost: "Lost", cancel: "Cancel", pending: "Pending" };
     return labels[status] || status || "—";
   }
 
-  function dealPillHtml(status, showDot) {
+  function dealPillHtml(status) {
+    var key = status || "pending";
     return (
       '<span class="cr-deal-pill cr-status--' +
-      escapeHtml(status || "no") +
+      escapeHtml(key) +
       '">' +
-      escapeHtml(dealBadgeLabel(status)) +
-      (showDot ? '<span class="cr-deal-dot" aria-hidden="true"></span>' : "") +
+      escapeHtml(dealBadgeLabel(key)) +
       "</span>"
     );
   }
 
-  function formEmptyHint(row) {
-    var count = Number(row.deal_form_empty_count || 0);
-    var badges = row.deal_badges || [];
-    if (count <= 1 && badges.length <= 1) return "Form empty";
-    return (count || 1) + " form empty";
-  }
-
-  function setStatusBtnHtml(url) {
-    return (
-      '<button type="button" class="cr-deal-set cr-deal-btn" data-deal-url="' +
-      escapeHtml(url) +
-      '"><svg class="cr-deal-set-icon" aria-hidden="true"><use href="#i-bell"/></svg>Set status</button>'
-    );
-  }
-
   function dealHtml(row) {
-    var badges = row.deal_badges || [];
-    var pendingOnly = row.deal_pending && !badges.length;
-    if (pendingOnly) {
-      if (!row.deal_status_url) {
-        return '<span class="cr-status cr-status--no">—</span>';
-      }
-      return setStatusBtnHtml(row.deal_status_url);
-    }
-    if (!badges.length) {
+    if (row.kind !== "line" || !row.deal_status_url || !row.subscription_id) {
       return '<span class="cr-status cr-status--no">—</span>';
     }
-    var pills = badges
-      .map(function (status) {
-        return dealPillHtml(status, !!(row.deal_form_empty && status === "win"));
-      })
-      .join("");
-    var hint = "";
-    if (row.deal_form_empty) {
-      hint = '<span class="cr-deal-hint">' + escapeHtml(formEmptyHint(row)) + "</span>";
-    } else if (row.deal_pending) {
-      hint = '<span class="cr-deal-hint">Set remaining</span>';
-    }
-    var inner = '<span class="cr-deal-pills">' + pills + "</span>" + hint;
-    if ((row.deal_pending || row.deal_form_empty) && row.deal_status_url) {
+    var url = escapeHtml(row.deal_status_url);
+    var subId = escapeHtml(row.subscription_id);
+    if (row.deal_status === "win") {
       return (
-        '<button type="button" class="cr-deal-open cr-deal-btn" data-deal-url="' +
-        escapeHtml(row.deal_status_url) +
-        '">' +
-        inner +
-        "</button>"
+        '<div class="cr-row-deal-actions">' +
+        dealPillHtml("win") +
+        (row.form_empty
+          ? '<button type="button" class="btn-table-edit cr-fill-form-btn" data-deal-url="' +
+            url +
+            '" data-subscription-id="' +
+            subId +
+            '">Fill form</button>'
+          : "") +
+        "</div>"
       );
     }
-    return '<div class="cr-deal-stack">' + inner + "</div>";
-  }
 
-  function paintDealCell(tr, row) {
-    var cell = tr.querySelector('[data-col="deal"]');
-    if (!cell) return;
-    cell.innerHTML = dealHtml(row);
-    bindDealButton(cell.querySelector(".cr-deal-btn"));
-  }
-
-  function createRow(row) {
-    var tr = document.createElement("tr");
-    tr.setAttribute("data-id", row.id);
-    if (row.invite_id) tr.setAttribute("data-invite-id", row.invite_id);
-    if (row.subscription_id) {
-      tr.setAttribute("data-subscription-id", row.subscription_id);
+    if (row.deal_status === "lost") {
+      return dealPillHtml("lost");
     }
-    if (row.detail_url) {
-      tr.className = "cr-row--clickable";
-      tr.setAttribute("data-href", row.detail_url);
-      tr.setAttribute("role", "link");
-      tr.setAttribute("tabindex", "0");
+    if (row.deal_status === "cancel") {
+      return dealPillHtml("cancel");
     }
-    tr.innerHTML =
-      '<td data-col="company">' + dash(row.company_name) + "</td>" +
-      '<td data-col="email">' + clientEmailHtml(row) + "</td>" +
-      "<td>" + sentHtml(row) + "</td>" +
-      '<td data-col="read">' + readHtml(row) + "</td>" +
-      '<td data-col="response" class="cr-col-response">' + responseHtml(row) + "</td>" +
-      '<td data-col="quote">' + quoteHtml(row) + "</td>" +
-      '<td data-col="product">' + dash(row.product_name) + "</td>" +
-      '<td data-col="deal" class="cr-deal-cell">' + dealHtml(row) + "</td>";
-    bindRow(tr);
-    bindDealButton(tr.querySelector(".cr-deal-btn"));
-    return tr;
-  }
-
-  function emptyRowHtml(id, colspan, message) {
     return (
-      '<tr id="' + id + '"><td colspan="' + colspan +
-      '" class="muted" style="padding:1.25rem;text-align:center;">' +
-      message + "</td></tr>"
+      '<div class="cr-row-deal-actions">' +
+      '<button type="button" class="btn-table-edit cr-row-win" data-deal-url="' +
+      url +
+      '" data-subscription-id="' +
+      subId +
+      '">Win</button>' +
+      '<button type="button" class="btn-table-edit cr-modal-btn-loss cr-row-lost" data-deal-url="' +
+      url +
+      '" data-subscription-id="' +
+      subId +
+      '">Lost</button></div>'
     );
   }
 
-  function makeClickableRow(row) {
+  function qtyHtml(value, changed) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (changed) return '<span class="cr-qty-changed">' + escapeHtml(value) + "</span>";
+    return escapeHtml(value);
+  }
+
+  function zohoHtml(row) {
+    var zoho = row.zoho || {};
+    if (zoho.kind === "connect" && zoho.setup_url) {
+      return (
+        '<a class="cr-zoho-btn cr-zoho-btn--ghost" href="' +
+        escapeHtml(zoho.setup_url) +
+        '">Connect Zoho</a>'
+      );
+    }
+    var parts = [];
+    if (zoho.quote_url) {
+      parts.push(
+        '<a class="cr-zoho-btn cr-zoho-btn--ghost" href="' +
+        escapeHtml(zoho.quote_url) +
+        '" target="_blank" rel="noopener">Open quote in Zoho</a>'
+      );
+    }
+    if (zoho.kind === "send" && zoho.send_url) {
+      parts.push(
+        '<form method="post" action="' +
+        escapeHtml(zoho.send_url) +
+        '" class="cr-zoho-form">' +
+        '<input type="hidden" name="csrfmiddlewaretoken" value="' +
+        escapeHtml(CSRF) +
+        '">' +
+        '<input type="hidden" name="next" value="' +
+        escapeHtml(LIST_URL) +
+        '">' +
+        '<button type="submit" class="cr-zoho-btn">Send to Zoho</button></form>'
+      );
+    }
+    if (!parts.length) return "—";
+    return '<div class="cr-zoho-actions">' + parts.join("") + "</div>";
+  }
+
+  function timestampsHtml(row) {
+    var ts = row.timestamps || {};
+    var sent = ts.sent || [];
+    var sentBlock = sent.length
+      ? '<span class="cr-status cr-status--yes">Sent</span><span class="cr-meta">' +
+        escapeHtml(sent[0]) +
+        "</span>" +
+        (sent.length > 1
+          ? '<span class="cr-meta">Also sent ' +
+            escapeHtml(sent.slice(1).join(" · ")) +
+            "</span>"
+          : "")
+      : '<span class="cr-status cr-status--no">—</span><span class="cr-meta">Email sent</span>';
+
+    var readBlock;
+    if (ts.read_at) {
+      var source = "";
+      if (ts.read_source === "outlook_receipt") source = '<span class="cr-meta">Outlook read receipt</span>';
+      else if (ts.read_source === "outlook_open") source = '<span class="cr-meta">Opened in Outlook</span>';
+      readBlock =
+        '<span class="cr-status cr-status--yes">Read</span><span class="cr-meta">' +
+        escapeHtml(ts.read_at) +
+        "</span>" +
+        source;
+    } else {
+      readBlock = '<span class="cr-status cr-status--pending">Not read</span>';
+    }
+
+    var responseBlock;
+    if (ts.submitted_at) {
+      responseBlock =
+        '<span class="cr-status cr-status--yes">Received</span><span class="cr-meta">' +
+        escapeHtml(ts.submitted_at) +
+        "</span>";
+      if (ts.submitted_by_email) {
+        responseBlock +=
+          '<span class="cr-meta">Quantity sent by ' +
+          escapeHtml(ts.submitted_by_email) +
+          "</span>";
+      }
+    } else {
+      responseBlock = '<span class="cr-status cr-status--pending">Pending</span>';
+    }
+
+    var dealBlock;
+    if (ts.deal && ts.deal.status) {
+      dealBlock = dealPillHtml(ts.deal.status);
+      if (ts.deal.at) dealBlock += '<span class="cr-meta">' + escapeHtml(ts.deal.at) + "</span>";
+    } else {
+      dealBlock =
+        '<span class="cr-status cr-status--pending">Pending</span><span class="cr-meta">Deal status</span>';
+    }
+
+    return (
+      '<p class="cr-ts-title">Timestamps</p><div class="cr-ts-grid">' +
+      '<div class="cr-ts-item">' + sentBlock + "</div>" +
+      '<div class="cr-ts-item">' + readBlock + "</div>" +
+      '<div class="cr-ts-item">' + responseBlock + "</div>" +
+      '<div class="cr-ts-item">' + dealBlock + "</div></div>"
+    );
+  }
+
+  function expandedIds() {
+    var ids = {};
+    if (!tbody) return ids;
+    tbody.querySelectorAll("tr.cr-product-row.is-expanded").forEach(function (tr) {
+      ids[tr.getAttribute("data-id")] = true;
+    });
+    return ids;
+  }
+
+  function setExpanded(tr, tsRow, open) {
+    tr.classList.toggle("is-expanded", open);
+    var btn = tr.querySelector(".cr-expand-btn");
+    if (btn) {
+      btn.textContent = open ? "−" : "+";
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.setAttribute("aria-label", open ? "Hide timestamps" : "Show timestamps");
+    }
+    if (tsRow) tsRow.hidden = !open;
+  }
+
+  function bindExpand(tr, tsRow) {
+    var btn = tr.querySelector(".cr-expand-btn");
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setExpanded(tr, tsRow, !tr.classList.contains("is-expanded"));
+    });
+  }
+
+  function bindZoho(tr) {
+    var form = tr.querySelector(".cr-zoho-form");
+    if (form && form.dataset.bound !== "1") {
+      form.dataset.bound = "1";
+      form.addEventListener("click", function (e) { e.stopPropagation(); });
+    }
+    tr.querySelectorAll("a.cr-zoho-btn").forEach(function (link) {
+      if (link.dataset.bound === "1") return;
+      link.dataset.bound = "1";
+      link.addEventListener("click", function (e) { e.stopPropagation(); });
+    });
+  }
+
+  function createProductRows(row, keepOpen) {
     var tr = document.createElement("tr");
+    tr.className = "cr-product-row";
     tr.setAttribute("data-id", row.id);
-    if (row.detail_url) {
-      tr.className = "cr-row--clickable";
-      tr.setAttribute("data-href", row.detail_url);
-      tr.setAttribute("role", "link");
-      tr.setAttribute("tabindex", "0");
-    }
-    return tr;
-  }
-
-  function dash(value) {
-    return value ? escapeHtml(value) : "—";
-  }
-
-  function createNewRow(row) {
-    var tr = makeClickableRow(row);
+    var changed =
+      row.previous_quantity !== null &&
+      row.previous_quantity !== undefined &&
+      row.renewal_quantity !== null &&
+      row.renewal_quantity !== undefined &&
+      Number(row.renewal_quantity) !== Number(row.previous_quantity);
     tr.innerHTML =
-      "<td>" + clientEmailHtml(row) + "</td>" +
-      '<td class="cr-col-timestamp">' + dash(row.submitted_at) + "</td>" +
-      "<td>" + dash(row.company_name) + "</td>" +
-      "<td>" + escapeHtml(row.product_name || "") + "</td>" +
-      '<td class="cr-col-qty"><strong>' + escapeHtml(row.quantity) + "</strong></td>";
-    bindRow(tr);
-    return tr;
+      '<td class="cr-col-product"><div class="cr-product-cell">' +
+      '<button type="button" class="cr-expand-btn" aria-expanded="false" aria-label="Show timestamps">+</button>' +
+      "<span>" +
+      escapeHtml(row.product_name || "") +
+      (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
+      "</span></div></td>" +
+      '<td class="cr-col-email" data-col="email">' + clientEmailHtml(row) + "</td>" +
+      '<td class="cr-col-qty">' + qtyHtml(row.previous_quantity, false) + "</td>" +
+      '<td class="cr-col-renew">' + qtyHtml(row.renewal_quantity, changed) + "</td>" +
+      '<td class="cr-col-zoho" data-col="zoho">' + zohoHtml(row) + "</td>" +
+      '<td class="cr-col-deal cr-deal-cell" data-col="deal">' + dealHtml(row) + "</td>";
+
+    var tsRow = document.createElement("tr");
+    tsRow.className = "cr-ts-row";
+    tsRow.setAttribute("data-for", row.id);
+    tsRow.hidden = true;
+    tsRow.innerHTML = '<td colspan="6">' + timestampsHtml(row) + "</td>";
+
+    bindExpand(tr, tsRow);
+    bindZoho(tr);
+    bindRowDealActions(tr);
+    if (keepOpen) setExpanded(tr, tsRow, true);
+    return [tr, tsRow];
   }
 
-  function createExistingRow(row) {
-    var tr = makeClickableRow(row);
-    var newQty = row.new_quantity;
-    var newHtml = "—";
-    if (newQty !== null && newQty !== undefined && newQty !== "") {
-      if (Number(newQty) !== Number(row.previous_quantity)) {
-        newHtml = '<span class="cr-qty-changed">' + escapeHtml(newQty) + "</span>";
-      } else {
-        newHtml = escapeHtml(newQty);
-      }
-    }
-    tr.innerHTML =
-      "<td>" + clientEmailHtml(row) + "</td>" +
-      '<td class="cr-col-timestamp">' + dash(row.submitted_at) + "</td>" +
-      "<td>" + dash(row.company_name) + "</td>" +
-      "<td>" + escapeHtml(row.product_name || "") + "</td>" +
-      '<td class="cr-col-qty">' + escapeHtml(row.previous_quantity) + "</td>" +
-      '<td class="cr-col-qty">' + newHtml + "</td>";
-    bindRow(tr);
-    return tr;
-  }
-
-  function fillSimpleTable(tbodyEl, emptyId, colspan, emptyMsg, rows, createFn) {
-    if (!tbodyEl) return;
-    tbodyEl.innerHTML = "";
-    if (!rows.length) {
-      tbodyEl.innerHTML = emptyRowHtml(emptyId, colspan, emptyMsg);
+  function applyGroups(groups) {
+    if (!tbody) return;
+    var open = expandedIds();
+    tbody.innerHTML = "";
+    if (!groups.length) {
+      tbody.innerHTML =
+        '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="7">' +
+        "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
+        "</td></tr>";
       return;
     }
-    rows.forEach(function (row) {
-      tbodyEl.appendChild(createFn(row));
+    groups.forEach(function (group) {
+      var companyTr = document.createElement("tr");
+      companyTr.className = "cr-company-row";
+      companyTr.innerHTML =
+        '<td class="cr-company-cell">' +
+        escapeHtml(group.company_name || "—") +
+        '</td><td class="cr-products-cell" colspan="6"><table class="cr-products"><tbody></tbody></table></td>';
+      var innerBody = companyTr.querySelector("tbody");
+      (group.rows || []).forEach(function (row) {
+        var parts = createProductRows(row, !!open[row.id]);
+        innerBody.appendChild(parts[0]);
+        innerBody.appendChild(parts[1]);
+      });
+      tbody.appendChild(companyTr);
     });
   }
 
-  function setCount(id, value) {
-    var el = document.getElementById(id);
-    if (el) el.textContent = String(value);
-  }
 
-  function applyTabRows(data) {
-    fillSimpleTable(
-      newTbody,
-      "cr-new-empty-row",
-      5,
-      "No new subscriptions yet. They appear here after a client uses Add on the renewal form.",
-      data.new_subscription_rows || [],
-      createNewRow
-    );
-    fillSimpleTable(
-      existingTbody,
-      "cr-existing-empty-row",
-      6,
-      "No renewal requests yet. They appear here after a client submits renewal quantities.",
-      data.existing_expiry_rows || [],
-      createExistingRow
-    );
-    setCount("cr-count-new", (data.new_subscription_rows || []).length);
-    setCount("cr-count-existing", (data.existing_expiry_rows || []).length);
-    setCount("cr-count-all", (data.rows || []).length);
-  }
-
-  function applyRows(rows) {
-    var empty = document.getElementById("cr-empty-row");
-    if (!rows.length) {
-      if (!empty) {
-        tbody.innerHTML =
-          '<tr id="cr-empty-row"><td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">' +
-          "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
-          "</td></tr>";
-      }
-      return;
-    }
-    if (empty) empty.remove();
-
-    var existing = {};
-    Array.prototype.forEach.call(tbody.querySelectorAll("tr[data-id]"), function (tr) {
-      existing[tr.getAttribute("data-id")] = tr;
-    });
-
-    var seen = {};
-    rows.forEach(function (row, index) {
-      seen[row.id] = true;
-      var tr = existing[row.id];
-      if (!tr) {
-        tr = createRow(row);
-        if (tbody.children[index]) {
-          tbody.insertBefore(tr, tbody.children[index]);
-        } else {
-          tbody.appendChild(tr);
-        }
-        tr.classList.add("cr-flash");
-        return;
-      }
-
-      var nextCompany = dash(row.company_name);
-      var nextEmail = clientEmailHtml(row);
-      var nextRead = readHtml(row);
-      var nextResponse = responseHtml(row);
-      var nextQuote = quoteHtml(row);
-      var nextProduct = dash(row.product_name);
-      var nextDeal = dealHtml(row);
-      var companyCell = tr.querySelector('[data-col="company"]');
-      var emailCell = tr.querySelector('[data-col="email"]');
-      var readCell = tr.querySelector('[data-col="read"]');
-      var responseCell = tr.querySelector('[data-col="response"]');
-      var quoteCell = tr.querySelector('[data-col="quote"]');
-      var productCell = tr.querySelector('[data-col="product"]');
-      var dealCell = tr.querySelector('[data-col="deal"]');
-      var changed = false;
-
-      if (row.invite_id) tr.setAttribute("data-invite-id", row.invite_id);
-      if (row.subscription_id) {
-        tr.setAttribute("data-subscription-id", row.subscription_id);
-      }
-      if (companyCell && companyCell.innerHTML !== nextCompany) {
-        companyCell.innerHTML = nextCompany;
-        changed = true;
-      }
-      if (emailCell && emailCell.innerHTML !== nextEmail) {
-        emailCell.innerHTML = nextEmail;
-        changed = true;
-      }
-      if (readCell && readCell.innerHTML !== nextRead) {
-        readCell.innerHTML = nextRead;
-        changed = true;
-      }
-      if (responseCell && responseCell.innerHTML !== nextResponse) {
-        responseCell.innerHTML = nextResponse;
-        changed = true;
-      }
-      if (quoteCell && quoteCell.innerHTML !== nextQuote) {
-        quoteCell.innerHTML = nextQuote;
-        changed = true;
-      }
-      if (productCell && productCell.innerHTML !== nextProduct) {
-        productCell.innerHTML = nextProduct;
-        changed = true;
-      }
-      if (dealCell && dealCell.innerHTML !== nextDeal) {
-        dealCell.innerHTML = nextDeal;
-        bindDealButton(dealCell.querySelector(".cr-deal-btn"));
-        changed = true;
-      }
-
-      if (row.detail_url) {
-        tr.classList.add("cr-row--clickable");
-        tr.setAttribute("data-href", row.detail_url);
-        tr.setAttribute("role", "link");
-        tr.setAttribute("tabindex", "0");
-        bindRow(tr);
-      }
-
-      if (changed) {
-        tr.classList.remove("cr-flash");
-        void tr.offsetWidth;
-        tr.classList.add("cr-flash");
-      }
-
-      if (tbody.children[index] !== tr) {
-        tbody.insertBefore(tr, tbody.children[index] || null);
-      }
-    });
-
-    Object.keys(existing).forEach(function (id) {
-      if (!seen[id]) existing[id].remove();
+  function bindServerRows() {
+    if (!tbody) return;
+    tbody.querySelectorAll("tr.cr-product-row").forEach(function (tr) {
+      var tsRow = tbody.querySelector('tr.cr-ts-row[data-for="' + tr.getAttribute("data-id") + '"]');
+      bindExpand(tr, tsRow);
+      bindZoho(tr);
+      bindRowDealActions(tr);
     });
   }
-
-  var CSRF = (document.getElementById("cr-csrf") || {}).value || "";
-  var dealModal = document.getElementById("cr-deal-modal");
-  var dealTitle = document.getElementById("cr-deal-title");
-  var dealText = document.getElementById("cr-deal-text");
-  var dealList = document.getElementById("cr-deal-list");
-  var dealError = document.getElementById("cr-deal-error");
-  var activeDealUrl = "";
-  var activeInviteId = "";
-  var dealItems = [];
-  var dealVendors = [];
 
   function closeDealModal() {
     if (!dealModal) return;
     dealModal.hidden = true;
     activeDealUrl = "";
-    activeInviteId = "";
     dealItems = [];
     dealVendors = [];
     if (dealList) dealList.innerHTML = "";
@@ -1209,45 +1101,6 @@
       dealError.hidden = true;
       dealError.textContent = "";
     }
-  }
-
-  function inviteIdFromUrl(url) {
-    var match = String(url || "").match(/client-renewals\/([^/]+)\/deal-status/);
-    return match ? match[1] : "";
-  }
-
-  function lineDealPayload(item, data) {
-    var status = item && item.deal_status ? item.deal_status : "";
-    return {
-      deal_pending: !status,
-      deal_badges: status ? [status] : [],
-      deal_form_empty: !!(item && item.form_empty),
-      deal_form_empty_count: item && item.form_empty ? 1 : 0,
-      deal_status_url: data.deal_status_url || activeDealUrl,
-    };
-  }
-
-  function applyInviteDealCell(data) {
-    if (!activeInviteId || !tbody) return;
-    var itemsBySub = {};
-    (data.items || []).forEach(function (item) {
-      itemsBySub[String(item.subscription_id)] = item;
-    });
-    tbody.querySelectorAll('tr[data-invite-id="' + activeInviteId + '"]').forEach(function (tr) {
-      var item = itemsBySub[tr.getAttribute("data-subscription-id") || ""];
-      paintDealCell(
-        tr,
-        item
-          ? lineDealPayload(item, data)
-          : {
-              deal_pending: data.deal_pending,
-              deal_badges: data.deal_badges || [],
-              deal_form_empty: data.deal_form_empty,
-              deal_form_empty_count: data.deal_form_empty_count,
-              deal_status_url: data.deal_status_url || activeDealUrl,
-            }
-      );
-    });
   }
 
   function postDealStatus(payload, onSuccess) {
@@ -1280,17 +1133,18 @@
     dealItems = data.items || [];
     if (data.vendors) dealVendors = data.vendors;
     setDealError("");
-    applyInviteDealCell(data);
+    poll();
     if (data.open_win_form) {
       var formItem = dealItems.filter(function (item) {
         return String(item.subscription_id) === String(data.open_win_form);
       })[0];
       if (formItem) {
+        if (dealModal) dealModal.hidden = false;
         renderWinForm(formItem);
         return;
       }
     }
-    renderDealList();
+    closeDealModal();
   }
 
   function vendorOptionsHtml(selectedId) {
@@ -1407,7 +1261,7 @@
           "</div>" +
         "</section>" +
         '<div class="cr-win-form-actions">' +
-          '<button type="button" class="btn-table-edit cr-modal-btn-ghost" id="cr-win-back">Back</button>' +
+          '<button type="button" class="btn-table-edit cr-modal-btn-ghost" id="cr-win-back">Close</button>' +
           '<button type="submit" class="btn-table-edit">Save details</button>' +
         "</div>" +
       "</form>";
@@ -1415,9 +1269,7 @@
     var form = document.getElementById("cr-win-form");
     var backBtn = document.getElementById("cr-win-back");
     if (backBtn) {
-      backBtn.addEventListener("click", function () {
-        renderDealList();
-      });
+      backBtn.addEventListener("click", function () { closeDealModal(); });
     }
     if (form) {
       form.addEventListener("submit", function (e) {
@@ -1441,84 +1293,50 @@
     }
   }
 
-  function renderDealList() {
-    if (!dealList) return;
-    dealTitle.textContent = "Deal Status";
-    dealText.textContent = "Set Win or Lost for each company and product.";
-    dealList.innerHTML = "";
+  function bindRowDealActions(tr) {
+    if (!tr) return;
+    var winBtn = tr.querySelector(".cr-row-win");
+    var lostBtn = tr.querySelector(".cr-row-lost");
+    var fillBtn = tr.querySelector(".cr-fill-form-btn");
 
-    if (!dealItems.length) {
-      dealList.innerHTML = '<p class="cr-modal-sub">No products on this renewal email.</p>';
-      return;
+    function bindStatus(btn, status) {
+      if (!btn || btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var url = btn.getAttribute("data-deal-url");
+        var subId = btn.getAttribute("data-subscription-id");
+        if (!url || !subId) return;
+        activeDealUrl = url;
+        postDealStatus(
+          { deal_status: status, subscription_id: subId },
+          handleSaved
+        );
+      });
     }
 
-    dealItems.forEach(function (item) {
-      var row = document.createElement("div");
-      row.className = "cr-deal-row";
-      var text = document.createElement("div");
-      text.className = "cr-deal-row-text";
-      text.innerHTML =
-        '<span class="cr-deal-row-company">' + escapeHtml(item.company_name || "Client") + "</span>" +
-        '<span class="cr-deal-row-product">' + escapeHtml(item.product_name || "") + "</span>";
-      var actions = document.createElement("div");
-      actions.className = "cr-deal-row-actions";
+    bindStatus(winBtn, "win");
+    bindStatus(lostBtn, "lost");
 
-      if (item.deal_status) {
-        var statusWrap = document.createElement("div");
-        statusWrap.className = "cr-deal-stack";
-        statusWrap.innerHTML =
-          dealPillHtml(
-            item.deal_status,
-            !!(item.form_empty && item.deal_status === "win")
-          ) +
-          (item.form_empty ? '<span class="cr-deal-hint">Form empty</span>' : "");
-        actions.appendChild(statusWrap);
-        if (item.form_empty) {
-          var fillBtn = document.createElement("button");
-          fillBtn.type = "button";
-          fillBtn.className = "btn-table-edit";
-          fillBtn.textContent = "Fill form";
-          fillBtn.addEventListener("click", function () {
-            renderWinForm(item);
-          });
-          actions.appendChild(fillBtn);
-        }
-      } else {
-        var winBtn = document.createElement("button");
-        winBtn.type = "button";
-        winBtn.className = "btn-table-edit";
-        winBtn.textContent = "Win";
-        winBtn.addEventListener("click", function () {
-          postDealStatus(
-            { deal_status: "win", subscription_id: item.subscription_id },
-            handleSaved
-          );
-        });
-        var lostBtn = document.createElement("button");
-        lostBtn.type = "button";
-        lostBtn.className = "btn-table-edit cr-modal-btn-loss";
-        lostBtn.textContent = "Lost";
-        lostBtn.addEventListener("click", function () {
-          postDealStatus(
-            { deal_status: "lost", subscription_id: item.subscription_id },
-            handleSaved
-          );
-        });
-        actions.appendChild(winBtn);
-        actions.appendChild(lostBtn);
-      }
-
-      row.appendChild(text);
-      row.appendChild(actions);
-      dealList.appendChild(row);
-    });
+    if (fillBtn && fillBtn.dataset.bound !== "1") {
+      fillBtn.dataset.bound = "1";
+      fillBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openWinFormFor(
+          fillBtn.getAttribute("data-deal-url"),
+          fillBtn.getAttribute("data-subscription-id")
+        );
+      });
+    }
   }
 
-  function openDealList(url) {
+  function openWinFormFor(url, subscriptionId) {
+    if (!url || !subscriptionId || !dealModal) return;
     activeDealUrl = url;
-    activeInviteId = inviteIdFromUrl(url);
     setDealError("");
-    dealTitle.textContent = "Deal Status";
+    dealTitle.textContent = "Win details";
     dealText.textContent = "Loading…";
     if (dealList) dealList.innerHTML = "";
     dealModal.hidden = false;
@@ -1529,7 +1347,7 @@
       .then(function (resp) {
         return resp.json().then(function (data) {
           if (!resp.ok || !data.ok) {
-            throw new Error((data && data.error) || "Could not load deals.");
+            throw new Error((data && data.error) || "Could not load deal.");
           }
           return data;
         });
@@ -1537,26 +1355,19 @@
       .then(function (data) {
         dealItems = data.items || [];
         dealVendors = data.vendors || [];
-        renderDealList();
+        var item = dealItems.filter(function (row) {
+          return String(row.subscription_id) === String(subscriptionId);
+        })[0];
+        if (!item) throw new Error("Product was not found on this renewal email.");
+        renderWinForm(item);
       })
       .catch(function (err) {
         dealText.textContent = "";
-        setDealError(err.message || "Could not load deals.");
+        setDealError(err.message || "Could not load deal.");
       });
   }
 
-  function bindDealButton(btn) {
-    if (!btn || btn.dataset.bound === "1") return;
-    btn.dataset.bound = "1";
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      var url = btn.getAttribute("data-deal-url");
-      if (url) openDealList(url);
-    });
-  }
-
-  document.querySelectorAll(".cr-deal-btn").forEach(bindDealButton);
+  bindServerRows();
 
   if (dealModal) {
     dealModal.addEventListener("click", function (e) {
@@ -1586,8 +1397,7 @@
         return resp.json();
       })
       .then(function (data) {
-        applyRows(data.rows || []);
-        applyTabRows(data);
+        applyGroups(data.groups || []);
         var suffix = data.updated ? " · " + data.updated + " updated" : "";
         setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
         if (data.logs && data.logs.length) {
@@ -1612,9 +1422,7 @@
   }
 
   if (refreshBtn) {
-    refreshBtn.addEventListener("click", function () {
-      poll();
-    });
+    refreshBtn.addEventListener("click", function () { poll(); });
   }
 
   document.addEventListener("visibilitychange", function () {

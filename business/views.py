@@ -348,142 +348,215 @@ def _format_dt(value):
     return date_format(timezone.localtime(value), "d M Y, H:i:s")
 
 
-def _invite_detail_url(invite):
+
+
+def _invite_is_quoteable(invite):
     if not invite.submitted_at:
-        return ""
-    return reverse("client_renewal_detail", kwargs={"pk": invite.pk})
+        return False
+    return any(
+        line.renewal_count is not None and int(line.renewal_count) > 0
+        for line in invite.lines.all()
+    )
 
 
-def _new_subscription_rows(invites):
-    """Rows for clients who added catalog products via the renewal Add button."""
-    rows = []
-    for invite in invites:
-        if not invite.submitted_at:
-            continue
-        emails = invite.sent_to_emails or [invite.client_email]
-        detail_url = _invite_detail_url(invite)
-        for item in invite.new_products.all():
-            rows.append(
-                {
-                    "id": f"{invite.pk}-{item.pk}",
-                    "client_email": invite.client_email,
-                    "recipient_emails": emails,
-                    "company_name": item.company_name or "",
-                    "product_name": item.product_name,
-                    "quantity": item.quantity,
-                    "submitted_at": invite.submitted_at,
-                    "submitted_by_email": invite.submitted_by_email or "",
-                    "detail_url": detail_url,
-                }
-            )
-    return rows
+def _company_group_key(name):
+    label = (name or "").strip()
+    return (label.lower() or "\uffff", label or "—")
 
 
-def _existing_expiry_rows(invites):
-    """Rows for existing expiry products with previous vs submitted quantity."""
-    rows = []
-    for invite in invites:
-        if not invite.submitted_at:
-            continue
-        emails = invite.sent_to_emails or [invite.client_email]
-        detail_url = _invite_detail_url(invite)
-        for line in invite.lines.all():
-            rows.append(
-                {
-                    "id": f"{invite.pk}-{line.pk}",
-                    "client_email": invite.client_email,
-                    "recipient_emails": emails,
-                    "company_name": line.company_name or "",
-                    "product_name": line.product_name,
-                    "previous_quantity": line.current_quantity,
-                    "new_quantity": line.renewal_count,
-                    "submitted_at": invite.submitted_at,
-                    "submitted_by_email": invite.submitted_by_email or "",
-                    "detail_url": detail_url,
-                }
-            )
-    return rows
+def _append_invite_event(events, invite):
+    events.append(
+        {
+            "email_sent_at": _format_dt(invite.email_sent_at),
+            "read_at": _format_dt(invite.read_at),
+            "read_source": invite.read_source or "",
+            "submitted_at": _format_dt(invite.submitted_at),
+            "submitted_by_email": invite.submitted_by_email or "",
+        }
+    )
 
 
-def _jsonify_tab_rows(rows):
-    formatted = []
-    for row in rows:
-        item = dict(row)
-        item["submitted_at"] = _format_dt(row.get("submitted_at"))
-        formatted.append(item)
-    return formatted
-
-
-def _invite_base_status_row(invite):
+def _timestamps_from_events(events, deal_status, deal_status_at):
+    sent = [item["email_sent_at"] for item in events if item.get("email_sent_at")]
+    read = next((item for item in events if item.get("read_at")), None)
+    response = next((item for item in events if item.get("submitted_at")), None)
+    deal = None
+    if deal_status:
+        deal = {
+            "status": deal_status,
+            "at": _format_dt(deal_status_at) if deal_status_at else "",
+        }
     return {
-        "invite_id": str(invite.pk),
-        "client_email": invite.client_email,
-        "recipient_emails": invite.sent_to_emails,
-        "email_sent_at": invite.email_sent_at,
-        "read_at": invite.read_at,
-        "read_source": invite.read_source or "",
-        "submitted_at": invite.submitted_at,
-        "submitted_by_email": invite.submitted_by_email or "",
-        "quotation_sent_at": invite.quotation_sent_at,
-        "detail_url": _invite_detail_url(invite),
+        "sent": sent,
+        "read_at": (read or {}).get("read_at", ""),
+        "read_source": (read or {}).get("read_source", ""),
+        "submitted_at": (response or {}).get("submitted_at", ""),
+        "submitted_by_email": (response or {}).get("submitted_by_email", ""),
+        "deal": deal,
     }
 
 
-def _invite_line_status_row(invite, line):
-    sub = getattr(line, "subscription", None)
-    client = getattr(sub, "client", None)
-    product = getattr(sub, "product", None)
-    row = _invite_base_status_row(invite)
-    row.update(
-        {
-            "id": f"{invite.pk}-{line.pk}",
-            "company_name": line.company_name or getattr(client, "name", "") or "",
-            "product_name": line.product_name or getattr(product, "name", "") or "",
+def _zoho_payload(invite, *, zoho_connected, zoho_configured, quote_url=""):
+    quote_url = (quote_url or "").strip()
+    if not quote_url and invite:
+        quote_url = (getattr(invite, "zoho_quote_url", "") or "").strip()
+    if not zoho_configured or not zoho_connected:
+        return {
+            "kind": "connect",
+            "setup_url": reverse("company_setup"),
+            "send_url": "",
+            "quote_url": quote_url,
         }
-    )
-    row.update(_line_deal_payload(invite, line))
-    return row
+    if invite and _invite_is_quoteable(invite):
+        return {
+            "kind": "send",
+            "setup_url": "",
+            "send_url": reverse(
+                "client_renewal_send_quotation", kwargs={"pk": invite.pk}
+            ),
+            "quote_url": quote_url,
+        }
+    return {
+        "kind": "none",
+        "setup_url": "",
+        "send_url": "",
+        "quote_url": quote_url,
+    }
 
 
-def _invite_status_rows(invite):
-    """One All-emails table row per subscription on the reminder email."""
-    lines = list(invite.lines.all())
-    if not lines:
-        row = _invite_base_status_row(invite)
-        row.update(
-            {
-                "id": str(invite.pk),
-                "company_name": "",
-                "product_name": "",
-                "subscription_id": None,
-            }
-        )
-        row.update(_invite_deal_payload(invite))
-        return [row]
-    return [_invite_line_status_row(invite, line) for line in lines]
-
-
-def _all_email_rows(invites):
-    rows = []
+def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=False):
+    """One product row per company, collapsing reminder emails for the same item."""
+    buckets = {}
     for invite in invites:
-        rows.extend(_invite_status_rows(invite))
-    return rows
+        emails = invite.sent_to_emails or [invite.client_email]
+        deal_url = reverse(
+            "client_renewal_set_deal_status", kwargs={"pk": invite.pk}
+        )
+        for line in invite.lines.all():
+            sub = getattr(line, "subscription", None)
+            key = (
+                "line",
+                sub.pk if sub else f"{invite.pk}-{line.pk}",
+                (invite.client_email or "").strip().lower(),
+            )
+            row = buckets.get(key)
+            if row is None:
+                status = (getattr(sub, "deal_status", "") or "") if sub else ""
+                buckets[key] = {
+                    "id": f"line-{sub.pk if sub else line.pk}",
+                    "kind": "line",
+                    "company_name": (line.company_name or "").strip(),
+                    "product_name": line.product_name,
+                    "is_new": False,
+                    "client_email": invite.client_email,
+                    "recipient_emails": emails,
+                    "previous_quantity": line.current_quantity,
+                    "renewal_quantity": line.renewal_count,
+                    "deal_status": status,
+                    "deal_status_url": deal_url,
+                    "subscription_id": sub.pk if sub else None,
+                    "form_empty": bool(getattr(sub, "win_form_empty", False))
+                    if sub
+                    else False,
+                    "zoho_invite": invite if invite.submitted_at else None,
+                    "zoho_quote_url": (invite.zoho_quote_url or "")
+                    if invite.submitted_at
+                    else "",
+                    "events": [],
+                    "deal_status_set_at": getattr(sub, "deal_status_set_at", None)
+                    if sub
+                    else None,
+                }
+                row = buckets[key]
+            _append_invite_event(row["events"], invite)
+            if invite.submitted_at and row["zoho_invite"] is None:
+                row["zoho_invite"] = invite
+            if invite.zoho_quote_url:
+                row["zoho_quote_url"] = invite.zoho_quote_url
+            if row["renewal_quantity"] is None and line.renewal_count is not None:
+                row["renewal_quantity"] = line.renewal_count
+                row["previous_quantity"] = line.current_quantity
+        for item in invite.new_products.all():
+            if not invite.submitted_at:
+                continue
+            prod_key = item.product_id or item.pk
+            key = (
+                "new",
+                prod_key,
+                (item.company_name or "").strip().lower(),
+                (invite.client_email or "").strip().lower(),
+            )
+            row = buckets.get(key)
+            if row is None:
+                buckets[key] = {
+                    "id": f"new-{prod_key}-{invite.pk}",
+                    "kind": "new",
+                    "company_name": (item.company_name or "").strip(),
+                    "product_name": item.product_name,
+                    "is_new": True,
+                    "client_email": invite.client_email,
+                    "recipient_emails": emails,
+                    "previous_quantity": None,
+                    "renewal_quantity": item.quantity,
+                    "deal_status": "",
+                    "deal_status_url": "",
+                    "subscription_id": None,
+                    "form_empty": False,
+                    "zoho_invite": invite,
+                    "zoho_quote_url": invite.zoho_quote_url or "",
+                    "events": [],
+                    "deal_status_set_at": None,
+                }
+                row = buckets[key]
+            _append_invite_event(row["events"], invite)
+            if invite.zoho_quote_url:
+                row["zoho_quote_url"] = invite.zoho_quote_url
 
+    grouped = {}
+    for row in buckets.values():
+        payload = {
+            "id": row["id"],
+            "kind": row["kind"],
+            "company_name": row["company_name"],
+            "product_name": row["product_name"],
+            "is_new": row["is_new"],
+            "client_email": row["client_email"],
+            "recipient_emails": row["recipient_emails"],
+            "previous_quantity": row["previous_quantity"],
+            "renewal_quantity": row["renewal_quantity"],
+            "deal_status": row["deal_status"],
+            "deal_status_url": row["deal_status_url"],
+            "subscription_id": row.get("subscription_id"),
+            "form_empty": row.get("form_empty", False),
+            "zoho": _zoho_payload(
+                row["zoho_invite"],
+                zoho_connected=zoho_connected,
+                zoho_configured=zoho_configured,
+                quote_url=row.get("zoho_quote_url") or "",
+            ),
+            "timestamps": _timestamps_from_events(
+                row["events"],
+                row["deal_status"],
+                row["deal_status_set_at"],
+            ),
+        }
+        _sort_key, label = _company_group_key(row["company_name"])
+        bucket = grouped.setdefault(
+            (_sort_key, label),
+            {"company_name": label, "rows": []},
+        )
+        bucket["rows"].append(payload)
 
-def _jsonify_email_rows(rows):
-    datetime_keys = (
-        "email_sent_at",
-        "read_at",
-        "submitted_at",
-        "quotation_sent_at",
-    )
-    formatted = []
-    for row in rows:
-        item = dict(row)
-        for key in datetime_keys:
-            item[key] = _format_dt(row.get(key))
-        formatted.append(item)
-    return formatted
+    groups = []
+    for (_sort_key, _label), group in sorted(grouped.items(), key=lambda item: item[0]):
+        group["rows"].sort(
+            key=lambda row: (
+                not row["is_new"],
+                (row["product_name"] or "").lower(),
+            )
+        )
+        groups.append(group)
+    return groups
 
 
 @sales_module_required
@@ -496,16 +569,21 @@ def client_renewal_list(request):
         if "failed" in message.lower():
             messages.warning(request, message)
     invites = list(_renewal_invite_queryset(company))
-    all_email_rows = _all_email_rows(invites)
+    from business.zoho_crm import zoho_configured
+
+    configured = zoho_configured()
     return render(
         request,
         "business/client_renewal_list.html",
         {
             "company": company,
-            "object_list": invites,
-            "all_email_rows": all_email_rows,
-            "new_subscription_rows": _new_subscription_rows(invites),
-            "existing_expiry_rows": _existing_expiry_rows(invites),
+            "renewal_groups": _renewal_product_groups(
+                invites,
+                zoho_connected=company.zoho_connected,
+                zoho_configured=configured,
+            ),
+            "zoho_connected": company.zoho_connected,
+            "zoho_configured": configured,
         },
     )
 
@@ -519,18 +597,18 @@ def client_renewal_live(request):
     try:
         updated, poll_logs = poll_outlook_read_receipts_for_company(company)
         invites = list(_renewal_invite_queryset(company))
+        from business.zoho_crm import zoho_configured
+
         return JsonResponse(
             {
                 "ok": True,
                 "updated": updated,
                 "polled_at": _format_dt(timezone.now()),
                 "logs": poll_logs,
-                "rows": _jsonify_email_rows(_all_email_rows(invites)),
-                "new_subscription_rows": _jsonify_tab_rows(
-                    _new_subscription_rows(invites)
-                ),
-                "existing_expiry_rows": _jsonify_tab_rows(
-                    _existing_expiry_rows(invites)
+                "groups": _renewal_product_groups(
+                    invites,
+                    zoho_connected=company.zoho_connected,
+                    zoho_configured=zoho_configured(),
                 ),
             }
         )
@@ -682,13 +760,13 @@ def client_renewal_send_quotation(request, pk):
             request,
             "Zoho app credentials are not configured on the server (.env).",
         )
-        return redirect("client_renewal_detail", pk=invite.pk)
+        return _after_quotation_redirect(request, invite)
     if not company.zoho_connected:
         messages.error(
             request,
             "Connect Zoho CRM in Company profile before sending a quotation.",
         )
-        return redirect("client_renewal_detail", pk=invite.pk)
+        return _after_quotation_redirect(request, invite)
 
     try:
         quote_id, quote_number, quote_url = create_quote_from_renewal_invite(
@@ -724,6 +802,12 @@ def client_renewal_send_quotation(request, pk):
             request,
             "Could not create Zoho quotation. Check the Zoho connection and try again.",
         )
+    return _after_quotation_redirect(request, invite)
+
+
+def _after_quotation_redirect(request, invite):
+    if request.POST.get("next") == reverse("client_renewal_list"):
+        return redirect("client_renewal_list")
     return redirect("client_renewal_detail", pk=invite.pk)
 
 
