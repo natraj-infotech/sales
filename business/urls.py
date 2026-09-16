@@ -59,6 +59,11 @@ urlpatterns = [
         name="client_renewal_live",
     ),
     path(
+        "client-renewals/report/",
+        views.client_renewal_report,
+        name="client_renewal_report",
+    ),
+    path(
         "client-renewals/<uuid:pk>/",
         views.client_renewal_detail,
         name="client_renewal_detail",

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from types import SimpleNamespace
@@ -48,6 +48,7 @@ from business.renewal_tokens import (
 from business.analytics import (
     empty_ticket_view,
     format_duration,
+    renewal_report_charts,
     sales_dashboard_charts,
     ticket_charts_from_views,
 )
@@ -1461,6 +1462,152 @@ class DashboardChartTests(TestCase):
         self.assertContains(response, "SLA breached")
         self.assertContains(response, "chart-status-mix")
         self.assertContains(response, "ticket-charts-data")
+
+
+class RenewalReportTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "renewal-report@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Report Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="Acme Steel", email="acme@example.com"
+        )
+        self.product = Product.objects.create(company=self.company, name="Firewall")
+        self.add_on = Product.objects.create(company=self.company, name="Backup Cloud")
+        self.vendor = Vendor.objects.create(company=self.company, name="Vendor")
+        today = timezone.localdate()
+        tz = timezone.get_current_timezone()
+        eligible = timezone.make_aware(
+            datetime.combine(today + timedelta(days=10) - timedelta(days=30), time.min),
+            tz,
+        )
+        sent = eligible + timedelta(days=2)
+        deal_at = sent + timedelta(days=4)
+
+        self.pending_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=355),
+            end_date=today + timedelta(days=10),
+            quantity=4,
+            billing_amount=Decimal("4000.00"),
+        )
+        self.silent_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=400),
+            end_date=today - timedelta(days=12),
+            quantity=2,
+            billing_amount=Decimal("800.00"),
+        )
+        self.win_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=365),
+            end_date=today + timedelta(days=10),
+            quantity=3,
+            billing_amount=Decimal("1500.00"),
+            deal_status=ClientSubscription.DealStatus.WIN,
+            deal_status_set_at=deal_at,
+        )
+        self.lost_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=365),
+            end_date=today - timedelta(days=3),
+            quantity=1,
+            billing_amount=Decimal("250.00"),
+            deal_status=ClientSubscription.DealStatus.LOST,
+            deal_status_set_at=timezone.now(),
+        )
+        pending_invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="acme@example.com",
+            email_sent_at=sent,
+            read_at=sent + timedelta(hours=6),
+            submitted_at=sent + timedelta(days=1),
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=pending_invite,
+            subscription=self.pending_sub,
+            company_name="Acme Steel",
+            product_name=self.product.name,
+            current_quantity=4,
+            renewal_count=6,
+        )
+        SubscriptionRenewalInviteNewProduct.objects.create(
+            invite=pending_invite,
+            product=self.add_on,
+            company_name="Acme Steel",
+            product_name="Backup Cloud",
+            quantity=5,
+        )
+        win_invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="acme@example.com",
+            email_sent_at=sent,
+            submitted_at=sent + timedelta(days=1),
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=win_invite,
+            subscription=self.win_sub,
+            company_name="Acme Steel",
+            product_name=self.product.name,
+            current_quantity=3,
+            renewal_count=3,
+        )
+        self.client.force_login(self.user)
+
+    def test_report_counts_pending_silent_lost_and_new_products(self):
+        report = renewal_report_charts(self.company, range_key="90")
+        self.assertEqual(report["pending_renewals"], 1)
+        self.assertEqual(report["silent_expired"], 1)
+        self.assertEqual(report["lost_count"], 1)
+        self.assertEqual(report["win_count"], 1)
+        self.assertEqual(report["resub_rate"], 50)
+        self.assertEqual(report["did_not_renew"], 2)
+        self.assertEqual(report["new_product_clients"], 1)
+        self.assertEqual(report["new_product_qty"], 5)
+        self.assertEqual(report["qty_up"], 1)
+        self.assertEqual(report["qty_same"], 1)
+        self.assertEqual(report["avg_send_delay"], "2d")
+        self.assertEqual(report["avg_deal_delay"], "4d")
+        self.assertEqual(report["charts"]["funnel_values"][0], 2)
+        remaining_clients = [row["client"] for row in report["remaining_rows"]]
+        self.assertIn("Acme Steel", remaining_clients)
+        self.assertTrue(report["new_product_rows"])
+        reasons = {row["reason"] for row in report["did_not_renew_rows"]}
+        self.assertIn("Lost", reasons)
+        self.assertTrue(any("Silent" in reason for reason in reasons))
+
+    def test_report_downloads_pdf(self):
+        response = self.client.get(reverse("client_renewal_report"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("client_renewal_report_", response["Content-Disposition"])
+        self.assertTrue(response["Content-Disposition"].endswith('.pdf"'))
+        self.assertTrue(response.content.startswith(b"%PDF-"))
+        self.assertGreater(len(response.content), 2000)
+
+    def test_tracker_page_has_report_download(self):
+        response = self.client.get(reverse("client_renewal_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("client_renewal_report"))
+        self.assertContains(response, "Download report")
+        self.assertNotContains(response, "cr-tabs")
+        self.assertNotContains(response, "Tracker</a>")
 
 
 class TicketChartHelperTests(SimpleTestCase):

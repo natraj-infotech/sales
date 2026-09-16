@@ -110,6 +110,12 @@ def _xlsx_response(content, filename: str):
     return response
 
 
+def _pdf_response(content, filename: str):
+    response = HttpResponse(content, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
 def _company(request):
     company = get_company_for_user(request.user)
     if company is None:
@@ -629,6 +635,25 @@ def client_renewal_list(request):
             "zoho_configured": configured,
         },
     )
+
+
+@sales_module_required
+def client_renewal_report(request):
+    company = _company(request)
+    range_key = (request.GET.get("range") or "year").strip().lower()
+    if range_key not in {"30", "90", "year"}:
+        range_key = "year"
+    try:
+        from .renewal_report_export import build_renewal_report_bytes
+
+        content, filename = build_renewal_report_bytes(company, range_key=range_key)
+    except Exception:
+        logger.exception(
+            "client_renewal_report failed company_id=%s", company.pk
+        )
+        messages.error(request, "Could not build the renewal report.")
+        return redirect("client_renewal_list")
+    return _pdf_response(content, filename)
 
 
 @sales_module_required

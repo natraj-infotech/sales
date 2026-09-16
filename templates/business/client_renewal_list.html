@@ -14,6 +14,9 @@
     </div>
   </div>
   <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_renewal_report' %}">
+      Download report
+    </a>
     <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cr-refresh-btn">
       Refresh now
     </button>
@@ -651,7 +654,6 @@
     .cr-info-email-card .cr-ts-grid { grid-template-columns: 1fr; }
   }
 </style>
-
 
 <div class="cr-sheet">
   <div class="cr-sheet-scroll">

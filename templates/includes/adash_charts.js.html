@@ -124,17 +124,48 @@
     });
   }
 
-  function groupedBar(canvasId, labels, datasets) {
+  function groupedBar(canvasId, labels, datasets, horizontal) {
     var canvas = el(canvasId);
     if (!canvas) return null;
+    var horizontalBar = !!horizontal;
     return new Chart(canvas, {
       type: "bar",
       data: { labels: labels, datasets: datasets },
       options: {
+        indexAxis: horizontalBar ? "y" : "x",
         plugins: { legend: { position: "top", align: "end" } },
         scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+          x: horizontalBar
+            ? { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } }
+            : { grid: { display: false } },
+          y: horizontalBar
+            ? { grid: { display: false } }
+            : { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+        },
+      },
+    });
+  }
+
+  function hbar(canvasId, labels, data, color) {
+    var canvas = el(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: color || "#2563eb",
+          borderRadius: 6,
+          maxBarThickness: 22,
+        }],
+      },
+      options: {
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: "rgba(148,163,184,0.25)" } },
+          y: { grid: { display: false } },
         },
       },
     });
@@ -182,6 +213,7 @@
     line: line,
     bar: bar,
     groupedBar: groupedBar,
+    hbar: hbar,
     skipNullBar: skipNullBar,
     replaceData: replaceData,
     setCenter: function (chart, text, sub) {
