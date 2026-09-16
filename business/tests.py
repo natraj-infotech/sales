@@ -1,7 +1,10 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from openpyxl import load_workbook
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -47,6 +50,11 @@ from business.analytics import (
     format_duration,
     sales_dashboard_charts,
     ticket_charts_from_views,
+)
+from business.subscription_export import (
+    NO_COMPANY_VALUE,
+    build_subscription_export_bytes,
+    normalize_column_keys,
 )
 from business.subscription_import import import_subscriptions_from_file
 from business.views import (
@@ -1829,4 +1837,164 @@ class OemTicketFeatureTests(TestCase):
         page = self.client.get(reverse("support_oem_ticket_add") + "?mode=standard")
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "Search / select subscription ID")
+
+
+class SubscriptionListExportTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Co"
+        )
+        self.client_obj = Client.objects.create(
+            company=self.company, name="OMSGuru"
+        )
+        self.hp_product = Product.objects.create(
+            company=self.company,
+            name="Laptop",
+            category="Hardware",
+            company_name="HP",
+        )
+        self.ms_product = Product.objects.create(
+            company=self.company,
+            name="Microsoft 365",
+            category="Software",
+            company_name="Microsoft",
+        )
+        self.blank_product = Product.objects.create(
+            company=self.company,
+            name="Unknown Box",
+            category="Hardware",
+            company_name="",
+        )
+        self.vendor = Vendor.objects.create(company=self.company, name="Redington")
+        self.hp_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.hp_product,
+            vendor=self.vendor,
+            start_date=date(2026, 1, 1),
+            end_date=date(2027, 1, 1),
+            quantity=2,
+            billing_amount=Decimal("1500.00"),
+            serial_number="HP-123",
+            subscription_code="SUB-HP",
+            invoice_number="INV-1",
+            notes="HP laptop note",
+        )
+        self.ms_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.ms_product,
+            vendor=self.vendor,
+            start_date=date(2026, 2, 1),
+            end_date=date(2027, 2, 1),
+            quantity=5,
+            billing_amount=Decimal("900.00"),
+            subscription_code="SUB-MS",
+        )
+        self.blank_sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.blank_product,
+            start_date=date(2026, 3, 1),
+            quantity=1,
+            billing_amount=Decimal("10.00"),
+        )
+        self.client.force_login(self.user)
+
+    def test_list_shows_company_column_and_filter(self):
+        response = self.client.get(reverse("subscription_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<th>Company</th>", html=True)
+        self.assertContains(response, "HP")
+        self.assertContains(response, "Microsoft")
+        self.assertContains(response, 'name="company_name"')
+        self.assertContains(response, "Export")
+        self.assertContains(response, "Columns to include")
+        self.assertContains(response, "Companies to include")
+
+    def test_filter_by_company_name(self):
+        response = self.client.get(
+            reverse("subscription_list"), {"company_name": "HP"}
+        )
+        self.assertEqual(response.status_code, 200)
+        names = [row.product.name for row in response.context["object_list"]]
+        self.assertEqual(names, ["Laptop"])
+
+    def test_filter_by_blank_company(self):
+        response = self.client.get(
+            reverse("subscription_list"), {"company_name": NO_COMPANY_VALUE}
+        )
+        self.assertEqual(response.status_code, 200)
+        names = [row.product.name for row in response.context["object_list"]]
+        self.assertEqual(names, ["Unknown Box"])
+
+    def test_export_selected_company_and_columns(self):
+        response = self.client.post(
+            reverse("subscription_export"),
+            {
+                "columns": ["client", "product", "company", "quantity"],
+                "companies": ["HP"],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        wb = load_workbook(BytesIO(response.content))
+        rows = list(wb.active.iter_rows(values_only=True))
+        self.assertEqual(rows[0], ("Client", "Product", "Company", "Quantity"))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1], ("OMSGuru", "Laptop", "HP", 2))
+
+    def test_export_requires_columns_and_companies(self):
+        missing_cols = self.client.post(
+            reverse("subscription_export"),
+            {"companies": ["HP"]},
+        )
+        self.assertEqual(missing_cols.status_code, 302)
+        missing_companies = self.client.post(
+            reverse("subscription_export"),
+            {"columns": ["client"]},
+        )
+        self.assertEqual(missing_companies.status_code, 302)
+
+    def test_export_keeps_page_client_filter(self):
+        other_client = Client.objects.create(company=self.company, name="Other Co")
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=other_client,
+            product=self.hp_product,
+            start_date=date(2026, 4, 1),
+            quantity=9,
+        )
+        response = self.client.post(
+            reverse("subscription_export"),
+            {
+                "client": str(self.client_obj.pk),
+                "columns": ["client", "product"],
+                "companies": ["HP"],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        rows = list(
+            load_workbook(BytesIO(response.content)).active.iter_rows(values_only=True)
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "OMSGuru")
+
+    def test_export_builder_uses_requested_column_order(self):
+        self.assertEqual(
+            normalize_column_keys(["bogus", "product", "product", "client"]),
+            ["product", "client"],
+        )
+        content = build_subscription_export_bytes(
+            [self.ms_sub], ["product", "company"]
+        )
+        rows = list(load_workbook(BytesIO(content)).active.iter_rows(values_only=True))
+        self.assertEqual(rows[0], ("Product", "Company"))
+        self.assertEqual(rows[1], ("Microsoft 365", "Microsoft"))
 

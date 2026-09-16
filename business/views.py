@@ -65,6 +65,16 @@ from .caselock_inbox import (
     should_poll_mailbox_on_request,
 )
 from .import_stash import product_import_stash, subscription_import_stash
+from .subscription_export import (
+    DEFAULT_EXPORT_COLUMNS,
+    EXPORT_COLUMNS,
+    NO_COMPANY_LABEL,
+    NO_COMPANY_VALUE,
+    apply_company_selection,
+    build_subscription_export_bytes,
+    distinct_product_company_names,
+    normalize_column_keys,
+)
 from .subscription_import import (
     IMPORT_HEADERS,
     IMPORT_SAMPLE_ROW,
@@ -1570,39 +1580,63 @@ def product_edit(request, pk):
     )
 
 
+def _subscription_filter_values(params) -> dict[str, str]:
+    def _get(name: str) -> str:
+        return (params.get(name) or "").strip()
+
+    return {
+        "client": _get("client"),
+        "product": _get("product"),
+        "vendor": _get("vendor"),
+        "category": _get("category"),
+        "company_name": _get("company_name"),
+        "start_date": _get("start_date"),
+        "end_date": _get("end_date"),
+        "expiring_soon": _get("expiring_soon"),
+    }
+
+
+def _filtered_subscription_qs(company, params, *, apply_company_name: bool = True):
+    qs = company.subscriptions.select_related("client", "product", "vendor")
+    filters = _subscription_filter_values(params)
+    if filters["client"]:
+        qs = qs.filter(client_id=filters["client"])
+    if filters["product"]:
+        qs = qs.filter(product_id=filters["product"])
+    if filters["vendor"]:
+        qs = qs.filter(vendor_id=filters["vendor"])
+    if filters["category"]:
+        qs = qs.filter(product__category__iexact=filters["category"])
+    if apply_company_name and filters["company_name"]:
+        if filters["company_name"] == NO_COMPANY_VALUE:
+            qs = qs.filter(
+                Q(product__company_name="") | Q(product__company_name__isnull=True)
+            )
+        else:
+            qs = qs.filter(product__company_name__iexact=filters["company_name"])
+    if filters["start_date"]:
+        qs = qs.filter(start_date__gte=filters["start_date"])
+    if filters["end_date"]:
+        qs = qs.filter(end_date__lte=filters["end_date"])
+    if filters["expiring_soon"]:
+        days = _parse_expiring_days(filters["expiring_soon"], default=0)
+        if days:
+            qs = _filter_expiring_soon(qs, days)
+    return qs, filters
+
+
+def _subscription_filter_querystring(params) -> str:
+    filters = _subscription_filter_values(params)
+    return urlencode({key: value for key, value in filters.items() if value})
+
+
 @sales_module_required
 def subscription_list(request):
     company = _company(request)
     base_qs = company.subscriptions.select_related("client", "product", "vendor")
     total_count = base_qs.count()
-    qs = base_qs.all()
-    today = timezone.now().date()
-
-    client_id = request.GET.get("client", "").strip()
-    if client_id:
-        qs = qs.filter(client_id=client_id)
-    product_id = request.GET.get("product", "").strip()
-    if product_id:
-        qs = qs.filter(product_id=product_id)
-    vendor_id = request.GET.get("vendor", "").strip()
-    if vendor_id:
-        qs = qs.filter(vendor_id=vendor_id)
-    category = request.GET.get("category", "").strip()
-    if category:
-        qs = qs.filter(product__category__iexact=category)
-
-    fd_start = request.GET.get("start_date", "").strip()
-    fd_end = request.GET.get("end_date", "").strip()
-    if fd_start:
-        qs = qs.filter(start_date__gte=fd_start)
-    if fd_end:
-        qs = qs.filter(end_date__lte=fd_end)
-
-    expiring = request.GET.get("expiring_soon", "").strip()
-    if expiring:
-        days = _parse_expiring_days(expiring, default=0)
-        if days:
-            qs = _filter_expiring_soon(qs, days, today)
+    qs, filters = _filtered_subscription_qs(company, request.GET)
+    company_names, has_blank_company = distinct_product_company_names(base_qs)
 
     categories = (
         company.products.exclude(category="")
@@ -1611,17 +1645,7 @@ def subscription_list(request):
         .order_by("category")
     )
 
-    has_active_filters = any(
-        (
-            client_id,
-            product_id,
-            vendor_id,
-            category,
-            fd_start,
-            fd_end,
-            expiring,
-        )
-    )
+    has_active_filters = any(filters.values())
     filtered_count = qs.count()
 
     return render(
@@ -1637,18 +1661,57 @@ def subscription_list(request):
             "products": company.products.all().order_by("name"),
             "vendors": company.vendors.all().order_by("name"),
             "categories": list(categories),
-            "filters": {
-                "client": client_id,
-                "product": product_id,
-                "vendor": vendor_id,
-                "category": category,
-                "start_date": fd_start,
-                "end_date": fd_end,
-                "expiring_soon": expiring,
-            },
+            "company_names": company_names,
+            "has_blank_company": has_blank_company,
+            "no_company_value": NO_COMPANY_VALUE,
+            "no_company_label": NO_COMPANY_LABEL,
+            "export_columns": EXPORT_COLUMNS,
+            "default_export_columns": list(DEFAULT_EXPORT_COLUMNS),
+            "filters": filters,
             "expiring_choices": _expiring_subscription_choices(),
         },
     )
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def subscription_export(request):
+    company = _company(request)
+    list_url = reverse("subscription_list")
+    query = _subscription_filter_querystring(request.POST)
+    if query:
+        list_url = f"{list_url}?{query}"
+
+    column_keys = normalize_column_keys(request.POST.getlist("columns"))
+    if not column_keys:
+        messages.error(request, "Select at least one column to export.")
+        return redirect(list_url)
+
+    companies = [
+        (value or "").strip()
+        for value in request.POST.getlist("companies")
+        if (value or "").strip()
+    ]
+    if not companies:
+        messages.error(request, "Select at least one company to export.")
+        return redirect(list_url)
+
+    qs, _filters = _filtered_subscription_qs(
+        company, request.POST, apply_company_name=False
+    )
+    qs = apply_company_selection(qs, companies).order_by(
+        "client__name", "product__name", "pk"
+    )
+    try:
+        content = build_subscription_export_bytes(qs, column_keys)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(list_url)
+    except Exception:
+        logger.exception("Subscription export failed company_id=%s", company.pk)
+        messages.error(request, "Could not export subscriptions.")
+        return redirect(list_url)
+    return _xlsx_response(content, "subscriptions_export.xlsx")
 
 
 @sales_module_required

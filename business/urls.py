@@ -115,6 +115,7 @@ urlpatterns = [
     path("products/<int:pk>/edit/", views.product_edit, name="product_edit"),
     path("products/<int:pk>/delete/", views.product_delete, name="product_delete"),
     path("subscriptions/", views.subscription_list, name="subscription_list"),
+    path("subscriptions/export/", views.subscription_export, name="subscription_export"),
     path(
         "subscriptions/bulk-delete/",
         views.subscription_bulk_delete,

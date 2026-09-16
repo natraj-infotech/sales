@@ -1,6 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Client Subscriptions{% endblock %}
 
+{% block extra_css %}
+<style>
+  .sub-export-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .sub-export-modal[hidden] { display: none; }
+  .sub-export-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .sub-export-card {
+    position: relative;
+    width: min(52rem, calc(100vw - 2rem));
+    max-height: min(46rem, calc(100vh - 2rem));
+    overflow: auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+    padding: 1.35rem 1.45rem 1.2rem;
+  }
+  .sub-export-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1.1rem;
+  }
+  .sub-export-head h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: #0f172a;
+  }
+  .sub-export-head p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.84rem;
+  }
+  .sub-export-x {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.1rem 0.35rem;
+  }
+  .sub-export-x:hover { color: #0f172a; }
+  .sub-export-section-title {
+    margin: 0 0 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+  .sub-export-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem 1.15rem;
+    margin: 0 0 0.85rem;
+  }
+  .sub-export-toolbar button {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .sub-export-link-blue { color: #2563eb; }
+  .sub-export-link-gray { color: #94a3b8; }
+  .sub-export-link-green { color: #16a34a; }
+  .sub-export-toolbar button:hover { text-decoration: underline; }
+  .sub-export-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+  .sub-export-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.72rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #334155;
+  }
+  .sub-export-choice:hover { border-color: #cbd5e1; }
+  .sub-export-choice input {
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+    flex-shrink: 0;
+  }
+  .sub-export-companies { margin-top: 1.35rem; }
+  .sub-export-error {
+    display: none;
+    margin: 0.9rem 0 0;
+    color: #dc2626;
+    font-size: 0.84rem;
+    font-weight: 600;
+  }
+  .sub-export-error.is-visible { display: block; }
+  .sub-export-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+  }
+  .sub-export-actions .btn { min-width: 6.5rem; }
+  .sub-export-actions .btn-primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  @media (max-width: 760px) {
+    .sub-export-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
 {% block page_header %}
 <div class="tracker-page-header tracker-page-header--subscriptions">
   <div class="tracker-page-header-row">
@@ -25,6 +160,10 @@
       <svg aria-hidden="true"><use href="#i-layout-grid"/></svg>
       Add Software
     </a>
+    <button type="button" class="btn-tracker-header" id="open-subscription-export">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Export
+    </button>
     <a class="btn-tracker-header" href="{% url 'subscription_import' %}">
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Import
@@ -61,6 +200,18 @@
           {% for p in products %}
           <option value="{{ p.pk }}" {% if filters.product == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
           {% endfor %}
+        </select>
+      </div>
+      <div class="tracker-sub-filter-field">
+        <label for="f-company">Company</label>
+        <select id="f-company" name="company_name">
+          <option value="">All</option>
+          {% for name in company_names %}
+          <option value="{{ name }}" {% if filters.company_name == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+          {% if has_blank_company %}
+          <option value="{{ no_company_value }}" {% if filters.company_name == no_company_value %}selected{% endif %}>{{ no_company_label }}</option>
+          {% endif %}
         </select>
       </div>
       <div class="tracker-sub-filter-field">
@@ -133,6 +284,7 @@
             <th>Client</th>
             <th>Category</th>
             <th>Product</th>
+            <th>Company</th>
             <th>Vendor</th>
             <th>Qty</th>
             <th>Start date</th>
@@ -152,6 +304,7 @@
             <td>{{ s.client.name }}</td>
             <td>{{ s.product.category|default:"—" }}</td>
             <td>{{ s.product.name }}</td>
+            <td>{{ s.product.company_name|default:"—" }}</td>
             <td>{{ s.vendor.name|default:"—" }}</td>
             <td>{{ s.quantity }}</td>
             <td>{{ s.start_date|date:"d/m/Y" }}</td>
@@ -179,7 +332,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="12" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="13" class="muted" style="padding:1.25rem;text-align:center;">
               No subscriptions match your filters. <a href="{% url 'subscription_add' %}">Add a subscription</a>.
             </td>
           </tr>
@@ -190,21 +343,175 @@
   </form>
 </div>
 
+<div class="sub-export-modal" id="subscription-export-modal" hidden>
+  <div class="sub-export-backdrop" data-close-export></div>
+  <div class="sub-export-card" role="dialog" aria-modal="true" aria-labelledby="subscription-export-title">
+    <div class="sub-export-head">
+      <div>
+        <h3 id="subscription-export-title">Export subscriptions</h3>
+        <p>Choose columns and companies, then download an Excel file.</p>
+      </div>
+      <button type="button" class="sub-export-x" data-close-export aria-label="Close">&times;</button>
+    </div>
+    <form method="post" action="{% url 'subscription_export' %}" id="subscription-export-form">
+      {% csrf_token %}
+      <input type="hidden" name="client" value="{{ filters.client }}">
+      <input type="hidden" name="product" value="{{ filters.product }}">
+      <input type="hidden" name="vendor" value="{{ filters.vendor }}">
+      <input type="hidden" name="category" value="{{ filters.category }}">
+      <input type="hidden" name="start_date" value="{{ filters.start_date }}">
+      <input type="hidden" name="end_date" value="{{ filters.end_date }}">
+      <input type="hidden" name="expiring_soon" value="{{ filters.expiring_soon }}">
+
+      <h4 class="sub-export-section-title">Columns to include</h4>
+      <div class="sub-export-toolbar">
+        <button type="button" class="sub-export-link-blue" id="export-cols-all">Select All</button>
+        <button type="button" class="sub-export-link-gray" id="export-cols-clear">Clear All</button>
+        <button type="button" class="sub-export-link-green" id="export-cols-default">Default Columns</button>
+      </div>
+      <div class="sub-export-grid">
+        {% for key, label in export_columns %}
+        <label class="sub-export-choice">
+          <input type="checkbox" name="columns" value="{{ key }}" class="export-column-check"{% if key in default_export_columns %} checked{% endif %}>
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="sub-export-companies">
+        <h4 class="sub-export-section-title">Companies to include</h4>
+        <div class="sub-export-toolbar">
+          <button type="button" class="sub-export-link-blue" id="export-cos-all">Select All</button>
+          <button type="button" class="sub-export-link-gray" id="export-cos-clear">Clear All</button>
+        </div>
+        <div class="sub-export-grid">
+          {% for name in company_names %}
+          <label class="sub-export-choice">
+            <input type="checkbox" name="companies" value="{{ name }}" class="export-company-check"{% if not filters.company_name or filters.company_name == name %} checked{% endif %}>
+            {{ name }}
+          </label>
+          {% endfor %}
+          {% if has_blank_company %}
+          <label class="sub-export-choice">
+            <input type="checkbox" name="companies" value="{{ no_company_value }}" class="export-company-check"{% if not filters.company_name or filters.company_name == no_company_value %} checked{% endif %}>
+            {{ no_company_label }}
+          </label>
+          {% endif %}
+        </div>
+        {% if not company_names and not has_blank_company %}
+        <p class="muted" style="margin:0.35rem 0 0;">No companies found on current subscriptions.</p>
+        {% endif %}
+      </div>
+
+      <p class="sub-export-error" id="subscription-export-error"></p>
+      <div class="sub-export-actions">
+        <button type="button" class="btn btn-ghost" data-close-export>Cancel</button>
+        <button type="submit" class="btn btn-primary">Export</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 (function () {
   var master = document.getElementById("subscription-select-all");
   var boxes = document.querySelectorAll(".subscription-row-check");
-  if (!master || !boxes.length) return;
-  master.addEventListener("change", function () {
-    boxes.forEach(function (b) { b.checked = master.checked; });
-  });
-  boxes.forEach(function (b) {
-    b.addEventListener("change", function () {
-      var all = true;
-      boxes.forEach(function (x) { if (!x.checked) all = false; });
-      master.checked = all;
+  if (master && boxes.length) {
+    master.addEventListener("change", function () {
+      boxes.forEach(function (b) { b.checked = master.checked; });
     });
+    boxes.forEach(function (b) {
+      b.addEventListener("change", function () {
+        var all = true;
+        boxes.forEach(function (x) { if (!x.checked) all = false; });
+        master.checked = all;
+      });
+    });
+  }
+
+  var modal = document.getElementById("subscription-export-modal");
+  var openBtn = document.getElementById("open-subscription-export");
+  var form = document.getElementById("subscription-export-form");
+  var errorEl = document.getElementById("subscription-export-error");
+  var colChecks = document.querySelectorAll(".export-column-check");
+  var companyChecks = document.querySelectorAll(".export-company-check");
+  var defaultCols = {{ default_export_columns|safe }};
+  var filterCompany = "{{ filters.company_name|escapejs }}";
+
+  function showError(msg) {
+    if (!errorEl) return;
+    errorEl.textContent = msg || "";
+    errorEl.classList.toggle("is-visible", Boolean(msg));
+  }
+
+  function setChecks(nodes, predicate) {
+    nodes.forEach(function (box) {
+      box.checked = predicate(box);
+    });
+  }
+
+  function openModal() {
+    if (!modal) return;
+    setChecks(colChecks, function (box) { return defaultCols.indexOf(box.value) !== -1; });
+    setChecks(companyChecks, function (box) {
+      return !filterCompany || box.value === filterCompany;
+    });
+    showError("");
+    modal.hidden = false;
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.hidden = true;
+    showError("");
+  }
+
+  if (openBtn) openBtn.addEventListener("click", openModal);
+  document.querySelectorAll("[data-close-export]").forEach(function (el) {
+    el.addEventListener("click", closeModal);
   });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal && !modal.hidden) closeModal();
+  });
+
+  var colsAll = document.getElementById("export-cols-all");
+  var colsClear = document.getElementById("export-cols-clear");
+  var colsDefault = document.getElementById("export-cols-default");
+  var cosAll = document.getElementById("export-cos-all");
+  var cosClear = document.getElementById("export-cos-clear");
+  if (colsAll) colsAll.addEventListener("click", function () {
+    setChecks(colChecks, function () { return true; });
+  });
+  if (colsClear) colsClear.addEventListener("click", function () {
+    setChecks(colChecks, function () { return false; });
+  });
+  if (colsDefault) colsDefault.addEventListener("click", function () {
+    setChecks(colChecks, function (box) { return defaultCols.indexOf(box.value) !== -1; });
+  });
+  if (cosAll) cosAll.addEventListener("click", function () {
+    setChecks(companyChecks, function () { return true; });
+  });
+  if (cosClear) cosClear.addEventListener("click", function () {
+    setChecks(companyChecks, function () { return false; });
+  });
+
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      var hasCol = false;
+      var hasCompany = false;
+      colChecks.forEach(function (box) { if (box.checked) hasCol = true; });
+      companyChecks.forEach(function (box) { if (box.checked) hasCompany = true; });
+      if (!hasCol) {
+        e.preventDefault();
+        showError("Select at least one column to export.");
+        return;
+      }
+      if (!hasCompany) {
+        e.preventDefault();
+        showError("Select at least one company to export.");
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}
