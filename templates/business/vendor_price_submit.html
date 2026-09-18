@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{% if state == "expired" %}Link Expired{% elif state == "invalid" %}Error{% else %}Price Submission{% endif %}{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block content_guest %}
+<div class="proc-public">
+  <div class="card">
+    {% if state == "invalid" %}
+      <h1>Error</h1>
+      <p>{{ error_message|default:"This link is not valid." }}</p>
+    {% elif state == "expired" %}
+      <h1>Link Expired</h1>
+      <p>Submit before {{ submission.expires_at|date:"j M Y" }} at {{ submission.expires_at|date:"H:i" }}. After expiry this link cannot be used.</p>
+      <p><button type="button" class="btn btn-primary" onclick="window.close()">Close Window</button></p>
+    {% elif state == "submitted" %}
+      <h1>Prices already submitted</h1>
+      {% if success_message %}
+      <p>{{ success_message }}</p>
+      {% else %}
+      <p>{% if submission.submitted_at %}{{ submission.submitted_at|date:"j M Y, H:i" }}{% endif %}</p>
+      <p>Contact the company if you need a change.</p>
+      {% endif %}
+    {% else %}
+      <h1>Price Submission</h1>
+      <p>Enter your unit prices for this deal. This link is unique to {{ submission.vendor.name }}.</p>
+      <div class="proc-meta-grid proc-meta-grid--3">
+        <div class="proc-meta-cell"><span>Deal number</span><strong>{{ deal_no }}</strong></div>
+        <div class="proc-meta-cell"><span>Vendor</span><strong>{{ submission.vendor.name }}</strong></div>
+        <div class="proc-meta-cell"><span>Link expiry</span><strong>{{ submission.expires_at|date:"j M Y, H:i" }}</strong></div>
+      </div>
+      {% if previous_lowest %}
+      <section class="proc-section" style="box-shadow:none;">
+        <h3>Lowest prices from the previous round</h3>
+        <p class="muted">Vendor names are not disclosed.</p>
+        <table class="tracker-table-pro">
+          <thead>
+            <tr><th>Product</th><th class="proc-num">Lowest price (₹)</th></tr>
+          </thead>
+          <tbody>
+            {% for row in previous_lowest %}
+            <tr>
+              <td>{{ row.product_name }}</td>
+              <td class="proc-num">₹{{ row.lowest|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endif %}
+      {% if error_message %}<p class="proc-warn">{{ error_message }}</p>{% endif %}
+      <form method="post" action="{% url 'vendor_price_submit_post' submission.submission_token %}" id="vendor-price-form">
+        {% csrf_token %}
+        <input type="hidden" name="pricing_mode" value="individual">
+        {% for item in form_lines %}
+        <article class="proc-product-card">
+          <div class="proc-product-head">
+            <div>
+              <strong class="proc-product-name">{{ item.line.product.name }}</strong>
+              <div class="proc-product-company">{{ item.line.product_company|default:item.line.product.company_name }}</div>
+            </div>
+            <div class="proc-chips">
+              {% if item.line.category %}<span class="proc-chip">{{ item.line.category }}</span>{% endif %}
+              <span class="proc-chip">Total Qty: {{ item.line.quantity }}</span>
+            </div>
+          </div>
+          <div class="proc-product-form">
+            <div class="proc-field">
+              <label>Your Price (per unit)</label>
+              <input type="number" name="price_{{ item.line.product_id }}" min="0" step="0.01" required value="{{ item.price_value }}">
+              <span class="proc-help">Enter price per unit. Total for {{ item.line.quantity }} units will be calculated automatically.</span>
+            </div>
+            <div class="proc-field">
+              <label>Additional Notes (Optional)</label>
+              <textarea name="note_{{ item.line.product_id }}" placeholder="Any additional information about this product...">{{ item.note_value }}</textarea>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+        <div class="proc-center">
+          <button type="submit" class="btn btn-primary" id="submit-prices">Submit prices</button>
+        </div>
+        <p class="proc-expiry-note">Submit before {{ submission.expires_at|date:"j M Y" }} at {{ submission.expires_at|date:"H:i" }}. After expiry this link cannot be used.</p>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% if state == "form" %}
+<script>
+(function () {
+  var form = document.getElementById("vendor-price-form");
+  if (!form) return;
+  form.addEventListener("submit", function (e) {
+    var inputs = form.querySelectorAll("input[type='number'][name^='price_']");
+    var ok = true;
+    inputs.forEach(function (input) {
+      if (!input.value || Number(input.value) <= 0) ok = false;
+    });
+    if (!ok) {
+      e.preventDefault();
+      alert("Please enter valid prices for all products.");
+      return;
+    }
+    var btn = document.getElementById("submit-prices");
+    btn.disabled = true;
+    btn.textContent = "Submitting your prices...";
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

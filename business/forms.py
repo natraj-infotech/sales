@@ -117,6 +117,14 @@ TicketPriorityRuleFormSet = formset_factory(
 
 
 class VendorForm(forms.ModelForm):
+    catalog_products = forms.ModelMultipleChoiceField(
+        queryset=Product.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label="Products",
+        help_text="Select one or more products this vendor can quote.",
+    )
+
     class Meta:
         model = Vendor
         fields = (
@@ -130,7 +138,19 @@ class VendorForm(forms.ModelForm):
             "phone_3",
             "website",
             "notes",
+            "catalog_products",
         )
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if company is None and getattr(self.instance, "company_id", None):
+            company = self.instance.company
+        if company is not None:
+            self.fields["catalog_products"].queryset = Product.objects.filter(
+                company=company
+            ).order_by("name")
+        else:
+            self.fields["catalog_products"].queryset = Product.objects.none()
 
 
 class ClientForm(forms.ModelForm):

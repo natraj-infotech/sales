@@ -72,6 +72,94 @@
   .vendor-grid.vendor-grid--three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .vendor-field--products { grid-column: 1 / -1; }
+  .vendor-ms { position: relative; }
+  .vendor-ms-toggle {
+    width: 100%;
+    text-align: left;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    padding: 0.32rem 0.42rem;
+    font-size: 0.64rem;
+    color: #6b7d95;
+    background: #fff;
+    cursor: pointer;
+    min-height: 1.7rem;
+  }
+  .vendor-ms-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    margin-top: 0.35rem;
+  }
+  .vendor-ms-chips:empty { display: none; }
+  .vendor-ms-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    max-width: 100%;
+    padding: 0.18rem 0.42rem;
+    border: 1px solid #c9d5e4;
+    border-radius: 999px;
+    background: #eef4fb;
+    color: #1f3b63;
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .vendor-ms-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vendor-ms-chip button {
+    border: 0;
+    background: transparent;
+    color: #5b6b82;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .vendor-ms-panel {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    margin-top: 0.2rem;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    padding: 0.35rem;
+  }
+  .vendor-ms-search {
+    width: 100%;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    padding: 0.28rem 0.4rem;
+    font-size: 0.62rem;
+    margin-bottom: 0.3rem;
+  }
+  .vendor-ms-list {
+    max-height: 180px;
+    overflow: auto;
+  }
+  .vendor-ms-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.2rem;
+    font-size: 0.64rem;
+    color: #13294b;
+    cursor: pointer;
+  }
+  .vendor-ms-item input { margin: 0; }
+  .vendor-ms-empty {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.62rem;
+    color: #6b7d95;
+  }
   .vendor-field label {
     display: block;
     margin-bottom: 0.18rem;
@@ -171,6 +259,30 @@
               <div class="vendor-help">Optional - Tax registration number</div>
               {{ form.gst_number.errors }}
             </div>
+            <div class="vendor-field vendor-field--products">
+              <label>Products</label>
+              <div class="vendor-ms" data-vendor-ms>
+                <button type="button" class="vendor-ms-toggle" aria-expanded="false">
+                  Select products
+                </button>
+                <div class="vendor-ms-chips" data-vendor-ms-chips></div>
+                <div class="vendor-ms-panel" hidden>
+                  <input type="search" class="vendor-ms-search" placeholder="Search products…" aria-label="Search products">
+                  <div class="vendor-ms-list">
+                    {% for item in form.catalog_products %}
+                    <label class="vendor-ms-item" data-label="{{ item.choice_label|lower }}">
+                      {{ item.tag }}
+                      <span>{{ item.choice_label }}</span>
+                    </label>
+                    {% empty %}
+                    <div class="vendor-ms-empty">No products in Product list yet</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="vendor-help">Select one or more products this vendor can quote</div>
+              {{ form.catalog_products.errors }}
+            </div>
           </div>
         </section>
 
@@ -241,4 +353,76 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  var root = document.querySelector("[data-vendor-ms]");
+  if (!root) return;
+  var toggle = root.querySelector(".vendor-ms-toggle");
+  var panel = root.querySelector(".vendor-ms-panel");
+  var search = root.querySelector(".vendor-ms-search");
+  var chips = root.querySelector("[data-vendor-ms-chips]");
+  var items = Array.prototype.slice.call(root.querySelectorAll(".vendor-ms-item"));
+
+  function selectedItems() {
+    return items.filter(function (item) {
+      var box = item.querySelector("input[type='checkbox']");
+      return box && box.checked;
+    });
+  }
+  function refreshToggle() {
+    var chosen = selectedItems();
+    toggle.textContent = chosen.length ? "Add more products" : "Select products";
+    if (!chips) return;
+    chips.innerHTML = "";
+    chosen.forEach(function (item) {
+      var box = item.querySelector("input[type='checkbox']");
+      var name = (item.querySelector("span") || item).textContent.trim();
+      var chip = document.createElement("span");
+      chip.className = "vendor-ms-chip";
+      var label = document.createElement("span");
+      label.textContent = name;
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Remove " + name);
+      remove.textContent = "×";
+      remove.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (box) {
+          box.checked = false;
+          refreshToggle();
+        }
+      });
+      chip.appendChild(label);
+      chip.appendChild(remove);
+      chips.appendChild(chip);
+    });
+  }
+  function openPanel(open) {
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  toggle.addEventListener("click", function (e) {
+    e.preventDefault();
+    openPanel(panel.hidden);
+  });
+  document.addEventListener("click", function (e) {
+    if (!root.contains(e.target)) openPanel(false);
+  });
+  items.forEach(function (item) {
+    var box = item.querySelector("input[type='checkbox']");
+    if (box) box.addEventListener("change", refreshToggle);
+  });
+  if (search) {
+    search.addEventListener("input", function () {
+      var q = (search.value || "").toLowerCase();
+      items.forEach(function (item) {
+        var label = item.getAttribute("data-label") || "";
+        item.style.display = !q || label.indexOf(q) !== -1 ? "" : "none";
+      });
+    });
+  }
+  refreshToggle();
+})();
+</script>
 {% endblock %}

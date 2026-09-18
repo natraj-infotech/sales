@@ -37,6 +37,7 @@ class CompanyProfileForm(forms.ModelForm):
             "oem_email_app_password",
             "outgoing_email",
             "outgoing_email_app_password",
+            "purchase_department_emails",
             "regards_email",
             "regards_contact",
             "expiry_email_subject",
@@ -60,6 +61,9 @@ class CompanyProfileForm(forms.ModelForm):
             "expiry_email_initial_paragraph": forms.Textarea(attrs={"rows": 3}),
             "expiry_email_end_paragraph": forms.Textarea(attrs={"rows": 3}),
             "expiry_team_extra_emails": forms.Textarea(attrs={"rows": 3}),
+            "purchase_department_emails": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "purchase@example.com"}
+            ),
             "support_email_app_password": forms.PasswordInput(
                 render_value=False, attrs={"autocomplete": "new-password"}
             ),
@@ -96,6 +100,11 @@ class CompanyProfileForm(forms.ModelForm):
         self.fields["regards_email"].label = "Regards emails"
         self.fields["regards_email"].help_text = (
             "Shown under Best Regards in client expiry emails. "
+            "Add multiple addresses, one per line or comma-separated."
+        )
+        self.fields["purchase_department_emails"].label = "Purchase department emails"
+        self.fields["purchase_department_emails"].help_text = (
+            "Used when sending procurement comparison PDFs to Purchase. "
             "Add multiple addresses, one per line or comma-separated."
         )
         self.fields["regards_contact"].label = "Regards contact details"
@@ -156,6 +165,21 @@ class CompanyProfileForm(forms.ModelForm):
         if invalid:
             raise forms.ValidationError(
                 "Invalid regards email: " + ", ".join(invalid)
+            )
+        return "\n".join(emails)
+
+    def clean_purchase_department_emails(self):
+        raw = (self.cleaned_data.get("purchase_department_emails") or "").strip()
+        emails = parse_extra_emails(raw)
+        invalid = []
+        for addr in emails:
+            try:
+                validate_email(addr)
+            except DjangoValidationError:
+                invalid.append(addr)
+        if invalid:
+            raise forms.ValidationError(
+                "Invalid purchase department email: " + ", ".join(invalid)
             )
         return "\n".join(emails)
 

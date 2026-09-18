@@ -46,6 +46,12 @@ class Vendor(models.Model):
     website = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    catalog_products = models.ManyToManyField(
+        "Product",
+        blank=True,
+        related_name="offering_vendors",
+        help_text="Products this vendor can quote in procurement.",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -1341,3 +1347,239 @@ class OemDiaryEmail(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class ProcurementDeal(models.Model):
+    """One product line of a procurement deal. Lines share deal_no per company."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="procurement_deals",
+    )
+    deal_no = models.CharField(max_length=32, db_index=True)
+    deal_name = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=128, blank=True)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="procurement_deal_lines",
+    )
+    product_company = models.CharField(max_length=255, blank=True)
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["company", "deal_no"]),
+        ]
+
+    def __str__(self):
+        return f"{self.deal_no} / {self.product}"
+
+
+class DealVendor(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="deal_vendors",
+    )
+    deal_no = models.CharField(max_length=32, db_index=True)
+    deal = models.ForeignKey(
+        ProcurementDeal,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invited_vendors",
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.CASCADE,
+        related_name="procurement_invites",
+    )
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "deal_no", "vendor"],
+                name="unique_deal_vendor_per_company_deal",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.deal_no} / {self.vendor}"
+
+
+class DealRound(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="deal_rounds",
+    )
+    deal_no = models.CharField(max_length=32, db_index=True)
+    round_number = models.PositiveIntegerField()
+    name = models.CharField(max_length=64, blank=True)
+    is_final = models.BooleanField(default=False)
+    finalised_price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    finalised_vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="finalised_deal_rounds",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["round_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "deal_no", "round_number"],
+                name="unique_deal_round_per_company_deal",
+            ),
+        ]
+
+    def __str__(self):
+        return self.display_name
+
+    @property
+    def display_name(self) -> str:
+        return (self.name or "").strip() or f"Round {self.round_number}"
+
+
+class VendorPriceSubmission(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="vendor_price_submissions",
+    )
+    deal_no = models.CharField(max_length=32, db_index=True)
+    deal = models.ForeignKey(
+        ProcurementDeal,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="price_submissions",
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.CASCADE,
+        related_name="price_submissions",
+    )
+    deal_round = models.ForeignKey(
+        DealRound,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+    )
+    submission_token = models.UUIDField(default=uuid.uuid4, unique=True)
+    expires_at = models.DateTimeField()
+    is_submitted = models.BooleanField(default=False)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    is_final_quotation = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.vendor} / {self.deal_no} / {self.deal_round}"
+
+    def is_expired(self) -> bool:
+        return timezone.now() > self.expires_at
+
+
+class VendorProductPrice(models.Model):
+    submission = models.ForeignKey(
+        VendorPriceSubmission,
+        on_delete=models.CASCADE,
+        related_name="product_prices",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="vendor_submitted_prices",
+    )
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.submission_id} / {self.product_id}"
+
+
+class DealRoundVendorPrice(models.Model):
+    deal_round = models.ForeignKey(
+        DealRound,
+        on_delete=models.CASCADE,
+        related_name="vendor_prices",
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.CASCADE,
+        related_name="round_prices",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="round_vendor_prices",
+    )
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["deal_round", "vendor", "product"],
+                name="unique_round_vendor_product_price",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.deal_round} / {self.vendor} / {self.product}"
+
+
+class DealVendorPrice(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="manual_deal_vendor_prices",
+    )
+    deal_no = models.CharField(max_length=32, db_index=True)
+    deal = models.ForeignKey(
+        ProcurementDeal,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="manual_vendor_prices",
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.CASCADE,
+        related_name="manual_deal_prices",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="manual_deal_prices",
+    )
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.deal_no} / {self.vendor} / {self.product}"

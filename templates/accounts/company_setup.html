@@ -310,6 +310,14 @@
       {% include "includes/form_field_tracker.html" with field=form.outgoing_email_app_password icon="lock" %}
     </div>
 
+    <h3 class="tracker-card-section-title">Purchase department</h3>
+    <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
+      Recipients for procurement deal comparison PDFs sent from Compare Result.
+    </p>
+    <div class="tracker-form-grid">
+      {% include "includes/form_field_tracker.html" with field=form.purchase_department_emails icon="mail" full_width=True %}
+    </div>
+
     <h3 class="tracker-card-section-title">Email signature</h3>
     <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;">
       These appear under Best Regards in client renewal emails. You can list more than one regards email.

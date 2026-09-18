@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Compare Deals{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-chart"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Compare Deals</h1>
+      <p class="tracker-page-subtitle">Product comparison and vendor analysis</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="get" class="proc-section" id="fetch-form">
+  <div class="proc-field">
+    <label for="deal_no">Select Deal to Compare</label>
+    <select id="deal_no" name="deal_no">
+      <option value="">Select Deal to Compare</option>
+      {% for deal in deals %}
+      <option value="{{ deal.deal_no }}" {% if deal.deal_no == selected_deal_no %}selected{% endif %}>{{ deal.deal_no }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="proc-center">
+    <button type="submit" class="btn btn-primary">Fetch Deal</button>
+  </div>
+</form>
+
+{% if deal_error %}
+<p class="proc-warn">{{ deal_error }}</p>
+{% endif %}
+
+{% if deal_found %}
+<section class="proc-section">
+  <h3>Deal Details</h3>
+  <div class="proc-grid-4">
+    <div class="proc-field">
+      <label>Deal ID</label>
+      <input type="text" value="{{ header_line.pk }}" readonly>
+    </div>
+    <div class="proc-field">
+      <label>Deal Number</label>
+      <input type="text" value="{{ selected_deal_no }}" readonly>
+    </div>
+  </div>
+</section>
+
+<section class="proc-section">
+  <h3>Products in Deal</h3>
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Product Name</th>
+          <th>Company Name</th>
+          <th>Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>{{ line.category|default:"—" }}</td>
+          <td>{{ line.product.name }}</td>
+          <td>{{ line.product_company|default:"—" }}</td>
+          <td>{{ line.quantity }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="proc-section">
+  <h3>Add Vendor</h3>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add_vendor">
+    <input type="hidden" name="deal_no" value="{{ selected_deal_no }}">
+    <div class="proc-grid-4">
+      <div class="proc-field">
+        <label for="vendor_id">Vendor Name</label>
+        <select id="vendor_id" name="vendor_id" required>
+          <option value="">Select vendor</option>
+          {% for vendor in all_vendors %}
+          <option value="{{ vendor.pk }}">{{ vendor.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="proc-field">
+        <label for="note">Note</label>
+        <input id="note" name="note" type="text">
+      </div>
+    </div>
+    <div id="product-prices" style="margin-top:0.75rem;">
+      {% for line in lines %}
+      <div class="proc-field" style="margin-bottom:0.6rem;">
+        <label>Price for {{ line.product.name }}</label>
+        <input type="number" name="price_{{ line.product_id }}" min="0" step="0.01">
+      </div>
+      {% endfor %}
+    </div>
+    <div class="proc-center">
+      <button type="submit" class="btn btn-primary">Add Vendor and Prices</button>
+    </div>
+  </form>
+</section>
+
+<section class="proc-section">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Rank (Low-High)</th>
+          <th>Vendor Name</th>
+          {% for line in lines %}
+          <th class="proc-num">{{ line.product.name }}</th>
+          {% endfor %}
+          <th>Note</th>
+          <th>Delete</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in vendors_table %}
+        <tr>
+          <td>{% if row.rank %}{{ row.rank }}{% else %}—{% endif %}</td>
+          <td>{{ row.vendor.name }}</td>
+          {% for cell in row.product_prices %}
+          <td class="proc-num">{{ cell.display }}</td>
+          {% endfor %}
+          <td>{{ row.note|default:"—" }}</td>
+          <td>
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_vendor">
+              <input type="hidden" name="deal_no" value="{{ selected_deal_no }}">
+              <input type="hidden" name="vendor_id" value="{{ row.vendor.pk }}">
+              <button type="submit" class="btn btn-ghost">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="{{ lines|length|add:4 }}" class="muted" style="text-align:center;padding:1rem;">No vendors added yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" class="proc-center">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="compare">
+    <input type="hidden" name="deal_no" value="{{ selected_deal_no }}">
+    <button type="submit" class="btn btn-primary">Compare Deals</button>
+  </form>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  var select = document.getElementById("deal_no");
+  if (select) {
+    select.addEventListener("change", function () {
+      if (select.value) select.form.submit();
+    });
+  }
+})();
+</script>
+{% endblock %}
