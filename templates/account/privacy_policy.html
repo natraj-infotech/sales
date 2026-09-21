@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy{% endblock %}
+
+{% block extra_css %}
+<style>
+  .guest-wrap--wide .guest-main--wide {
+    max-width: none;
+  }
+  .guest-wrap--wide {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+  .privacy-doc {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    background: #fff;
+    border: 1px solid #d6deea;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .privacy-doc-head {
+    background: linear-gradient(180deg, #4777b9 0%, #6ea2de 100%);
+    color: #fff;
+    padding: 1.5rem 1.75rem 1.35rem;
+    text-align: center;
+  }
+  .privacy-doc-head h1 {
+    margin: 0 0 0.35rem;
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .privacy-doc-head .subtitle {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    opacity: 0.95;
+  }
+  .privacy-doc-meta {
+    font-size: 0.82rem;
+    margin-top: 0.65rem;
+    opacity: 0.9;
+  }
+  .privacy-doc-body {
+    padding: 1.5rem 1.75rem 2rem;
+    color: #1e293b;
+    font-size: 0.92rem;
+    line-height: 1.65;
+  }
+  .privacy-doc-body h2 {
+    margin: 1.75rem 0 0.65rem;
+    font-size: 1.12rem;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.35rem;
+  }
+  .privacy-doc-body h2:first-child { margin-top: 0; }
+  .privacy-doc-body h3 {
+    margin: 1.1rem 0 0.45rem;
+    font-size: 0.98rem;
+    color: #334155;
+  }
+  .privacy-doc-body p { margin: 0.65rem 0; }
+  .privacy-doc-body ul {
+    margin: 0.5rem 0 0.75rem;
+    padding-left: 1.35rem;
+  }
+  .privacy-doc-body li { margin: 0.35rem 0; }
+  .privacy-doc-body a { color: #0f63bd; }
+  .privacy-note {
+    margin: 1rem 0;
+    padding: 0.75rem 1rem;
+    background: #f0f7ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    font-size: 0.88rem;
+  }
+  .privacy-note strong { display: block; margin-bottom: 0.25rem; color: #1e40af; }
+  .privacy-table-wrap {
+    overflow-x: auto;
+    margin: 0.85rem 0 1rem;
+  }
+  .privacy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+  }
+  .privacy-table th,
+  .privacy-table td {
+    border: 1px solid #e2e8f0;
+    padding: 0.55rem 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  .privacy-table th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: #334155;
+  }
+  .privacy-meta-table td:first-child { font-weight: 600; width: 38%; color: #475569; }
+  .privacy-back {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+  }
+  .privacy-back a {
+    color: #0f63bd;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .privacy-back a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content_guest %}
+<article class="privacy-doc">
+  <header class="privacy-doc-head">
+    <p class="subtitle">Natraj Infotech Private Limited</p>
+    <h1>Privacy Policy</h1>
+    <p class="subtitle">Tracker365 Sales — Client Subscription Management Application</p>
+    <p class="privacy-doc-meta">Version 1.0 · Effective 21 September 2026</p>
+  </header>
+
+  <div class="privacy-doc-body">
+    <div class="privacy-table-wrap">
+      <table class="privacy-table privacy-meta-table">
+        <tbody>
+          <tr><td>Document Title</td><td>Privacy Policy — Tracker365 Sales</td></tr>
+          <tr><td>Application</td><td>Tracker365 Sales (Client Subscription)</td></tr>
+          <tr><td>Provider</td><td>Natraj Infotech Private Limited</td></tr>
+          <tr><td>Application URL</td><td><a href="https://sales.tracker-365.com">https://sales.tracker-365.com</a></td></tr>
+          <tr><td>Version</td><td>1.0</td></tr>
+          <tr><td>Effective Date</td><td>21 September 2026</td></tr>
+          <tr><td>Governing Jurisdiction</td><td>India</td></tr>
+          <tr><td>Contact</td><td><a href="mailto:tracker365@natrajinfo.in">tracker365@natrajinfo.in</a></td></tr>
+          <tr><td>Address</td><td>Fortune Business Hub, 220, Science City Road, Ahmedabad, Gujarat, India</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>1. Introduction</h2>
+    <p>Natraj Infotech Private Limited (“Natraj Infotech”, “we”, “us” or “our”) has developed Tracker365 Sales, an application for managing client subscriptions, renewals, leads, vendors, procurement, and customer support operations (the “Application”).</p>
+    <p>This Privacy Policy explains what personal data the Application handles, why it is handled, who is responsible for it, how it is protected, and the rights available to individuals whose personal data is processed through it.</p>
+    <p>Our approach to personal data is built on a set of core principles: personal data is processed lawfully and only for specified purposes; only the data necessary for those purposes is collected; data is kept accurate and up to date; it is retained no longer than required; reasonable security safeguards are applied; and responsibility for how data is handled is clearly allocated.</p>
+    <div class="privacy-note">
+      <strong>Please note</strong>
+      The Application is a deployed business application, not a publicly available consumer service. Access is limited to authorised personnel of the organisation that operates a given deployment.
+    </div>
+
+    <h2>2. Scope of this Policy</h2>
+    <p>This Policy applies to:</p>
+    <ul>
+      <li>The Tracker365 Sales application and its modules, including dashboard, client subscriptions, renewals, leads, vendors, procurement, clients, products, company profile, team access, support tickets, and case lock.</li>
+      <li>Personal data processed within the Application, such as user account details and business contact information of clients, vendors, and leads.</li>
+      <li>Communications handled through the Application, including renewal notifications, support correspondence, and WhatsApp business messages.</li>
+    </ul>
+    <p>This Policy does not apply to:</p>
+    <ul>
+      <li>Other products of Natraj Infotech, including the primary Tracker365 product application, which are governed by their own terms.</li>
+      <li>Third-party platforms and services that an organisation may connect to the Application, which remain governed by the policies of those providers.</li>
+      <li>Infrastructure, networks, devices, or identity systems owned or administered by a customer organisation.</li>
+    </ul>
+
+    <h2>3. Deployment Models and Responsibility for Data</h2>
+    <p>The Application is supplied as a deployable product rather than as a shared hosted service. It is currently operated by Natraj Infotech for its own internal business use, and it may be deployed for other organisations that wish to use it. In every case, each deployment is a separate, independent installation with its own containerised PostgreSQL database, and data is not pooled or shared between deployments.</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr>
+            <th>Deployment Model</th>
+            <th>Who Controls the Data</th>
+            <th>Role of Natraj Infotech</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Internal deployment</td>
+            <td>Natraj Infotech, for its own business records</td>
+            <td>Operates the deployment and determines the purposes of processing</td>
+          </tr>
+          <tr>
+            <td>Customer-designated deployment</td>
+            <td>The customer organisation, which owns and controls all data entered into its instance</td>
+            <td>Supplies, installs, configures and supports the software; acts on the customer’s documented instructions</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Where the Application is deployed for a customer organisation, that organisation determines the purpose and means of processing the personal data recorded in its instance. Natraj Infotech processes such data only to the extent required to deliver, configure, maintain or support the software, and only on the instructions of that organisation.</p>
+    <div class="privacy-note">
+      <strong>Responsibility in customer environments</strong>
+      Where a deployment is hosted on infrastructure owned, leased or designated by a customer organisation, that organisation is responsible for the security, administration, access control, patching, network protection and physical safeguarding of that environment.
+    </div>
+
+    <h2>4. Personal Data Processed</h2>
+    <p>The Application is designed for business use, and the personal data it handles is predominantly business-context information. The categories below describe what may be processed.</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr><th>Category</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Account data</td>
+            <td>Name, business email address, role and permission assignment, company association, and account status of users who sign in to the Application.</td>
+          </tr>
+          <tr>
+            <td>Authentication data</td>
+            <td>Sign-in identifiers and authentication tokens issued through Microsoft or Google sign-in, session information, and, where local sign-in is enabled, securely stored credential data.</td>
+          </tr>
+          <tr>
+            <td>Client and contact data</td>
+            <td>Business names, contact person names, business email addresses, telephone numbers and addresses of client organisations.</td>
+          </tr>
+          <tr>
+            <td>Vendor data</td>
+            <td>Vendor organisation details, contact persons and communication details used for procurement and quotation activity.</td>
+          </tr>
+          <tr>
+            <td>Lead data</td>
+            <td>Enquiry details received by email, WhatsApp or manual entry, including contact identifiers, product interest, status and timestamps.</td>
+          </tr>
+          <tr>
+            <td>Subscription and renewal data</td>
+            <td>Product and subscription records, quantities, serial and invoice references, deal status, expiry dates, renewal confirmations and related documents.</td>
+          </tr>
+          <tr>
+            <td>Procurement data</td>
+            <td>Quotation requests, vendor rounds, price submissions, comparisons and generated documents.</td>
+          </tr>
+          <tr>
+            <td>Support data</td>
+            <td>Support tickets, ticket correspondence, service level information, and original equipment manufacturer ticket records.</td>
+          </tr>
+          <tr>
+            <td>Communication logs</td>
+            <td>Records of messages sent and received through the Application, including WhatsApp message logs and renewal or notification emails.</td>
+          </tr>
+          <tr>
+            <td>Technical data</td>
+            <td>Internet protocol address, browser and device information, and application event records generated during use.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The Application is not designed to collect sensitive categories of personal data, financial account credentials, or personal data relating to children. Users are asked not to enter such information into free-text fields.</p>
+
+    <h2>5. Purposes of Processing</h2>
+    <p>Personal data is processed only for specified, lawful purposes connected with operating the Application:</p>
+    <ul>
+      <li>To create, authenticate and administer user accounts and role-based access.</li>
+      <li>To record and manage client subscriptions, renewals, and associated commercial documentation.</li>
+      <li>To capture and progress sales leads received through email, WhatsApp or manual entry.</li>
+      <li>To manage vendor records, procurement rounds, quotations and price comparisons.</li>
+      <li>To deliver renewal reminders, confirmations, notifications and other operational communications.</li>
+      <li>To record, assign, escalate and resolve support tickets and track service commitments.</li>
+      <li>To generate reports, dashboards and business analysis for the operating organisation.</li>
+      <li>To maintain the security, integrity, availability and correct functioning of the Application.</li>
+      <li>To comply with applicable legal, regulatory, accounting and contractual obligations.</li>
+    </ul>
+    <p>Personal data is not sold, rented, traded, or used for advertising, profiling, or behavioural targeting.</p>
+
+    <h2>6. Lawful Basis and Consent</h2>
+    <p>Processing in the Application is carried out on the basis of consent obtained by the operating organisation, or where processing is necessary for legitimate business purposes — including purposes for which an individual has voluntarily provided their personal data, the performance of a contract, and the conduct of employment-related and commercial functions.</p>
+    <p>Where consent is the basis of processing, the operating organisation is responsible for obtaining, recording and honouring that consent, and for informing individuals of the purposes for which their personal data is processed. Consent may be withdrawn at any time, and withdrawal will not affect the lawfulness of processing carried out before withdrawal.</p>
+
+    <h2>7. Third-Party Services and Integrations</h2>
+    <p>The Application can be connected to the following third-party services. These integrations are optional and are enabled at the discretion of the operating organisation.</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr><th>Service</th><th>Purpose</th><th>Data Involved</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Microsoft</td>
+            <td>Sign-in and identity verification; related workplace services where configured</td>
+            <td>Account identifier, name, business email address, authentication tokens</td>
+          </tr>
+          <tr>
+            <td>Google</td>
+            <td>Sign-in and identity verification</td>
+            <td>Account identifier, name, business email address, authentication tokens</td>
+          </tr>
+          <tr>
+            <td>WhatsApp (Meta)</td>
+            <td>Business messaging for lead capture, welcome messages and customer conversations</td>
+            <td>WhatsApp business number identifier, message content and delivery metadata</td>
+          </tr>
+          <tr>
+            <td>Zoho</td>
+            <td>Generation and management of quotations and related commercial documents</td>
+            <td>Client and product details required for the quotation</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Each of these providers processes data under its own terms and privacy policy. Natraj Infotech does not control their independent processing activities. Organisations enabling these integrations should review the applicable provider terms before activation.</p>
+
+    <h2>8. Data Location and Hosting</h2>
+    <p>The deployment operated by Natraj Infotech is hosted on cloud infrastructure located in India, within a virtual machine running a containerised PostgreSQL database.</p>
+    <p>Where the Application is deployed for another organisation, the same containerised architecture is used, and the data resides within the infrastructure designated by that organisation. The hosting location for such deployments is therefore determined by the customer.</p>
+    <p>Personal data is not transferred outside the deployment environment by the Application itself, except where an integration enabled by the operating organisation involves transmission to the relevant third-party provider.</p>
+
+    <h2>9. Security Safeguards</h2>
+    <p>Reasonable security safeguards are implemented to protect personal data against unauthorised access, disclosure, alteration and loss. These include:</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr><th>Safeguard</th><th>Implementation</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Transport security</td>
+            <td>All communication with the Application is served over HTTPS with enforced encryption in transit.</td>
+          </tr>
+          <tr>
+            <td>Storage protection</td>
+            <td>Data is stored in an encrypted state within the hosting environment.</td>
+          </tr>
+          <tr>
+            <td>Access control</td>
+            <td>Role-based access control restricts functionality and records by assigned role and company scope.</td>
+          </tr>
+          <tr>
+            <td>Data segregation</td>
+            <td>Records are scoped to the operating company, and separate deployments maintain separate databases.</td>
+          </tr>
+          <tr>
+            <td>Authentication</td>
+            <td>Microsoft and Google sign-in are supported and recommended, allowing organisations to apply their own identity and multi-factor policies.</td>
+          </tr>
+          <tr>
+            <td>Backup and export</td>
+            <td>Complete data backup and download functionality is available so that the operating organisation can retain its own copy of its data.</td>
+          </tr>
+          <tr>
+            <td>Deployment isolation</td>
+            <td>Each installation is delivered as an independent containerised deployment.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="privacy-note">
+      <strong>Current limitation — disclosed transparently</strong>
+      In-application audit logging is not implemented in the current version of the Application. Organisations requiring detailed user-activity audit trails should rely on their own infrastructure, identity provider and database-level logging until this capability is introduced.
+    </div>
+    <p>No method of electronic storage or transmission is entirely secure. While safeguards are implemented and maintained, absolute security cannot be guaranteed.</p>
+
+    <h2>10. Data Ownership</h2>
+    <p>All business data entered into a deployment of the Application, including client records, vendor records, leads, subscriptions, procurement records, support tickets and communication logs, remains the property of the organisation operating that deployment.</p>
+    <p>Natraj Infotech does not claim ownership of customer data and does not use customer data for its own commercial purposes, for product marketing, or for the development of any other product or service.</p>
+
+    <h2>11. Artificial Intelligence</h2>
+    <p>The Application does not use artificial intelligence or machine learning models, and no data held in the Application is transmitted to any artificial intelligence service or used to train any model.</p>
+    <p>If such functionality is introduced in a future version, this Policy will be updated before that functionality is enabled, and the relevant processing details will be disclosed.</p>
+
+    <h2>12. Data Retention</h2>
+    <p>Personal data is retained for as long as it is required for the purposes described in this Policy, or for as long as the operating organisation requires it for its business, contractual, accounting or legal obligations.</p>
+    <ul>
+      <li>Records are retained within the deployment for the duration of the organisation’s use of the Application.</li>
+      <li>Retention periods within a deployment are determined by the operating organisation.</li>
+      <li>Upon discontinuation of a deployment, the operating organisation may export its data using the backup and download facility, after which the database may be decommissioned in accordance with the applicable agreement.</li>
+      <li>Data no longer required for any specified purpose or for compliance with law should be erased by the operating organisation.</li>
+    </ul>
+
+    <h2>13. Rights of Individuals</h2>
+    <p>Individuals whose personal data is processed through the Application may exercise the following rights, subject to applicable law:</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr><th>Right</th><th>What it means</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Right to information</td>
+            <td>To obtain a summary of the personal data being processed and the processing activities undertaken.</td>
+          </tr>
+          <tr>
+            <td>Right to correction</td>
+            <td>To have inaccurate or misleading personal data corrected, and incomplete personal data completed or updated.</td>
+          </tr>
+          <tr>
+            <td>Right to erasure</td>
+            <td>To request erasure of personal data that is no longer necessary for the purpose for which it was collected, subject to legal retention requirements.</td>
+          </tr>
+          <tr>
+            <td>Right to withdraw consent</td>
+            <td>To withdraw consent previously given, with effect from the date of withdrawal.</td>
+          </tr>
+          <tr>
+            <td>Right to grievance redressal</td>
+            <td>To raise a complaint regarding the processing of personal data and receive a response.</td>
+          </tr>
+          <tr>
+            <td>Right to nominate</td>
+            <td>To nominate another individual to exercise these rights in the event of death or incapacity.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Requests should be addressed to the organisation operating the relevant deployment, since that organisation controls the data held in its instance. Where Natraj Infotech receives a request relating to a customer deployment, it will refer the request to that organisation and provide reasonable assistance in responding to it.</p>
+    <p>Requests concerning the deployment operated by Natraj Infotech may be sent to <a href="mailto:tracker365@natrajinfo.in">tracker365@natrajinfo.in</a>. Requests will be verified and addressed within a reasonable period.</p>
+
+    <h2>14. Cookies and Session Data</h2>
+    <p>The Application uses cookies that are necessary for it to function. These are limited to:</p>
+    <ul>
+      <li>Authentication and session cookies that keep a signed-in user securely authenticated.</li>
+      <li>Security cookies used to protect form submissions against cross-site request forgery.</li>
+      <li>Preference cookies that remember basic interface choices.</li>
+    </ul>
+    <p>The Application does not use advertising cookies, cross-site tracking technologies, or third-party marketing analytics.</p>
+
+    <h2>15. Children’s Data</h2>
+    <p>The Application is intended solely for business use by adult professionals acting in a workplace capacity. It is not directed at children, and personal data of children is not knowingly collected. If such data is found to have been entered, it will be deleted on becoming aware of it.</p>
+
+    <h2>16. Personal Data Breach</h2>
+    <p>In the event of a personal data breach affecting the deployment operated by Natraj Infotech, we will take prompt steps to contain and remediate the incident, assess its impact, and notify affected individuals and the competent authority as required under applicable law.</p>
+    <p>Where a breach occurs in a deployment hosted on infrastructure controlled by a customer organisation, that organisation is responsible for breach assessment and notification. Natraj Infotech will provide reasonable technical assistance and, where a breach is identified in the software itself, will notify affected organisations.</p>
+
+    <h2>17. Changes to this Policy</h2>
+    <p>This Policy may be updated to reflect changes in the Application, our practices, or legal requirements. The version number and effective date at the beginning of this document indicate the current revision. Material changes will be communicated to organisations operating a deployment.</p>
+
+    <h2>18. Contact and Grievance Redressal</h2>
+    <p>Questions, requests and complaints relating to this Policy or to the processing of personal data may be addressed to:</p>
+    <div class="privacy-table-wrap">
+      <table class="privacy-table privacy-meta-table">
+        <tbody>
+          <tr><td>Entity</td><td>Natraj Infotech Private Limited</td></tr>
+          <tr><td>Address</td><td>Fortune Business Hub, 220, Science City Road, Ahmedabad, Gujarat, India</td></tr>
+          <tr><td>Email</td><td><a href="mailto:tracker365@natrajinfo.in">tracker365@natrajinfo.in</a></td></tr>
+          <tr><td>Application</td><td><a href="https://sales.tracker-365.com">https://sales.tracker-365.com</a></td></tr>
+          <tr><td>Response</td><td>Acknowledgement and response within a reasonable period from receipt of a verified request</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>If a grievance is not resolved satisfactorily, the individual may escalate the matter to the competent data protection authority in the applicable jurisdiction.</p>
+    <p><em>End of Document · Privacy Policy v1.0 · Tracker365 Sales</em></p>
+  </div>
+</article>
+
+<p class="privacy-back"><a href="{% url 'account_login' %}">← Back to sign in</a></p>
+{% endblock %}

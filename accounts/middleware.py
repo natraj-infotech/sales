@@ -60,6 +60,7 @@ class RequireCompanyProfileMiddleware:
         "/caselock/fill/",
         "/renewal/",
         "/vendor-price-submit/",
+        "/privacy-policy/",
     )
 
     EXACT_PATHS = (

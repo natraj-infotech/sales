@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.root_redirect, name="root"),
+    path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
     path("company/setup/", views.company_setup, name="company_setup"),
     path(
         "company/reminder-template/",
