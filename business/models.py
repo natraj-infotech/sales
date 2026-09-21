@@ -167,6 +167,7 @@ class Product(models.Model):
     sku = models.CharField(max_length=64, blank=True)
     description = models.TextField(blank=True)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discounted_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -218,6 +219,13 @@ class ClientSubscription(models.Model):
     )
     renewal_draft_vendor = models.ForeignKey(
         Vendor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="renewal_draft_subscriptions",
+    )
+    renewal_draft_product = models.ForeignKey(
+        "Product",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -316,6 +324,7 @@ class ClientSubscription(models.Model):
                 else self.billing_amount
             )
             vendor_id = self.renewal_draft_vendor_id
+            product_id = self.renewal_draft_product_id
             invoice_number = self.renewal_draft_invoice_number
             pdf_name, pdf_url = _field_file_meta(
                 self.renewal_draft_invoice_pdf or self.invoice_pdf
@@ -325,14 +334,21 @@ class ClientSubscription(models.Model):
             quantity = self.quantity
             amount = self.billing_amount
             vendor_id = self.vendor_id
+            product_id = None
             invoice_number = self.invoice_number
             pdf_name, pdf_url = _field_file_meta(self.invoice_pdf)
+        draft_product = None
+        if product_id:
+            draft_product = getattr(self, "renewal_draft_product", None)
         return {
             "start_date": start,
             "end_date": end,
             "quantity": quantity,
             "billing_amount": amount,
             "vendor": str(vendor_id) if vendor_id else "",
+            "product": str(product_id) if product_id else "",
+            "product_name": draft_product.name if draft_product else "",
+            "renew_other_plan": bool(product_id),
             "invoice_number": invoice_number or "",
             "invoice_pdf_name": pdf_name,
             "invoice_pdf_url": pdf_url,
@@ -348,6 +364,7 @@ class ClientSubscription(models.Model):
         vendor,
         invoice_number="",
         invoice_pdf=None,
+        product=None,
     ) -> None:
         self.deal_status = self.DealStatus.WIN
         if not self.deal_status_set_at:
@@ -358,6 +375,7 @@ class ClientSubscription(models.Model):
         self.renewal_draft_quantity = quantity
         self.renewal_draft_billing_amount = billing_amount
         self.renewal_draft_vendor = vendor
+        self.renewal_draft_product = product
         self.renewal_draft_invoice_number = invoice_number or ""
         if invoice_pdf:
             self.renewal_draft_invoice_pdf = invoice_pdf
@@ -372,6 +390,7 @@ class ClientSubscription(models.Model):
         vendor,
         invoice_number="",
         invoice_pdf=None,
+        product=None,
     ) -> None:
         """Store intended renewal terms. Does not change the live subscription."""
         self._set_renewal_draft(
@@ -382,6 +401,7 @@ class ClientSubscription(models.Model):
             vendor=vendor,
             invoice_number=invoice_number,
             invoice_pdf=invoice_pdf,
+            product=product,
         )
         update_fields = [
             "deal_status",
@@ -392,6 +412,7 @@ class ClientSubscription(models.Model):
             "renewal_draft_quantity",
             "renewal_draft_billing_amount",
             "renewal_draft_vendor",
+            "renewal_draft_product",
             "renewal_draft_invoice_number",
         ]
         if invoice_pdf:
@@ -408,13 +429,17 @@ class ClientSubscription(models.Model):
         vendor,
         invoice_number="",
         invoice_pdf=None,
+        product=None,
     ) -> None:
         """Apply renewal to the live subscription and mark the Win form filled."""
+        applied_product = product or self.renewal_draft_product
         self.start_date = start_date
         self.end_date = end_date
         self.quantity = quantity
         self.billing_amount = billing_amount
         self.vendor = vendor
+        if applied_product is not None:
+            self.product = applied_product
         self.status = self.Status.ACTIVE
         self.invoice_number = invoice_number or ""
         applied_pdf = invoice_pdf or self.renewal_draft_invoice_pdf
@@ -428,6 +453,7 @@ class ClientSubscription(models.Model):
             vendor=vendor,
             invoice_number=self.invoice_number,
             invoice_pdf=applied_pdf,
+            product=applied_product,
         )
         update_fields = [
             "start_date",
@@ -445,8 +471,11 @@ class ClientSubscription(models.Model):
             "renewal_draft_quantity",
             "renewal_draft_billing_amount",
             "renewal_draft_vendor",
+            "renewal_draft_product",
             "renewal_draft_invoice_number",
         ]
+        if applied_product is not None:
+            update_fields.append("product")
         if applied_pdf:
             update_fields.extend(["invoice_pdf", "renewal_draft_invoice_pdf"])
         self.save(update_fields=update_fields)
@@ -596,6 +625,7 @@ class SubscriptionRenewalInvite(models.Model):
             "subscription",
             "subscription__product",
             "subscription__client",
+            "subscription__renewal_draft_product",
         ).order_by("id")
         for line in lines:
             sub = line.subscription
@@ -628,6 +658,9 @@ class SubscriptionRenewalInvite(models.Model):
                             f"{amount:.2f}" if amount is not None else ""
                         ),
                         "vendor": initial["vendor"],
+                        "product": initial.get("product") or "",
+                        "product_name": initial.get("product_name") or "",
+                        "renew_other_plan": bool(initial.get("renew_other_plan")),
                         "invoice_number": initial.get("invoice_number") or "",
                         "invoice_pdf_name": initial.get("invoice_pdf_name") or "",
                         "invoice_pdf_url": initial.get("invoice_pdf_url") or "",
@@ -666,6 +699,7 @@ class SubscriptionRenewalInvite(models.Model):
         vendor,
         invoice_number="",
         invoice_pdf=None,
+        product=None,
     ) -> None:
         sub = self._line_subscription(subscription_id)
         if sub.deal_status == ClientSubscription.DealStatus.LOST:
@@ -678,6 +712,7 @@ class SubscriptionRenewalInvite(models.Model):
             vendor=vendor,
             invoice_number=invoice_number,
             invoice_pdf=invoice_pdf,
+            product=product,
         )
 
     @property
