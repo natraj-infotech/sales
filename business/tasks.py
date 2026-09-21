@@ -54,3 +54,24 @@ def poll_renewal_read_receipts_task():
         "poll_renewal_read_receipts_task",
         poll_outlook_read_receipts_for_all_companies,
     )
+
+
+@shared_task
+def create_backup_task():
+    """Create combined PostgreSQL + media backup (see business.backup)."""
+    from django.conf import settings
+
+    from .backup import BackupError, create_backup
+
+    if not getattr(settings, "BACKUP_ENABLED", True):
+        logger.info("create_backup_task skipped (BACKUP_ENABLED=false)")
+        return {"skipped": True}
+
+    def _run():
+        result = create_backup(prune=True)
+        return result.to_dict()
+
+    try:
+        return _run_task("create_backup_task", _run)
+    except BackupError:
+        raise

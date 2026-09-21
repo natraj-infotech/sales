@@ -2655,6 +2655,10 @@
           <svg class="nav-ic" aria-hidden="true"><use href="#i-building"/></svg>
           <span class="nav-text">Company profile</span>
         </a>
+        <a href="{% url 'backup_list' %}" title="Backups">
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-download"/></svg>
+          <span class="nav-text">Backups</span>
+        </a>
         {% endif %}
         {% if user_can_grant_sales %}
         <a href="{% url 'company_team' %}" title="Team access">

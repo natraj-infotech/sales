@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -3622,3 +3622,162 @@ def lead_add(request):
         "business/lead_form.html",
         {"company": company, "form": form, "title": "Add lead"},
     )
+
+
+def _format_bytes(n: int) -> str:
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        return "—"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(n)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{n} B"
+
+
+@company_owner_required
+def backup_list(request):
+    from django.conf import settings
+
+    from business.backup import backup_root, backups_enabled, list_backups, retention_days
+
+    company = _company(request)
+    items = []
+    for raw in list_backups():
+        man = raw.get("manifest") or {}
+        db_bytes = (man.get("database") or {}).get("bytes") or 0
+        media_bytes = (man.get("media") or {}).get("bytes") or 0
+        items.append(
+            {
+                **raw,
+                "status": man.get("status") or ("ok" if raw.get("has_db") else "unknown"),
+                "created_at": man.get("created_at") or "",
+                "db_label": _format_bytes(db_bytes) if raw.get("has_db") else "—",
+                "media_label": _format_bytes(media_bytes) if raw.get("has_media") else "—",
+                "errors": man.get("errors") or [],
+            }
+        )
+    return render(
+        request,
+        "business/backup_list.html",
+        {
+            "company": company,
+            "object_list": items,
+            "backup_root": str(backup_root()),
+            "backup_enabled": backups_enabled(),
+            "retention_days": retention_days(),
+            "schedule_hour": getattr(settings, "BACKUP_SCHEDULE_HOUR", 2),
+            "schedule_minute": getattr(settings, "BACKUP_SCHEDULE_MINUTE", 0),
+        },
+    )
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_create(request):
+    from business.backup import BackupError, create_backup
+
+    try:
+        result = create_backup(prune=True)
+        messages.success(
+            request,
+            f"Backup created: {result.stamp} "
+            f"(DB {_format_bytes(result.db_bytes)}, media {_format_bytes(result.media_bytes)}).",
+        )
+        if result.pruned:
+            messages.info(
+                request,
+                f"Pruned {len(result.pruned)} old backup(s).",
+            )
+    except BackupError as exc:
+        messages.error(request, f"Backup failed: {exc}")
+    return redirect("backup_list")
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_download_db_now(request):
+    """Run pg_dump and stream the file to the browser as a local download."""
+    from business.backup import BackupError, create_db_dump_export
+
+    try:
+        path, filename = create_db_dump_export()
+    except BackupError as exc:
+        messages.error(request, f"Database dump failed: {exc}")
+        return redirect("backup_list")
+
+    response = FileResponse(
+        path.open("rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type="application/octet-stream",
+    )
+    return response
+
+
+@company_owner_required
+@require_http_methods(["GET"])
+def backup_download(request, stamp, kind):
+    from pathlib import Path
+
+    from business.backup import backup_root
+
+    stamp = (stamp or "").strip()
+    kind = (kind or "").strip().lower()
+    if not stamp or "/" in stamp or "\\" in stamp or ".." in stamp:
+        raise Http404
+    folder = backup_root() / stamp
+    if not folder.is_dir():
+        raise Http404
+
+    if kind == "db":
+        path = folder / "db.dump"
+        download_name = f"sales_db_{stamp}.dump"
+        content_type = "application/octet-stream"
+    elif kind == "media":
+        path = folder / "media.tar.gz"
+        download_name = f"sales_media_{stamp}.tar.gz"
+        content_type = "application/gzip"
+    elif kind == "manifest":
+        path = folder / "manifest.json"
+        download_name = f"sales_manifest_{stamp}.json"
+        content_type = "application/json"
+    else:
+        raise Http404
+
+    if not path.is_file():
+        messages.error(request, f"File not found for backup {stamp}.")
+        return redirect("backup_list")
+
+    return FileResponse(
+        path.open("rb"),
+        as_attachment=True,
+        filename=download_name,
+        content_type=content_type,
+    )
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_delete(request, stamp):
+    import shutil
+    from pathlib import Path
+
+    from business.backup import backup_root
+
+    stamp = (stamp or "").strip()
+    if not stamp or "/" in stamp or "\\" in stamp or ".." in stamp:
+        messages.error(request, "Invalid backup id.")
+        return redirect("backup_list")
+    folder = backup_root() / stamp
+    if not folder.is_dir():
+        messages.error(request, "Backup not found.")
+        return redirect("backup_list")
+    shutil.rmtree(folder, ignore_errors=True)
+    messages.success(request, f"Deleted backup {stamp}.")
+    return redirect("backup_list")

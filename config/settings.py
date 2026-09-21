@@ -273,6 +273,23 @@ WHATSAPP_WELCOME_FLOW_CTA = os.environ.get(
     "WHATSAPP_WELCOME_FLOW_CTA", "Open form"
 ).strip()
 
+# Combined backups (PostgreSQL + MEDIA_ROOT)
+BACKUP_ENABLED = os.environ.get("BACKUP_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+BACKUP_DIR = os.environ.get("BACKUP_DIR", "").strip() or str(BASE_DIR / "backups")
+BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "14") or 14)
+BACKUP_PG_DUMP = os.environ.get("BACKUP_PG_DUMP", "").strip()
+BACKUP_PG_RESTORE = os.environ.get("BACKUP_PG_RESTORE", "").strip()
+BACKUP_PG_DUMP_TIMEOUT = int(os.environ.get("BACKUP_PG_DUMP_TIMEOUT", "3600") or 3600)
+# Daily schedule hour/minute in CELERY_TIMEZONE (Asia/Kolkata)
+BACKUP_SCHEDULE_HOUR = int(os.environ.get("BACKUP_SCHEDULE_HOUR", "2") or 2)
+BACKUP_SCHEDULE_MINUTE = int(os.environ.get("BACKUP_SCHEDULE_MINUTE", "0") or 0)
+
+from celery.schedules import crontab  # noqa: E402
+
 CELERY_BEAT_SCHEDULE = {
     "fetch-helpdesk-email-every-60-seconds": {
         "task": "business.tasks.fetch_helpdesk_email_task",
@@ -289,6 +306,13 @@ CELERY_BEAT_SCHEDULE = {
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",
         "schedule": 120.0,
+    },
+    "create-sales-backup-daily": {
+        "task": "business.tasks.create_backup_task",
+        "schedule": crontab(
+            hour=BACKUP_SCHEDULE_HOUR,
+            minute=BACKUP_SCHEDULE_MINUTE,
+        ),
     },
 }
 
