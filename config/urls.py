@@ -10,6 +10,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("helpdesk/", include("helpdesk.urls")),
+    path("whatsapp/", include("whatsapp.urls")),
     path("", include("accounts.urls")),
     path("", include("business.urls")),
 ]

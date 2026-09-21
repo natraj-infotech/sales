@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -32,6 +32,8 @@ from .forms import (
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
+    LeadForm,
+    LeadStatusForm,
     RenewalConfirmLineFormSet,
     RenewalNewProductFormSet,
     SubscriptionRenewForm,
@@ -51,6 +53,7 @@ from .models import (
     annotate_internal_case_locks,
     Client,
     ClientSubscription,
+    Lead,
     Product,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
@@ -337,6 +340,17 @@ def _company_vendor_choices(company):
     ]
 
 
+def _company_product_choices(company):
+    return [
+        {
+            "id": product.pk,
+            "name": product.name,
+            "price": f"{product.unit_price:.2f}",
+        }
+        for product in company.products.all().order_by("unit_price", "name")
+    ]
+
+
 def _form_first_error(form) -> str:
     if form.non_field_errors():
         return str(form.non_field_errors()[0])
@@ -351,6 +365,7 @@ def _deal_status_json(invite, company, next_url, extra=None):
         "ok": True,
         "items": invite.deal_line_items(next_url),
         "vendors": _company_vendor_choices(company),
+        "products": _company_product_choices(company),
         **_invite_deal_payload(invite),
     }
     if extra:
@@ -744,6 +759,7 @@ def client_renewal_set_deal_status(request, pk):
                 vendor=form.cleaned_data.get("resolved_vendor"),
                 invoice_number=form.cleaned_data.get("invoice_number") or "",
                 invoice_pdf=form.cleaned_data.get("invoice_pdf"),
+                product=form.cleaned_data.get("resolved_product"),
             )
             extra["deal_status"] = ClientSubscription.DealStatus.WIN
         else:
@@ -2127,7 +2143,9 @@ def _url_with_query(url: str, **extra) -> str:
 def subscription_renew(request, pk):
     company = _company(request)
     obj = get_object_or_404(
-        ClientSubscription.objects.select_related("client", "product", "vendor"),
+        ClientSubscription.objects.select_related(
+            "client", "product", "vendor", "renewal_draft_product"
+        ),
         pk=pk,
         company=company,
     )
@@ -2164,6 +2182,7 @@ def subscription_renew(request, pk):
                     vendor=new_vendor,
                     invoice_number=form.cleaned_data.get("invoice_number") or "",
                     invoice_pdf=form.cleaned_data.get("invoice_pdf"),
+                    product=form.cleaned_data.get("resolved_product"),
                 )
             except (OSError, SuspiciousFileOperation):
                 logger.exception(
@@ -2202,6 +2221,8 @@ def subscription_renew(request, pk):
                 "billing_amount": initial["billing_amount"],
                 "vendor": initial_vendor,
                 "invoice_number": initial.get("invoice_number") or "",
+                "product": initial.get("product") or "",
+                "renew_other_plan": initial.get("renew_other_plan") or False,
             },
         )
 
@@ -2215,6 +2236,9 @@ def subscription_renew(request, pk):
             "next_url": next_url,
             "suggested_start": suggested_start,
             "suggested_end": suggested_end,
+            "draft_product": (
+                obj.renewal_draft_product if obj.win_form_completed else None
+            ),
         },
     )
 
@@ -3524,3 +3548,257 @@ def caselock_submission_status_update(request, pk):
         messages.error(request, "Invalid action.")
 
     return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
+
+
+@sales_module_required
+def lead_list(request):
+    company = _company(request)
+    q = request.GET.get("q", "").strip()
+    source = request.GET.get("source", "").strip().lower()
+    status = request.GET.get("status", "").strip().lower()
+    qs = (
+        Lead.objects.filter(company=company)
+        .select_related("created_by")
+        .prefetch_related("products")
+        .order_by("-created_at", "-id")
+    )
+    if source in Lead.Source.values:
+        qs = qs.filter(source=source)
+    if status in Lead.Status.values:
+        qs = qs.filter(status=status)
+    if q:
+        qs = qs.filter(
+            Q(contact_name__icontains=q)
+            | Q(company_name__icontains=q)
+            | Q(email__icontains=q)
+            | Q(phone__icontains=q)
+            | Q(requirement__icontains=q)
+            | Q(whatsapp_wa_id__icontains=q)
+        )
+    return render(
+        request,
+        "business/lead_list.html",
+        {
+            "company": company,
+            "object_list": qs,
+            "q": q,
+            "source": source,
+            "status": status,
+            "source_choices": Lead.Source.choices,
+            "status_choices": Lead.Status.choices,
+        },
+    )
+
+
+@sales_module_required
+def lead_detail(request, pk):
+    company = _company(request)
+    lead = get_object_or_404(
+        Lead.objects.select_related("created_by").prefetch_related("products"),
+        pk=pk,
+        company=company,
+    )
+    status_form = LeadStatusForm(initial={"status": lead.status})
+    if request.method == "POST":
+        status_form = LeadStatusForm(request.POST)
+        if status_form.is_valid():
+            lead.status = status_form.cleaned_data["status"]
+            lead.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Lead status updated.")
+            return redirect("lead_detail", pk=lead.pk)
+    return render(
+        request,
+        "business/lead_detail.html",
+        {
+            "company": company,
+            "lead": lead,
+            "status_form": status_form,
+            "products": lead.products.all().order_by("name"),
+        },
+    )
+
+
+@sales_module_required
+def lead_add(request):
+    company = _company(request)
+    if request.method == "POST":
+        form = LeadForm(request.POST, company=company)
+        if form.is_valid():
+            lead = form.save(commit=False)
+            lead.company = company
+            lead.created_by = request.user
+            if not lead.source:
+                lead.source = Lead.Source.MANUAL
+            lead.save()
+            form.save_m2m()
+            messages.success(request, "Lead created.")
+            return redirect("lead_detail", pk=lead.pk)
+    else:
+        form = LeadForm(
+            company=company,
+            initial={"source": Lead.Source.MANUAL, "status": Lead.Status.NEW},
+        )
+    return render(
+        request,
+        "business/lead_form.html",
+        {"company": company, "form": form, "title": "Add lead"},
+    )
+
+
+def _format_bytes(n: int) -> str:
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        return "—"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(n)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{n} B"
+
+
+@company_owner_required
+def backup_list(request):
+    from django.conf import settings
+
+    from business.backup import backup_root, backups_enabled, list_backups, retention_days
+
+    company = _company(request)
+    items = []
+    for raw in list_backups():
+        man = raw.get("manifest") or {}
+        db_bytes = (man.get("database") or {}).get("bytes") or 0
+        media_bytes = (man.get("media") or {}).get("bytes") or 0
+        items.append(
+            {
+                **raw,
+                "status": man.get("status") or ("ok" if raw.get("has_db") else "unknown"),
+                "created_at": man.get("created_at") or "",
+                "db_label": _format_bytes(db_bytes) if raw.get("has_db") else "—",
+                "media_label": _format_bytes(media_bytes) if raw.get("has_media") else "—",
+                "errors": man.get("errors") or [],
+            }
+        )
+    return render(
+        request,
+        "business/backup_list.html",
+        {
+            "company": company,
+            "object_list": items,
+            "backup_root": str(backup_root()),
+            "backup_enabled": backups_enabled(),
+            "retention_days": retention_days(),
+            "schedule_hour": getattr(settings, "BACKUP_SCHEDULE_HOUR", 2),
+            "schedule_minute": getattr(settings, "BACKUP_SCHEDULE_MINUTE", 0),
+        },
+    )
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_create(request):
+    from business.backup import BackupError, create_backup
+
+    try:
+        result = create_backup(prune=True)
+        messages.success(
+            request,
+            f"Backup created: {result.stamp} "
+            f"(DB {_format_bytes(result.db_bytes)}, media {_format_bytes(result.media_bytes)}).",
+        )
+        if result.pruned:
+            messages.info(
+                request,
+                f"Pruned {len(result.pruned)} old backup(s).",
+            )
+    except BackupError as exc:
+        messages.error(request, f"Backup failed: {exc}")
+    return redirect("backup_list")
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_download_db_now(request):
+    """Run pg_dump and stream the file to the browser as a local download."""
+    from business.backup import BackupError, create_db_dump_export
+
+    try:
+        path, filename = create_db_dump_export()
+    except BackupError as exc:
+        messages.error(request, f"Database dump failed: {exc}")
+        return redirect("backup_list")
+
+    response = FileResponse(
+        path.open("rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type="application/octet-stream",
+    )
+    return response
+
+
+@company_owner_required
+@require_http_methods(["GET"])
+def backup_download(request, stamp, kind):
+    from pathlib import Path
+
+    from business.backup import backup_root
+
+    stamp = (stamp or "").strip()
+    kind = (kind or "").strip().lower()
+    if not stamp or "/" in stamp or "\\" in stamp or ".." in stamp:
+        raise Http404
+    folder = backup_root() / stamp
+    if not folder.is_dir():
+        raise Http404
+
+    if kind == "db":
+        path = folder / "db.dump"
+        download_name = f"sales_db_{stamp}.dump"
+        content_type = "application/octet-stream"
+    elif kind == "media":
+        path = folder / "media.tar.gz"
+        download_name = f"sales_media_{stamp}.tar.gz"
+        content_type = "application/gzip"
+    elif kind == "manifest":
+        path = folder / "manifest.json"
+        download_name = f"sales_manifest_{stamp}.json"
+        content_type = "application/json"
+    else:
+        raise Http404
+
+    if not path.is_file():
+        messages.error(request, f"File not found for backup {stamp}.")
+        return redirect("backup_list")
+
+    return FileResponse(
+        path.open("rb"),
+        as_attachment=True,
+        filename=download_name,
+        content_type=content_type,
+    )
+
+
+@company_owner_required
+@require_http_methods(["POST"])
+def backup_delete(request, stamp):
+    import shutil
+    from pathlib import Path
+
+    from business.backup import backup_root
+
+    stamp = (stamp or "").strip()
+    if not stamp or "/" in stamp or "\\" in stamp or ".." in stamp:
+        messages.error(request, "Invalid backup id.")
+        return redirect("backup_list")
+    folder = backup_root() / stamp
+    if not folder.is_dir():
+        messages.error(request, "Backup not found.")
+        return redirect("backup_list")
+    shutil.rmtree(folder, ignore_errors=True)
+    messages.success(request, f"Deleted backup {stamp}.")
+    return redirect("backup_list")

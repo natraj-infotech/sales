@@ -9,7 +9,8 @@
     <header class="tracker-mock-form-card-header">
       <h1 class="tracker-mock-form-card-title">Renew subscription</h1>
       <p class="tracker-mock-form-card-subtitle">
-        Set the new period for {{ subscription.client.name }} — {{ subscription.product.name }}
+        Set the new period for {{ subscription.client.name }} —
+        {% if draft_product %}{{ draft_product.name }}{% else %}{{ subscription.product.name }}{% endif %}
       </p>
     </header>
     <div class="tracker-mock-form-body">
@@ -24,6 +25,12 @@
             <span class="tracker-mock-label">Product</span>
             <div class="tracker-mock-readonly">{{ subscription.product.name }}</div>
           </div>
+          {% if draft_product %}
+          <div class="tracker-mock-field">
+            <span class="tracker-mock-label">New product</span>
+            <div class="tracker-mock-readonly">{{ draft_product.name }}</div>
+          </div>
+          {% endif %}
           <div class="tracker-mock-field">
             <span class="tracker-mock-label">Current period</span>
             <div class="tracker-mock-readonly">
@@ -57,6 +64,10 @@
       <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next_url }}">
+        {% if draft_product %}
+        <input type="hidden" name="product" value="{{ draft_product.pk }}">
+        <input type="hidden" name="renew_other_plan" value="1">
+        {% endif %}
         {% if form.non_field_errors %}
         <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
         {% endif %}

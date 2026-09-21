@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-download"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Backups</h1>
+      <p class="tracker-page-subtitle">Database and media snapshots for this sales app</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    {% if backup_enabled %}
+    <form method="post" action="{% url 'backup_download_db_now' %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn-tracker-header">
+        Download DB dump
+      </button>
+    </form>
+    <form method="post" action="{% url 'backup_create' %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" class="btn-tracker-header btn-tracker-ghost" onclick="return confirm('Create a new database + media backup now?');">
+        + Create full backup
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .backup-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin: 0 0 1rem;
+    font-size: 0.8125rem;
+    color: var(--muted, #64748b);
+  }
+  .backup-meta strong { color: var(--text, #1a1d21); font-weight: 600; }
+  .backup-status {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .backup-status--ok { background: #d1fae5; color: #065f46; }
+  .backup-status--failed { background: #fee2e2; color: #991b1b; }
+  .backup-status--unknown { background: #f1f5f9; color: #475569; }
+  .backup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+</style>
+
+<div class="tracker-card" style="margin-bottom:1rem;">
+  <div class="backup-meta">
+    <span>Storage: <strong>{{ backup_root }}</strong></span>
+    <span>Retention: <strong>{{ retention_days }} days</strong></span>
+    <span>Schedule: <strong>{{ schedule_hour|stringformat:"02d" }}:{{ schedule_minute|stringformat:"02d" }}</strong> (Celery beat)</span>
+    <span>Status:
+      {% if backup_enabled %}
+        <strong style="color:#065f46;">Enabled</strong>
+      {% else %}
+        <strong style="color:#991b1b;">Disabled</strong> (BACKUP_ENABLED=false)
+      {% endif %}
+    </span>
+  </div>
+  <p class="muted" style="margin:0;font-size:0.8125rem;line-height:1.45;">
+    Each backup includes a PostgreSQL dump (<code>db.dump</code>) and media archive (<code>media.tar.gz</code>).
+    Restore from the server with
+    <code>python manage.py restore_backup &lt;stamp&gt; --confirm</code>
+    (owner-only page; restore stays on the CLI for safety).
+  </p>
+</div>
+
+<div class="tracker-card tracker-card--flush-bottom">
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Stamp</th>
+          <th>Created</th>
+          <th>Status</th>
+          <th>Database</th>
+          <th>Media</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in object_list %}
+        <tr>
+          <td><code>{{ b.stamp }}</code></td>
+          <td>{{ b.created_at|default:"—" }}</td>
+          <td>
+            <span class="backup-status backup-status--{{ b.status }}">{{ b.status }}</span>
+            {% if b.errors %}
+              <div class="muted" style="font-size:0.75rem;margin-top:0.25rem;">{{ b.errors.0|truncatechars:120 }}</div>
+            {% endif %}
+          </td>
+          <td>{{ b.db_label }}</td>
+          <td>{{ b.media_label }}</td>
+          <td class="col-actions">
+            <div class="backup-actions">
+              {% if b.has_db %}
+              <a class="btn-table-edit" href="{% url 'backup_download' b.stamp 'db' %}">Download DB</a>
+              {% endif %}
+              {% if b.has_media %}
+              <a class="btn-table-edit" href="{% url 'backup_download' b.stamp 'media' %}">Download media</a>
+              {% endif %}
+              <a class="btn-table-edit" href="{% url 'backup_download' b.stamp 'manifest' %}">Manifest</a>
+              <form method="post" action="{% url 'backup_delete' b.stamp %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost"
+                  style="color:#dc2626;padding:0.35rem 0.75rem;font-size:0.78rem;"
+                  onclick="return confirm('Delete backup {{ b.stamp|escapejs }}?');">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+            No backups yet.
+            {% if backup_enabled %}
+              Use <strong>Create backup</strong> or wait for the nightly Celery job.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

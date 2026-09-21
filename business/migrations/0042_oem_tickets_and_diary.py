@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('accounts', '0016_oem_tickets_and_diary'),
         ('business', '0041_merge_20260910_1521'),
-        ('helpdesk', '0040_alter_followup_new_status_alter_ticket_status'),
+        ('helpdesk', '0039_alter_ticketchange_field'),
     ]
 
     operations = [

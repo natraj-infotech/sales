@@ -11,6 +11,7 @@ from .models import (
     CaseLockProduct,
     CaseLockSubmission,
     ClientSubscription,
+    Lead,
     Product,
     SupportTicket,
     SupportSLASettings,
@@ -263,6 +264,7 @@ class ProductForm(forms.ModelForm):
             "vendor",
             "sku",
             "unit_price",
+            "discounted_price",
             "description",
         )
 
@@ -271,14 +273,28 @@ class ProductForm(forms.ModelForm):
         self.fields["sku"].label = "Company Part Number"
         self.fields["hsn_code"].label = "HSN Code  (optional)"
         self.fields["hsn_code"].widget.attrs.setdefault("placeholder", "Enter if applicable")
-        self.fields["tax"].label = "Tax Percentage (%)"
+        self.fields["tax"].label = "GST (%)"
         self.fields["depreciation"].label = "Depreciation Percentage (%)"
-        self.fields["tax"].widget.attrs.setdefault("placeholder", "Enter tax %")
+        self.fields["tax"].widget.attrs.setdefault("placeholder", "Enter GST %")
         self.fields["depreciation"].widget.attrs.setdefault("placeholder", "Enter depreciation %")
         self.fields["vendor"].required = False
         self.fields["unit_price"].required = False
+        self.fields["unit_price"].label = "Price"
+        self.fields["unit_price"].widget.attrs.setdefault("placeholder", "Enter price")
+        self.fields["unit_price"].widget.attrs.setdefault("min", "0")
+        self.fields["unit_price"].widget.attrs.setdefault("step", "0.01")
+        self.fields["discounted_price"].required = False
+        self.fields["discounted_price"].label = "Discounted price"
+        self.fields["discounted_price"].widget.attrs.setdefault(
+            "placeholder", "Enter discounted price"
+        )
+        self.fields["discounted_price"].widget.attrs.setdefault("min", "0")
+        self.fields["discounted_price"].widget.attrs.setdefault("step", "0.01")
         self.fields["description"].required = False
         self.fields["unit_price"].initial = self.fields["unit_price"].initial or 0
+        self.fields["discounted_price"].initial = (
+            self.fields["discounted_price"].initial or 0
+        )
         self.fields["notes"].label = "Product Description / Notes"
         self.fields["notes"].help_text = "Optional - Add any additional information about this product"
         self.fields["notes"].widget.attrs.setdefault(
@@ -339,6 +355,8 @@ class ProductForm(forms.ModelForm):
                 cleaned[percent_field] = f"{raw}%"
         if cleaned.get("unit_price") in (None, ""):
             cleaned["unit_price"] = 0
+        if cleaned.get("discounted_price") in (None, ""):
+            cleaned["discounted_price"] = 0
         return cleaned
 
 
@@ -736,18 +754,28 @@ class SubscriptionRenewForm(forms.Form):
         validators=[FileExtensionValidator(allowed_extensions=["pdf"])],
         widget=forms.FileInput(attrs={"accept": "application/pdf,.pdf"}),
     )
+    renew_other_plan = forms.BooleanField(required=False)
+    product = forms.ChoiceField(
+        label="New renewal product",
+        required=False,
+    )
 
     def __init__(self, *args, company=None, **kwargs):
         self.company = company
         super().__init__(*args, **kwargs)
         vendors = []
+        products = []
         if company is not None:
             vendors = list(company.vendors.all().order_by("name"))
+            products = list(company.products.all().order_by("unit_price", "name"))
         choices = [("", "---------")] + [
             (str(v.pk), v.name) for v in vendors
         ]
         choices.append((self.NEW_VENDOR, "+ Add new vendor"))
         self.fields["vendor"].choices = choices
+        self.fields["product"].choices = [("", "Select a product")] + [
+            (str(p.pk), p.name) for p in products
+        ]
 
     def clean(self):
         cleaned = super().clean()
@@ -772,4 +800,74 @@ class SubscriptionRenewForm(forms.Form):
                     self.add_error("vendor", "Select a valid vendor.")
                 else:
                     cleaned["resolved_vendor"] = vendor
+        cleaned["resolved_product"] = None
+        product_choice = (cleaned.get("product") or "").strip()
+        if cleaned.get("renew_other_plan"):
+            if not product_choice:
+                self.add_error("product", "Select a new renewal product.")
+            else:
+                try:
+                    pk = int(product_choice)
+                except (TypeError, ValueError):
+                    self.add_error("product", "Select a valid product.")
+                else:
+                    product = None
+                    if self.company is not None:
+                        product = self.company.products.filter(pk=pk).first()
+                    if product is None:
+                        self.add_error("product", "Select a valid product.")
+                    else:
+                        cleaned["resolved_product"] = product
+        elif product_choice:
+            try:
+                pk = int(product_choice)
+            except (TypeError, ValueError):
+                self.add_error("product", "Select a valid product.")
+            else:
+                product = None
+                if self.company is not None:
+                    product = self.company.products.filter(pk=pk).first()
+                if product is None:
+                    self.add_error("product", "Select a valid product.")
+                else:
+                    cleaned["resolved_product"] = product
         return cleaned
+
+
+class LeadForm(forms.ModelForm):
+    class Meta:
+        model = Lead
+        fields = (
+            "source",
+            "contact_name",
+            "company_name",
+            "email",
+            "phone",
+            "requirement",
+            "notes",
+            "products",
+            "status",
+        )
+        widgets = {
+            "requirement": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+            "products": forms.SelectMultiple(attrs={"size": 8}),
+        }
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.company = company
+        if company is not None:
+            self.fields["products"].queryset = company.products.all().order_by("name")
+        else:
+            self.fields["products"].queryset = Product.objects.none()
+        self.fields["products"].required = False
+        self.fields["email"].required = False
+        self.fields["phone"].required = False
+        self.fields["company_name"].required = False
+        self.fields["requirement"].required = False
+        self.fields["notes"].required = False
+
+
+class LeadStatusForm(forms.Form):
+    status = forms.ChoiceField(choices=Lead.Status.choices)

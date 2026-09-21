@@ -259,7 +259,9 @@
         <section class="product-mock-section">
           <h2 class="product-mock-section-title">Financial Information</h2>
           <div class="product-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.unit_price %}
             {% include "includes/form_field_mock.html" with field=form.tax %}
+            {% include "includes/form_field_mock.html" with field=form.discounted_price %}
             {% include "includes/form_field_mock.html" with field=form.depreciation %}
           </div>
         </section>

@@ -28,6 +28,12 @@ from .permissions import (
 MANUAL_SEND_THROTTLE_SECONDS = 20
 
 
+@require_http_methods(["GET"])
+def privacy_policy(request):
+    """Public Tracker365 Sales privacy policy."""
+    return render(request, "account/privacy_policy.html", {"public_page": True})
+
+
 def root_redirect(request):
     if request.user.is_authenticated:
         company = get_company_for_user(request.user)

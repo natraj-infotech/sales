@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     "django_cleanup.apps.CleanupConfig",
     "accounts",
     "business.apps.BusinessConfig",
+    "whatsapp.apps.WhatsappConfig",
     "helpdesk",
 ]
 
@@ -288,6 +289,64 @@ ZOHO_REDIRECT_URI = os.environ.get(
     "",
 ).strip()
 
+# WhatsApp Cloud API (shared infrastructure — leads, future features)
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
+WHATSAPP_ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
+WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v21.0").strip() or "v21.0"
+WHATSAPP_DEFAULT_PHONE_NUMBER_ID = os.environ.get(
+    "WHATSAPP_DEFAULT_PHONE_NUMBER_ID", ""
+).strip()
+WHATSAPP_DEFAULT_FLOW_HANDLER = (
+    os.environ.get("WHATSAPP_DEFAULT_FLOW_HANDLER", "lead") or "lead"
+).strip()
+# PEM contents (use \n for newlines) or path to PEM file for Flow encryption
+WHATSAPP_FLOW_PRIVATE_KEY_PEM = os.environ.get("WHATSAPP_FLOW_PRIVATE_KEY_PEM", "").strip()
+WHATSAPP_FLOW_PRIVATE_KEY_PATH = os.environ.get(
+    "WHATSAPP_FLOW_PRIVATE_KEY_PATH", ""
+).strip()
+WHATSAPP_FLOW_PRIVATE_KEY_PASSWORD = os.environ.get(
+    "WHATSAPP_FLOW_PRIVATE_KEY_PASSWORD", ""
+).strip() or None
+# Welcome/menu on new WhatsApp conversation (inactivity window in hours)
+WHATSAPP_WELCOME_INACTIVITY_HOURS = float(
+    os.environ.get("WHATSAPP_WELCOME_INACTIVITY_HOURS", "24") or 24
+)
+WHATSAPP_WELCOME_MODE = (
+    os.environ.get("WHATSAPP_WELCOME_MODE", "auto") or "auto"
+).strip().lower()
+WHATSAPP_WELCOME_BODY = os.environ.get(
+    "WHATSAPP_WELCOME_BODY",
+    "Welcome to Tracker365. How can we help you today?",
+).strip()
+WHATSAPP_WELCOME_HEADER = os.environ.get("WHATSAPP_WELCOME_HEADER", "").strip()
+WHATSAPP_WELCOME_FOOTER = os.environ.get("WHATSAPP_WELCOME_FOOTER", "").strip()
+# JSON array or "id:Title,id2:Title2"
+WHATSAPP_WELCOME_BUTTONS = os.environ.get(
+    "WHATSAPP_WELCOME_BUTTONS",
+    "lead:New enquiry,support:Support",
+).strip()
+WHATSAPP_WELCOME_FLOW_ID = os.environ.get("WHATSAPP_WELCOME_FLOW_ID", "").strip()
+WHATSAPP_WELCOME_FLOW_CTA = os.environ.get(
+    "WHATSAPP_WELCOME_FLOW_CTA", "Open form"
+).strip()
+
+# Combined backups (PostgreSQL + MEDIA_ROOT)
+BACKUP_ENABLED = os.environ.get("BACKUP_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+BACKUP_DIR = os.environ.get("BACKUP_DIR", "").strip() or str(BASE_DIR / "backups")
+BACKUP_RETENTION_DAYS = int(os.environ.get("BACKUP_RETENTION_DAYS", "14") or 14)
+BACKUP_PG_DUMP = os.environ.get("BACKUP_PG_DUMP", "").strip()
+BACKUP_PG_RESTORE = os.environ.get("BACKUP_PG_RESTORE", "").strip()
+BACKUP_PG_DUMP_TIMEOUT = int(os.environ.get("BACKUP_PG_DUMP_TIMEOUT", "3600") or 3600)
+# Daily schedule hour/minute in CELERY_TIMEZONE (Asia/Kolkata)
+BACKUP_SCHEDULE_HOUR = int(os.environ.get("BACKUP_SCHEDULE_HOUR", "2") or 2)
+BACKUP_SCHEDULE_MINUTE = int(os.environ.get("BACKUP_SCHEDULE_MINUTE", "0") or 0)
+
+from celery.schedules import crontab  # noqa: E402
+
 CELERY_BEAT_SCHEDULE = {
     "fetch-helpdesk-email-every-60-seconds": {
         "task": "business.tasks.fetch_helpdesk_email_task",
@@ -304,6 +363,13 @@ CELERY_BEAT_SCHEDULE = {
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",
         "schedule": 120.0,
+    },
+    "create-sales-backup-daily": {
+        "task": "business.tasks.create_backup_task",
+        "schedule": crontab(
+            hour=BACKUP_SCHEDULE_HOUR,
+            minute=BACKUP_SCHEDULE_MINUTE,
+        ),
     },
 }
 
@@ -394,6 +460,11 @@ LOGGING = {
             "propagate": False,
         },
         "business": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "whatsapp": {
             "handlers": ["console", "file"],
             "level": "INFO",
             "propagate": False,

@@ -89,6 +89,22 @@ urlpatterns = [
         name="caselock_submission_status_update",
     ),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("backups/", views.backup_list, name="backup_list"),
+    path("backups/create/", views.backup_create, name="backup_create"),
+    path(
+        "backups/download-db/",
+        views.backup_download_db_now,
+        name="backup_download_db_now",
+    ),
+    path(
+        "backups/<str:stamp>/download/<str:kind>/",
+        views.backup_download,
+        name="backup_download",
+    ),
+    path("backups/<str:stamp>/delete/", views.backup_delete, name="backup_delete"),
+    path("leads/", views.lead_list, name="lead_list"),
+    path("leads/add/", views.lead_add, name="lead_add"),
+    path("leads/<int:pk>/", views.lead_detail, name="lead_detail"),
     path("client-renewals/", views.client_renewal_list, name="client_renewal_list"),
     path(
         "client-renewals/live/",

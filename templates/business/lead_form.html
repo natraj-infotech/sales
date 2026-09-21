@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-funnel"/></svg>
+    <div>
+      <h1 class="tracker-page-title">{{ title }}</h1>
+      <p class="tracker-page-subtitle">Create a lead manually or mark email / WhatsApp source</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'lead_list' %}">Back to leads</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card" style="max-width:40rem;">
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="messages-banner">{{ form.non_field_errors }}</div>
+    {% endif %}
+    {% for field in form %}
+    <div style="margin-bottom:0.9rem;">
+      <label for="{{ field.id_for_label }}" style="display:block;font-weight:600;font-size:0.85rem;margin-bottom:0.3rem;">
+        {{ field.label }}
+      </label>
+      {{ field }}
+      {% if field.errors %}
+        <div style="color:#dc2626;font-size:0.8rem;margin-top:0.25rem;">{{ field.errors }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn-tracker-header">Save lead</button>
+  </form>
+</div>
+{% endblock %}
