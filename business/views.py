@@ -340,6 +340,17 @@ def _company_vendor_choices(company):
     ]
 
 
+def _company_product_choices(company):
+    return [
+        {
+            "id": product.pk,
+            "name": product.name,
+            "price": f"{product.unit_price:.2f}",
+        }
+        for product in company.products.all().order_by("unit_price", "name")
+    ]
+
+
 def _form_first_error(form) -> str:
     if form.non_field_errors():
         return str(form.non_field_errors()[0])
@@ -354,6 +365,7 @@ def _deal_status_json(invite, company, next_url, extra=None):
         "ok": True,
         "items": invite.deal_line_items(next_url),
         "vendors": _company_vendor_choices(company),
+        "products": _company_product_choices(company),
         **_invite_deal_payload(invite),
     }
     if extra:
@@ -747,6 +759,7 @@ def client_renewal_set_deal_status(request, pk):
                 vendor=form.cleaned_data.get("resolved_vendor"),
                 invoice_number=form.cleaned_data.get("invoice_number") or "",
                 invoice_pdf=form.cleaned_data.get("invoice_pdf"),
+                product=form.cleaned_data.get("resolved_product"),
             )
             extra["deal_status"] = ClientSubscription.DealStatus.WIN
         else:
@@ -2130,7 +2143,9 @@ def _url_with_query(url: str, **extra) -> str:
 def subscription_renew(request, pk):
     company = _company(request)
     obj = get_object_or_404(
-        ClientSubscription.objects.select_related("client", "product", "vendor"),
+        ClientSubscription.objects.select_related(
+            "client", "product", "vendor", "renewal_draft_product"
+        ),
         pk=pk,
         company=company,
     )
@@ -2167,6 +2182,7 @@ def subscription_renew(request, pk):
                     vendor=new_vendor,
                     invoice_number=form.cleaned_data.get("invoice_number") or "",
                     invoice_pdf=form.cleaned_data.get("invoice_pdf"),
+                    product=form.cleaned_data.get("resolved_product"),
                 )
             except (OSError, SuspiciousFileOperation):
                 logger.exception(
@@ -2205,6 +2221,8 @@ def subscription_renew(request, pk):
                 "billing_amount": initial["billing_amount"],
                 "vendor": initial_vendor,
                 "invoice_number": initial.get("invoice_number") or "",
+                "product": initial.get("product") or "",
+                "renew_other_plan": initial.get("renew_other_plan") or False,
             },
         )
 
@@ -2218,6 +2236,9 @@ def subscription_renew(request, pk):
             "next_url": next_url,
             "suggested_start": suggested_start,
             "suggested_end": suggested_end,
+            "draft_product": (
+                obj.renewal_draft_product if obj.win_form_completed else None
+            ),
         },
     )
 

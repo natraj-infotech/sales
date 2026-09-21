@@ -54,6 +54,7 @@
             <th>Category</th>
             <th>Type</th>
             <th>Company</th>
+            <th>Price</th>
             <th>Tax</th>
             <th>Depreciation</th>
             <th>HSN code</th>
@@ -75,6 +76,7 @@
             <td>{{ p.category|default:"-" }}</td>
             <td>{{ p.asset_type|default:"-" }}</td>
             <td>{{ p.company_name|default:"-" }}</td>
+            <td>{{ p.unit_price }}</td>
             <td>{{ p.tax|default:"-" }}</td>
             <td>{{ p.depreciation|default:"-" }}</td>
             <td>{{ p.hsn_code|default:"-" }}</td>
@@ -99,7 +101,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="14" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+            <td colspan="15" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
               No products yet. <a href="{% url 'product_add' %}">Add a product</a> or <a href="{% url 'product_import' %}">import</a>.
             </td>
           </tr>

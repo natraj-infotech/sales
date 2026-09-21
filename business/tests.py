@@ -1327,6 +1327,83 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertContains(renew, "New invoice PDF")
         self.assertContains(renew, "New vendor")
 
+    def test_win_form_can_draft_other_plan_without_changing_live_product(self):
+        cheap = Product.objects.create(
+            company=self.company,
+            name="Microsoft 365 Business Standard",
+            unit_price=Decimal("100.00"),
+        )
+        premium = Product.objects.create(
+            company=self.company,
+            name="Microsoft 365 E5",
+            unit_price=Decimal("5000.00"),
+        )
+        self.product.unit_price = Decimal("50.00")
+        self.product.save(update_fields=["unit_price"])
+        self.client.post(
+            self.url,
+            {
+                "deal_status": "win",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_win_form",
+                "subscription_id": self.subscription.pk,
+                "start_date": "2026-09-11",
+                "end_date": "2027-09-10",
+                "quantity": "2",
+                "billing_amount": "9000.00",
+                "vendor": str(self.vendor.pk),
+                "renew_other_plan": "1",
+                "product": str(cheap.pk),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(
+            [row["name"] for row in data["products"]],
+            [
+                self.product.name,
+                cheap.name,
+                premium.name,
+            ],
+        )
+        draft = data["items"][0]["draft"]
+        self.assertTrue(draft["renew_other_plan"])
+        self.assertEqual(draft["product"], str(cheap.pk))
+        self.assertEqual(draft["product_name"], cheap.name)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.product_id, self.product.pk)
+        self.assertEqual(self.subscription.renewal_draft_product_id, cheap.pk)
+
+        renew = self.client.get(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        )
+        self.assertEqual(renew.status_code, 200)
+        self.assertContains(renew, "New product")
+        self.assertContains(renew, cheap.name)
+        self.assertContains(renew, self.product.name)
+
+        saved = self.client.post(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk}),
+            {
+                "start_date": "2026-09-11",
+                "end_date": "2027-09-10",
+                "quantity": "2",
+                "billing_amount": "9000.00",
+                "vendor": str(self.vendor.pk),
+                "product": str(cheap.pk),
+                "renew_other_plan": "1",
+            },
+        )
+        self.assertEqual(saved.status_code, 302)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.product_id, cheap.pk)
+        self.assertEqual(self.subscription.product.name, cheap.name)
+
     def test_add_subscription_form_has_optional_invoice_fields(self):
         response = self.client.get(reverse("subscription_add"))
         self.assertEqual(response.status_code, 200)
@@ -2144,4 +2221,49 @@ class SubscriptionListExportTests(TestCase):
         rows = list(load_workbook(BytesIO(content)).active.iter_rows(values_only=True))
         self.assertEqual(rows[0], ("Product", "Company"))
         self.assertEqual(rows[1], ("Microsoft 365", "Microsoft"))
+
+
+class ProductPriceFieldsTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user, company_name="Co"
+        )
+        self.client.login(email="owner@example.com", password="pass")
+
+    def test_add_form_shows_price_gst_and_discounted_price(self):
+        response = self.client.get(reverse("product_add"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Price")
+        self.assertContains(response, "GST (%)")
+        self.assertContains(response, "Discounted price")
+        self.assertContains(response, 'name="unit_price"')
+        self.assertContains(response, 'name="tax"')
+        self.assertContains(response, 'name="discounted_price"')
+
+    def test_create_product_saves_prices_and_list_shows_unit_price_only(self):
+        response = self.client.post(
+            reverse("product_add"),
+            {
+                "name": "Laptop",
+                "category": "Hardware",
+                "asset_type": "Laptop",
+                "unit_price": "1200.50",
+                "tax": "18",
+                "discounted_price": "999.00",
+                "components_count": "0",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        product = Product.objects.get(company=self.company, name="Laptop")
+        self.assertEqual(product.unit_price, Decimal("1200.50"))
+        self.assertEqual(product.tax, "18%")
+        self.assertEqual(product.discounted_price, Decimal("999.00"))
+        self.assertContains(response, "Price")
+        self.assertContains(response, "1200.50")
+        self.assertNotContains(response, "Discounted price")
+        self.assertNotContains(response, "999.00")
 

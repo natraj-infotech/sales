@@ -351,6 +351,103 @@
     justify-content: flex-end;
     margin-top: 1rem;
   }
+  .cr-win-toggle {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    min-height: 2.2rem;
+  }
+  .cr-win-toggle label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #0f172a;
+    cursor: pointer;
+  }
+  .cr-win-toggle input {
+    width: auto;
+    margin: 0;
+  }
+  .cr-win-product-picker {
+    position: relative;
+  }
+  .cr-win-product-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.48rem 0.65rem;
+    font-size: 0.9rem;
+    color: #0f172a;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+  }
+  .cr-win-product-trigger.is-empty {
+    color: #94a3b8;
+  }
+  .cr-win-product-caret {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+  }
+  .cr-win-product-panel {
+    position: absolute;
+    z-index: 5;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.3rem);
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    padding: 0.65rem;
+  }
+  .cr-win-product-panel[hidden] { display: none; }
+  .cr-win-product-search {
+    width: 100%;
+    margin: 0 0 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.88rem;
+  }
+  .cr-win-product-list {
+    overflow: auto;
+    max-height: 12rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .cr-win-product-item {
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.86rem;
+    cursor: pointer;
+    color: #0f172a;
+  }
+  .cr-win-product-item:hover,
+  .cr-win-product-item.is-selected {
+    background: #eff6ff;
+    border-color: #93c5fd;
+  }
+  .cr-win-product-empty {
+    margin: 0.2rem 0 0;
+    color: #64748b;
+    font-size: 0.8rem;
+  }
+  .cr-win-product-price {
+    color: #64748b;
+    font-weight: 600;
+  }
   @media (max-width: 640px) {
     .cr-win-form-grid { grid-template-columns: 1fr; }
   }
@@ -832,6 +929,7 @@
   var activeDealUrl = "";
   var dealItems = [];
   var dealVendors = [];
+  var dealProducts = [];
   var infoModal = document.getElementById("cr-info-modal");
   var infoTitle = document.getElementById("cr-info-title");
   var infoSub = document.getElementById("cr-info-sub");
@@ -1250,6 +1348,7 @@
     activeDealUrl = "";
     dealItems = [];
     dealVendors = [];
+    dealProducts = [];
     if (dealList) dealList.innerHTML = "";
     setDealError("");
   }
@@ -1294,6 +1393,7 @@
   function handleSaved(data) {
     dealItems = data.items || [];
     if (data.vendors) dealVendors = data.vendors;
+    if (data.products) dealProducts = data.products;
     setDealError("");
     poll();
     if (data.open_win_form) {
@@ -1334,9 +1434,103 @@
     );
   }
 
+  function productLabel(product) {
+    if (!product) return "";
+    var price = product.price != null ? String(product.price) : "";
+    return price ? product.name + " — " + price : product.name;
+  }
+
+  function findDealProduct(productId) {
+    var selected = String(productId || "");
+    if (!selected) return null;
+    return dealProducts.filter(function (product) {
+      return String(product.id) === selected;
+    })[0] || null;
+  }
+
+  function bindWinProductPicker(form, selectedId) {
+    var wrap = document.getElementById("cr-win-product-wrap");
+    var hidden = document.getElementById("cr-win-product");
+    var trigger = document.getElementById("cr-win-product-trigger");
+    var triggerLabel = document.getElementById("cr-win-product-trigger-label");
+    var panel = document.getElementById("cr-win-product-panel");
+    var search = document.getElementById("cr-win-product-search");
+    var list = document.getElementById("cr-win-product-list");
+    var empty = document.getElementById("cr-win-product-empty");
+    var yesRadio = form.querySelector('input[name="renew_other_plan"][value="1"]');
+    var noRadio = form.querySelector('input[name="renew_other_plan"][value="0"]');
+    if (!wrap || !hidden || !trigger || !panel || !list) return;
+
+    function setSelected(product) {
+      hidden.value = product ? String(product.id) : "";
+      if (product) {
+        triggerLabel.textContent = productLabel(product);
+        trigger.classList.remove("is-empty");
+      } else {
+        triggerLabel.textContent = "Select a product";
+        trigger.classList.add("is-empty");
+      }
+    }
+
+    function renderList(query) {
+      var q = String(query || "").trim().toLowerCase();
+      list.innerHTML = "";
+      var matches = dealProducts.filter(function (product) {
+        var hay = (product.name || "") + " " + (product.price || "");
+        return !q || hay.toLowerCase().indexOf(q) !== -1;
+      });
+      if (empty) empty.hidden = matches.length > 0;
+      matches.forEach(function (product) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "cr-win-product-item";
+        if (String(product.id) === hidden.value) btn.classList.add("is-selected");
+        btn.innerHTML =
+          escapeHtml(product.name || "") +
+          (product.price
+            ? ' <span class="cr-win-product-price">' + escapeHtml(product.price) + "</span>"
+            : "");
+        btn.addEventListener("click", function () {
+          setSelected(product);
+          panel.hidden = true;
+        });
+        list.appendChild(btn);
+      });
+    }
+
+    function syncToggle() {
+      var enabled = !!(yesRadio && yesRadio.checked);
+      wrap.hidden = !enabled;
+      if (!enabled) {
+        setSelected(null);
+        panel.hidden = true;
+      }
+    }
+
+    setSelected(findDealProduct(selectedId));
+    renderList("");
+    syncToggle();
+
+    if (yesRadio) yesRadio.addEventListener("change", syncToggle);
+    if (noRadio) noRadio.addEventListener("change", syncToggle);
+    trigger.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden && search) {
+        search.focus();
+        search.select();
+      }
+    });
+    if (search) {
+      search.addEventListener("input", function () {
+        renderList(search.value);
+      });
+    }
+  }
+
   function renderWinForm(item) {
     if (!dealList) return;
     var draft = item.draft || {};
+    var otherPlan = !!draft.renew_other_plan;
     dealTitle.textContent = "Win details";
     dealText.textContent =
       "These details will appear on the Renew form. The subscription updates only after Save renewal.";
@@ -1348,6 +1542,38 @@
         "</div>" +
       "</div>" +
       '<form id="cr-win-form" class="cr-win-form">' +
+        '<section class="cr-win-form-section">' +
+          '<h4 class="cr-win-form-section-title">Renew other plan</h4>' +
+          '<div class="cr-win-form-grid" style="grid-template-columns:1fr;">' +
+            '<div class="cr-win-form-field">' +
+              '<div class="cr-win-toggle">' +
+                '<label><input type="radio" name="renew_other_plan" value="0"' +
+                  (otherPlan ? "" : " checked") +
+                "> No</label>" +
+                '<label><input type="radio" name="renew_other_plan" value="1"' +
+                  (otherPlan ? " checked" : "") +
+                "> Yes</label>" +
+              "</div>" +
+            "</div>" +
+            '<div id="cr-win-product-wrap" class="cr-win-form-field cr-win-product-picker"' +
+              (otherPlan ? "" : " hidden") +
+            ">" +
+              '<label for="cr-win-product-trigger">New renewal product</label>' +
+              '<input type="hidden" id="cr-win-product" name="product" value="' +
+                escapeHtml(draft.product || "") +
+              '">' +
+              '<button type="button" class="cr-win-product-trigger" id="cr-win-product-trigger">' +
+                '<span id="cr-win-product-trigger-label">Select a product</span>' +
+                '<span class="cr-win-product-caret" aria-hidden="true">▾</span>' +
+              "</button>" +
+              '<div class="cr-win-product-panel" id="cr-win-product-panel" hidden>' +
+                '<input type="search" class="cr-win-product-search" id="cr-win-product-search" placeholder="Search products" autocomplete="off">' +
+                '<div class="cr-win-product-list" id="cr-win-product-list"></div>' +
+                '<p class="cr-win-product-empty" id="cr-win-product-empty" hidden>No matching products.</p>' +
+              "</div>" +
+            "</div>" +
+          "</div>" +
+        "</section>" +
         '<section class="cr-win-form-section">' +
           '<h4 class="cr-win-form-section-title">New dates</h4>' +
           '<div class="cr-win-form-grid">' +
@@ -1434,8 +1660,15 @@
       backBtn.addEventListener("click", function () { closeDealModal(); });
     }
     if (form) {
+      bindWinProductPicker(form, draft.product || "");
       form.addEventListener("submit", function (e) {
         e.preventDefault();
+        var otherPlan = form.querySelector('input[name="renew_other_plan"]:checked');
+        var productId = (form.product && form.product.value) || "";
+        if (otherPlan && otherPlan.value === "1" && !productId) {
+          setDealError("Select a new renewal product.");
+          return;
+        }
         var payload = {
           action: "save_win_form",
           subscription_id: item.subscription_id,
@@ -1445,6 +1678,8 @@
           billing_amount: form.billing_amount.value,
           vendor: form.vendor.value,
           invoice_number: form.invoice_number.value,
+          renew_other_plan: otherPlan ? otherPlan.value : "0",
+          product: otherPlan && otherPlan.value === "1" ? productId : "",
         };
         var pdfInput = form.querySelector('[name="invoice_pdf"]');
         if (pdfInput && pdfInput.files && pdfInput.files[0]) {
@@ -1517,6 +1752,7 @@
       .then(function (data) {
         dealItems = data.items || [];
         dealVendors = data.vendors || [];
+        dealProducts = data.products || [];
         var item = dealItems.filter(function (row) {
           return String(row.subscription_id) === String(subscriptionId);
         })[0];
