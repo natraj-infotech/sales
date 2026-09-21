@@ -32,6 +32,8 @@ from .forms import (
     CaseLockPublicForm,
     ClientForm,
     ClientSubscriptionForm,
+    LeadForm,
+    LeadStatusForm,
     RenewalConfirmLineFormSet,
     RenewalNewProductFormSet,
     SubscriptionRenewForm,
@@ -51,6 +53,7 @@ from .models import (
     annotate_internal_case_locks,
     Client,
     ClientSubscription,
+    Lead,
     Product,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
@@ -3523,3 +3526,98 @@ def caselock_submission_status_update(request, pk):
         messages.error(request, "Invalid action.")
 
     return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
+
+
+@sales_module_required
+def lead_list(request):
+    company = _company(request)
+    q = request.GET.get("q", "").strip()
+    source = request.GET.get("source", "").strip().lower()
+    status = request.GET.get("status", "").strip().lower()
+    qs = (
+        Lead.objects.filter(company=company)
+        .select_related("created_by")
+        .prefetch_related("products")
+        .order_by("-created_at", "-id")
+    )
+    if source in Lead.Source.values:
+        qs = qs.filter(source=source)
+    if status in Lead.Status.values:
+        qs = qs.filter(status=status)
+    if q:
+        qs = qs.filter(
+            Q(contact_name__icontains=q)
+            | Q(company_name__icontains=q)
+            | Q(email__icontains=q)
+            | Q(phone__icontains=q)
+            | Q(requirement__icontains=q)
+            | Q(whatsapp_wa_id__icontains=q)
+        )
+    return render(
+        request,
+        "business/lead_list.html",
+        {
+            "company": company,
+            "object_list": qs,
+            "q": q,
+            "source": source,
+            "status": status,
+            "source_choices": Lead.Source.choices,
+            "status_choices": Lead.Status.choices,
+        },
+    )
+
+
+@sales_module_required
+def lead_detail(request, pk):
+    company = _company(request)
+    lead = get_object_or_404(
+        Lead.objects.select_related("created_by").prefetch_related("products"),
+        pk=pk,
+        company=company,
+    )
+    status_form = LeadStatusForm(initial={"status": lead.status})
+    if request.method == "POST":
+        status_form = LeadStatusForm(request.POST)
+        if status_form.is_valid():
+            lead.status = status_form.cleaned_data["status"]
+            lead.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Lead status updated.")
+            return redirect("lead_detail", pk=lead.pk)
+    return render(
+        request,
+        "business/lead_detail.html",
+        {
+            "company": company,
+            "lead": lead,
+            "status_form": status_form,
+            "products": lead.products.all().order_by("name"),
+        },
+    )
+
+
+@sales_module_required
+def lead_add(request):
+    company = _company(request)
+    if request.method == "POST":
+        form = LeadForm(request.POST, company=company)
+        if form.is_valid():
+            lead = form.save(commit=False)
+            lead.company = company
+            lead.created_by = request.user
+            if not lead.source:
+                lead.source = Lead.Source.MANUAL
+            lead.save()
+            form.save_m2m()
+            messages.success(request, "Lead created.")
+            return redirect("lead_detail", pk=lead.pk)
+    else:
+        form = LeadForm(
+            company=company,
+            initial={"source": Lead.Source.MANUAL, "status": Lead.Status.NEW},
+        )
+    return render(
+        request,
+        "business/lead_form.html",
+        {"company": company, "form": form, "title": "Add lead"},
+    )

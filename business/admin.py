@@ -9,6 +9,7 @@ from .models import (
     CaseLockSubmission,
     Product,
     ClientSubscription,
+    Lead,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
@@ -316,3 +317,40 @@ class OemDiaryCompanyAdmin(admin.ModelAdmin):
     list_filter = ("company",)
     search_fields = ("name",)
     inlines = [OemDiaryEmailInline]
+
+
+@admin.register(Lead)
+class LeadAdmin(admin.ModelAdmin):
+    list_display = (
+        "contact_name",
+        "company_name",
+        "email",
+        "phone",
+        "source",
+        "created_by",
+        "status",
+        "company",
+        "created_at",
+    )
+    list_filter = ("company", "source", "status", "created_by")
+    search_fields = (
+        "contact_name",
+        "company_name",
+        "email",
+        "phone",
+        "requirement",
+        "whatsapp_wa_id",
+        "whatsapp_message_id",
+        "email_message_id",
+        "created_by__email",
+    )
+    filter_horizontal = ("products",)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "raw_payload",
+        "created_by",
+        "last_inbound_at",
+        "last_inbound_message_id",
+        "last_welcome_sent_at",
+    )
