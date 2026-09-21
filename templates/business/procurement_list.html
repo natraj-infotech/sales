@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Procurement List{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-truck"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Deal List</h1>
+      <p class="tracker-page-subtitle">Manage and track all your procurement deals and transactions</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header" href="{% url 'procurement_compare' %}">
+      <svg aria-hidden="true"><use href="#i-chart"/></svg>
+      Compare Deals
+    </a>
+    <a class="btn-tracker-header" href="{% url 'procurement_create' %}">
+      <svg aria-hidden="true"><use href="#i-plus"/></svg>
+      Create New Deal
+    </a>
+    <button type="submit" form="deal-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Are you sure you want to delete the selected deals?');">
+      <svg aria-hidden="true"><use href="#i-trash"/></svg>
+      Delete Selected
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card tracker-card--flush-bottom">
+  <form method="post" id="deal-bulk-form">
+    {% csrf_token %}
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-pro">
+        <thead>
+          <tr>
+            <th class="col-check">
+              <input type="checkbox" id="deal-select-all" title="Select all" aria-label="Select all deals">
+            </th>
+            <th>ID</th>
+            <th>Created At</th>
+            <th>Deal No</th>
+            <th>Products</th>
+            <th>Total Quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for deal in object_list %}
+          <tr class="proc-clickrow" data-href="{% url 'procurement_detail' deal.deal_no %}">
+            <td class="col-check" onclick="event.stopPropagation();">
+              <input type="checkbox" class="deal-row-check" name="deal_nos" value="{{ deal.deal_no }}" aria-label="Select {{ deal.deal_no }}">
+            </td>
+            <td>{{ deal.id }}</td>
+            <td>{{ deal.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ deal.deal_no }}</td>
+            <td>{{ deal.products_label }}</td>
+            <td>{{ deal.total_quantity }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6">
+              <div class="proc-empty-state">
+                <svg aria-hidden="true"><use href="#i-box"/></svg>
+                <div>No deals found.</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  var master = document.getElementById("deal-select-all");
+  var boxes = document.querySelectorAll(".deal-row-check");
+  if (master) {
+    master.addEventListener("change", function () {
+      boxes.forEach(function (b) { b.checked = master.checked; });
+    });
+  }
+  document.querySelectorAll(".proc-clickrow").forEach(function (row) {
+    row.addEventListener("click", function (e) {
+      if (e.target.closest("input, button, a")) return;
+      window.location = row.getAttribute("data-href");
+    });
+  });
+})();
+</script>
+{% endblock %}

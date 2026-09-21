@@ -102,6 +102,12 @@ class CompanyProfile(models.Model):
         blank=True,
         help_text="App password for the outgoing mailbox.",
     )
+    purchase_department_emails = models.TextField(
+        "purchase department emails",
+        blank=True,
+        help_text="Recipients for procurement deal comparison PDFs "
+        "(one per line, or comma-separated).",
+    )
     regards_email = models.TextField(
         "regards emails",
         blank=True,

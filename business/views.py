@@ -1034,18 +1034,19 @@ def vendor_add(request):
         "",
     )
     if request.method == "POST":
-        form = VendorForm(request.POST)
+        form = VendorForm(request.POST, company=company)
         if form.is_valid():
             v = form.save(commit=False)
             v.company = company
             v.save()
+            form.save_m2m()
             if next_url:
                 return redirect(
                     _url_with_query(next_url, preselect_vendor=v.pk)
                 )
             return redirect("vendor_list")
     else:
-        form = VendorForm()
+        form = VendorForm(company=company)
     return render(
         request,
         "business/vendor_form.html",
@@ -1063,12 +1064,12 @@ def vendor_edit(request, pk):
     company = _company(request)
     obj = get_object_or_404(Vendor, pk=pk, company=company)
     if request.method == "POST":
-        form = VendorForm(request.POST, instance=obj)
+        form = VendorForm(request.POST, instance=obj, company=company)
         if form.is_valid():
             form.save()
             return redirect("vendor_list")
     else:
-        form = VendorForm(instance=obj)
+        form = VendorForm(instance=obj, company=company)
     return render(
         request,
         "business/vendor_form.html",

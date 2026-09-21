@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Compare Result{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-chart"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Compare Result</h1>
+      <p class="tracker-page-subtitle">Product comparison and vendor analysis</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<p><strong>Deal Number: {{ deal_no }}</strong></p>
+
+<div class="proc-tabs">
+  {% for round in rounds %}
+  <a class="proc-tab {% if round.object.pk == selected_round.pk %}is-active{% endif %}" href="?round={{ round.object.pk }}">
+    {{ round.object.display_name }}
+    {% if round.object.is_final %}<span class="proc-badge">Final</span>{% endif %}
+    {{ round.submitted }}/{{ round.links }}
+  </a>
+  {% endfor %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add_round">
+    <button type="submit" class="proc-tab">+ Add round &amp; send links</button>
+  </form>
+</div>
+
+<section class="proc-section">
+  <form method="post" class="proc-grid-4">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_finalised">
+    <input type="hidden" name="round" value="{{ selected_round.pk }}">
+    <div class="proc-field">
+      <label for="finalised_price">Finalised price (optional)</label>
+      <input id="finalised_price" name="finalised_price" type="number" min="0" step="0.01" value="{% if finalised_price %}{{ finalised_price }}{% endif %}">
+    </div>
+    <div class="proc-field">
+      <label for="finalised_vendor">Vendor (optional)</label>
+      <select id="finalised_vendor" name="finalised_vendor">
+        <option value="">Select vendor</option>
+        {% for vendor in vendors %}
+        <option value="{{ vendor.pk }}" {% if finalised_vendor_id == vendor.pk|stringformat:"s" %}selected{% endif %}>{{ vendor.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="proc-field" style="display:flex;align-items:flex-end;">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</section>
+
+<section class="proc-section">
+  <h3>Products in Deal</h3>
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Product Name</th>
+          <th>Company Name</th>
+          <th>Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>{{ line.category|default:"—" }}</td>
+          <td>{{ line.product.name }}</td>
+          <td>{{ line.product_company|default:"—" }}</td>
+          <td>{{ line.quantity }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="proc-section">
+  <h3>Vendors and Prices — {{ selected_round.display_name }}</h3>
+  {% if ranked %}
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Rank (Low-High)</th>
+          <th>Vendor Name</th>
+          <th>Status</th>
+          {% for line in lines %}
+          <th class="proc-num">{{ line.product.name }} Price</th>
+          {% endfor %}
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ranked %}
+        <tr>
+          <td>{% if row.rank %}{{ row.rank }}{% else %}—{% endif %}</td>
+          <td>{{ row.vendor.name }}</td>
+          <td>
+            {% if row.submitted %}
+            <span class="proc-pill proc-pill--ok">Submitted</span>
+            {% else %}
+            <span class="proc-pill proc-pill--wait">Awaiting link</span>
+            {% endif %}
+          </td>
+          {% for cell in row.product_prices %}
+          <td class="proc-num">{{ cell.display }}</td>
+          {% endfor %}
+          <td>{{ row.note|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No vendors to compare. Send round submission links to collect prices.</p>
+  {% endif %}
+  <div class="proc-actions" style="margin-top:0.85rem;">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="resend_round">
+      <input type="hidden" name="round_id" value="{{ selected_round.pk }}">
+      <button type="submit" class="btn btn-ghost">Send {{ selected_round.display_name }} links</button>
+    </form>
+    {% if not selected_round.is_final %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="mark_final">
+      <input type="hidden" name="round_id" value="{{ selected_round.pk }}">
+      <button type="submit" class="btn btn-primary">Make this round Final</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="proc-section">
+  <h3>Price Comparison by Round</h3>
+  <form method="get" class="proc-field" style="max-width:280px;margin-bottom:0.75rem;">
+    <input type="hidden" name="round" value="{{ selected_round.pk }}">
+    <label for="product">Product</label>
+    <select id="product" name="product" onchange="this.form.submit()">
+      <option value="all" {% if product_id == "all" %}selected{% endif %}>All (total)</option>
+      {% for line in lines %}
+      <option value="{{ line.product_id }}" {% if product_id == line.product_id|stringformat:"s" %}selected{% endif %}>{{ line.product.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <div style="height:280px;">
+    <canvas id="proc-chart"></canvas>
+  </div>
+</section>
+
+<div class="proc-actions">
+  <a class="btn btn-primary" href="{% url 'procurement_compare_pdf' deal_no %}?round={{ selected_round.pk }}">Export as PDF</a>
+  <form method="post" id="purchase-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="send_purchase">
+    <input type="hidden" name="round_id" value="{{ selected_round.pk }}">
+    <button type="submit" class="btn btn-ghost" id="purchase-btn">Send to Purchase Dept</button>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = {{ chart_json|safe }};
+  var canvas = document.getElementById("proc-chart");
+  if (!canvas || !window.Chart) return;
+  var datasets = (data.datasets || []).map(function (ds, i) {
+    var colors = ["#2563eb", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
+    return {
+      label: ds.label,
+      data: ds.data,
+      borderColor: colors[i % colors.length],
+      backgroundColor: colors[i % colors.length],
+      tension: 0.25
+    };
+  });
+  var plugins = [];
+  if (data.finalised_price != null) {
+    plugins.push({
+      id: "finalLine",
+      afterDraw: function (chart) {
+        var y = chart.scales.y.getPixelForValue(data.finalised_price);
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = "#dc2626";
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(chart.chartArea.left, y);
+        ctx.lineTo(chart.chartArea.right, y);
+        ctx.stroke();
+        ctx.fillStyle = "#dc2626";
+        ctx.font = "12px Segoe UI, sans-serif";
+        ctx.fillText("Finalised price", chart.chartArea.left + 6, y - 6);
+        ctx.restore();
+      }
+    });
+  }
+  new Chart(canvas, {
+    type: "bar",
+    data: { labels: data.labels || [], datasets: datasets },
+    plugins: plugins,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom" } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+  var form = document.getElementById("purchase-form");
+  if (form) {
+    form.addEventListener("submit", function () {
+      var btn = document.getElementById("purchase-btn");
+      btn.disabled = true;
+      btn.textContent = "Sending to Purchase Department...";
+    });
+  }
+})();
+</script>
+{% endblock %}

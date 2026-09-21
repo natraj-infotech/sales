@@ -20,62 +20,150 @@
   .vendor-wide-head {
     background: #1f78c8;
     color: #fff;
-    padding: 0.6rem 0.75rem;
+    padding: 0.75rem 0.9rem;
   }
   .vendor-wide-head-title {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 1.2rem;
     font-weight: 700;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.4rem;
   }
   .vendor-wide-head-title svg {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
   }
   .vendor-wide-head-subtitle {
-    margin: 0.2rem 0 0;
-    font-size: 0.62rem;
+    margin: 0.25rem 0 0;
+    font-size: 0.82rem;
     color: rgba(255, 255, 255, 0.9);
   }
   .vendor-wide-body {
-    padding: 0.6rem;
+    padding: 0.75rem;
   }
   .vendor-section {
     border: 1px solid #d8e1ec;
     border-radius: 6px;
-    padding: 0.55rem 0.65rem 0.6rem;
+    padding: 0.7rem 0.8rem 0.75rem;
     background: #fff;
   }
   .vendor-section + .vendor-section {
-    margin-top: 0.5rem;
+    margin-top: 0.6rem;
   }
   .vendor-section-title {
-    margin: 0 0 0.45rem;
+    margin: 0 0 0.55rem;
     color: #1f3b63;
-    font-size: 0.68rem;
+    font-size: 0.92rem;
     font-weight: 700;
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.4rem;
   }
   .vendor-section-title svg {
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
   }
   .vendor-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.4rem 0.5rem;
+    gap: 0.55rem 0.75rem;
   }
   .vendor-grid.vendor-grid--three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .vendor-field--products { grid-column: 1 / -1; }
+  .vendor-ms { position: relative; }
+  .vendor-ms-toggle {
+    width: 100%;
+    text-align: left;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    padding: 0.42rem 0.55rem;
+    font-size: 0.85rem;
+    color: #6b7d95;
+    background: #fff;
+    cursor: pointer;
+    min-height: 2.15rem;
+  }
+  .vendor-ms-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+    margin-top: 0.4rem;
+  }
+  .vendor-ms-chips:empty { display: none; }
+  .vendor-ms-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 100%;
+    padding: 0.22rem 0.5rem;
+    border: 1px solid #c9d5e4;
+    border-radius: 999px;
+    background: #eef4fb;
+    color: #1f3b63;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .vendor-ms-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vendor-ms-chip button {
+    border: 0;
+    background: transparent;
+    color: #5b6b82;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .vendor-ms-panel {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    margin-top: 0.2rem;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    padding: 0.35rem;
+  }
+  .vendor-ms-search {
+    width: 100%;
+    border: 1px solid #c9d5e4;
+    border-radius: 4px;
+    padding: 0.38rem 0.5rem;
+    font-size: 0.82rem;
+    margin-bottom: 0.35rem;
+  }
+  .vendor-ms-list {
+    max-height: 200px;
+    overflow: auto;
+  }
+  .vendor-ms-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.25rem;
+    font-size: 0.82rem;
+    color: #13294b;
+    cursor: pointer;
+  }
+  .vendor-ms-item input { margin: 0; }
+  .vendor-ms-empty {
+    padding: 0.55rem 0.3rem;
+    font-size: 0.8rem;
+    color: #6b7d95;
+  }
   .vendor-field label {
     display: block;
-    margin-bottom: 0.18rem;
-    font-size: 0.62rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.82rem;
     font-weight: 600;
     color: #274365;
   }
@@ -84,46 +172,46 @@
     width: 100%;
     border: 1px solid #c9d5e4;
     border-radius: 4px;
-    padding: 0.32rem 0.42rem;
-    font-size: 0.64rem;
+    padding: 0.42rem 0.55rem;
+    font-size: 0.85rem;
     color: #13294b;
     background: #fff;
   }
   .vendor-field textarea {
-    min-height: 2.2rem;
+    min-height: 2.6rem;
     resize: vertical;
   }
   .vendor-help {
-    margin-top: 0.16rem;
-    font-size: 0.56rem;
+    margin-top: 0.2rem;
+    font-size: 0.74rem;
     color: #6b7d95;
   }
   .vendor-field .errorlist {
-    margin: 0.2rem 0 0;
-    padding-left: 0.85rem;
-    font-size: 0.6rem;
+    margin: 0.25rem 0 0;
+    padding-left: 0.9rem;
+    font-size: 0.76rem;
   }
   .vendor-actions {
-    margin-top: 0.55rem;
+    margin-top: 0.7rem;
     display: flex;
     justify-content: center;
   }
   .vendor-submit {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.65rem;
+    gap: 0.35rem;
+    padding: 0.45rem 0.9rem;
     border: none;
     border-radius: 5px;
     background: #5468be;
     color: #fff;
-    font-size: 0.6rem;
+    font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
   }
   .vendor-submit svg {
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
   }
   @media (max-width: 900px) {
     .vendor-grid,
@@ -170,6 +258,30 @@
               {{ form.gst_number }}
               <div class="vendor-help">Optional - Tax registration number</div>
               {{ form.gst_number.errors }}
+            </div>
+            <div class="vendor-field vendor-field--products">
+              <label>Products</label>
+              <div class="vendor-ms" data-vendor-ms>
+                <button type="button" class="vendor-ms-toggle" aria-expanded="false">
+                  Select products
+                </button>
+                <div class="vendor-ms-chips" data-vendor-ms-chips></div>
+                <div class="vendor-ms-panel" hidden>
+                  <input type="search" class="vendor-ms-search" placeholder="Search products…" aria-label="Search products">
+                  <div class="vendor-ms-list">
+                    {% for item in form.catalog_products %}
+                    <label class="vendor-ms-item" data-label="{{ item.choice_label|lower }}">
+                      {{ item.tag }}
+                      <span>{{ item.choice_label }}</span>
+                    </label>
+                    {% empty %}
+                    <div class="vendor-ms-empty">No products in Product list yet</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="vendor-help">Select one or more products this vendor can quote</div>
+              {{ form.catalog_products.errors }}
             </div>
           </div>
         </section>
@@ -241,4 +353,76 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  var root = document.querySelector("[data-vendor-ms]");
+  if (!root) return;
+  var toggle = root.querySelector(".vendor-ms-toggle");
+  var panel = root.querySelector(".vendor-ms-panel");
+  var search = root.querySelector(".vendor-ms-search");
+  var chips = root.querySelector("[data-vendor-ms-chips]");
+  var items = Array.prototype.slice.call(root.querySelectorAll(".vendor-ms-item"));
+
+  function selectedItems() {
+    return items.filter(function (item) {
+      var box = item.querySelector("input[type='checkbox']");
+      return box && box.checked;
+    });
+  }
+  function refreshToggle() {
+    var chosen = selectedItems();
+    toggle.textContent = chosen.length ? "Add more products" : "Select products";
+    if (!chips) return;
+    chips.innerHTML = "";
+    chosen.forEach(function (item) {
+      var box = item.querySelector("input[type='checkbox']");
+      var name = (item.querySelector("span") || item).textContent.trim();
+      var chip = document.createElement("span");
+      chip.className = "vendor-ms-chip";
+      var label = document.createElement("span");
+      label.textContent = name;
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Remove " + name);
+      remove.textContent = "×";
+      remove.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (box) {
+          box.checked = false;
+          refreshToggle();
+        }
+      });
+      chip.appendChild(label);
+      chip.appendChild(remove);
+      chips.appendChild(chip);
+    });
+  }
+  function openPanel(open) {
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  toggle.addEventListener("click", function (e) {
+    e.preventDefault();
+    openPanel(panel.hidden);
+  });
+  document.addEventListener("click", function (e) {
+    if (!root.contains(e.target)) openPanel(false);
+  });
+  items.forEach(function (item) {
+    var box = item.querySelector("input[type='checkbox']");
+    if (box) box.addEventListener("change", refreshToggle);
+  });
+  if (search) {
+    search.addEventListener("input", function () {
+      var q = (search.value || "").toLowerCase();
+      items.forEach(function (item) {
+        var label = item.getAttribute("data-label") || "";
+        item.style.display = !q || label.indexOf(q) !== -1 ? "" : "none";
+      });
+    });
+  }
+  refreshToggle();
+})();
+</script>
 {% endblock %}

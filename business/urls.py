@@ -1,8 +1,45 @@
 from django.urls import path
 
 from . import views
+from . import views_procurement
 
 urlpatterns = [
+    path(
+        "vendor-price-submit/<uuid:token>/",
+        views_procurement.vendor_price_submit,
+        name="vendor_price_submit",
+    ),
+    path(
+        "vendor-price-submit/<uuid:token>/submit/",
+        views_procurement.vendor_price_submit_post,
+        name="vendor_price_submit_post",
+    ),
+    path("procurement/", views_procurement.procurement_list, name="procurement_list"),
+    path(
+        "procurement/create/",
+        views_procurement.procurement_create,
+        name="procurement_create",
+    ),
+    path(
+        "procurement/compare/",
+        views_procurement.procurement_compare_picker,
+        name="procurement_compare",
+    ),
+    path(
+        "procurement/compare/<str:deal_no>/",
+        views_procurement.procurement_compare_result,
+        name="procurement_compare_result",
+    ),
+    path(
+        "procurement/compare/<str:deal_no>/pdf/",
+        views_procurement.procurement_compare_pdf,
+        name="procurement_compare_pdf",
+    ),
+    path(
+        "procurement/<str:deal_no>/",
+        views_procurement.procurement_detail,
+        name="procurement_detail",
+    ),
     path(
         "renewal/track/<uuid:invite_id>/open.gif",
         views.renewal_track_open,

@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('accounts', '0016_oem_tickets_and_diary'),
-        ('business', '0044_merge_oem_invoice_and_deal_status'),
+        ('business', '0046_vendor_catalog_products'),
     ]
 
     operations = [

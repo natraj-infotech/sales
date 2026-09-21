@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Deal {{ deal_no }}{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="proc-wrap">
+<div class="proc-actions" style="margin-bottom:0.85rem;">
+  <a class="btn btn-ghost" href="{% url 'procurement_list' %}">Deal List</a>
+  <a class="btn btn-ghost" href="{% url 'procurement_compare_result' deal_no %}">Compare Deals</a>
+</div>
+
+<div class="proc-banner">
+  <h1>{{ deal_no }}</h1>
+  <p class="muted" style="margin:0.35rem 0 0;">Created: {{ header_line.created_at|date:"j M Y, H:i" }}</p>
+  {% if header_line.deal_name %}<p style="margin:0.2rem 0 0;">{{ header_line.deal_name }}</p>{% endif %}
+</div>
+
+<section class="proc-section">
+  <h3><svg aria-hidden="true"><use href="#i-box"/></svg> Products</h3>
+  {% if lines %}
+  <div class="proc-chips">
+    {% for line in lines %}
+    <span class="proc-chip">{{ line.product.name }} × {{ line.quantity }}</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="proc-empty-state">
+    <svg aria-hidden="true"><use href="#i-box"/></svg>
+    <div>No products in this deal</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="proc-section">
+  <h3><svg aria-hidden="true"><use href="#i-users"/></svg> Vendors Sent Quotation</h3>
+  {% if vendors %}
+  <div class="proc-chips" style="margin-bottom:0.75rem;">
+    {% for row in vendors %}
+    <span class="proc-chip">{{ row.vendor.name }}</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No vendors sent quotation yet</p>
+  {% endif %}
+
+  {% for round in rounds %}
+  <div class="proc-round">
+    <div>
+      <strong>{{ round.object.display_name }}</strong>
+      {% if round.object.is_final %}<span class="proc-badge">Final</span>{% endif %}
+      <div class="muted">{{ round.submitted }} submitted / {{ round.links }} links</div>
+    </div>
+    <div class="proc-actions">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="resend_round">
+        <input type="hidden" name="round_id" value="{{ round.object.pk }}">
+        <button type="submit" class="btn btn-ghost">Send {{ round.object.display_name }} links</button>
+      </form>
+      {% if not round.object.is_final %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="mark_final">
+        <input type="hidden" name="round_id" value="{{ round.object.pk }}">
+        <button type="submit" class="btn btn-primary">Mark as Final</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  <div style="margin-top:0.85rem;">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_round">
+      <button type="submit" class="btn btn-primary">Add round &amp; send links</button>
+    </form>
+  </div>
+</section>
+
+<section class="proc-section">
+  <h3><svg aria-hidden="true"><use href="#i-chart"/></svg> Vendor Prices by Round</h3>
+  {% if has_matrix %}
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Round</th>
+          {% for product in products %}
+          <th class="proc-num">{{ product.name }}</th>
+          {% endfor %}
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix %}
+          {% for round_row in row.rounds %}
+          <tr>
+            {% if forloop.first %}
+            <td rowspan="{{ row.rounds|length }}">{{ row.vendor.name }}</td>
+            {% endif %}
+            <td>
+              {{ round_row.round.display_name }}
+              {% if round_row.round.is_final %}<span class="proc-badge">Final</span>{% endif %}
+            </td>
+            {% for cell in round_row.cells %}
+            <td class="proc-num">{% if cell %}{{ cell }}{% else %}—{% endif %}</td>
+            {% endfor %}
+            <td>{% if round_row.timestamp %}{{ round_row.timestamp|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif timeline %}
+  <div class="tracker-table-scroll">
+    <table class="tracker-table-pro">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Vendor</th>
+          <th>Product</th>
+          <th>Price</th>
+          <th>Note</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in timeline %}
+        <tr>
+          <td>{{ row.time|date:"d/m/Y H:i" }}</td>
+          <td>{{ row.vendor }}</td>
+          <td>{{ row.product }}</td>
+          <td class="proc-num">₹{{ row.price|floatformat:2 }}</td>
+          <td>{{ row.note|default:"—" }}</td>
+          <td>{{ row.source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No prices submitted yet. Vendors will appear here once they submit quotations.</p>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

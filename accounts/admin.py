@@ -64,6 +64,7 @@ class CompanyProfileAdmin(admin.ModelAdmin):
         "oem_email_app_password",
         "outgoing_email",
         "outgoing_email_app_password",
+        "purchase_department_emails",
         "regards_email",
         "regards_contact",
         "expiry_email_initial_paragraph",

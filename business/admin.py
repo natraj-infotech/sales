@@ -8,8 +8,8 @@ from .models import (
     CaseLockProduct,
     CaseLockSubmission,
     Product,
-    ClientSubscription,
     Lead,
+    ClientSubscription,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
@@ -21,6 +21,10 @@ from .models import (
     TicketPriorityRule,
     OemDiaryCompany,
     OemDiaryEmail,
+    ProcurementDeal,
+    DealVendor,
+    DealRound,
+    VendorPriceSubmission,
 )
 
 
@@ -35,6 +39,7 @@ class VendorAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("company",)
+    filter_horizontal = ("catalog_products",)
     search_fields = ("name", "email", "gst_number", "phone")
 
 
@@ -317,6 +322,41 @@ class OemDiaryCompanyAdmin(admin.ModelAdmin):
     list_filter = ("company",)
     search_fields = ("name",)
     inlines = [OemDiaryEmailInline]
+
+
+@admin.register(ProcurementDeal)
+class ProcurementDealAdmin(admin.ModelAdmin):
+    list_display = ("deal_no", "product", "quantity", "company", "created_at")
+    list_filter = ("company",)
+    search_fields = ("deal_no", "product__name")
+
+
+@admin.register(DealVendor)
+class DealVendorAdmin(admin.ModelAdmin):
+    list_display = ("deal_no", "vendor", "company", "created_at")
+    list_filter = ("company",)
+    search_fields = ("deal_no", "vendor__name")
+
+
+@admin.register(DealRound)
+class DealRoundAdmin(admin.ModelAdmin):
+    list_display = ("deal_no", "name", "round_number", "is_final", "company")
+    list_filter = ("company", "is_final")
+    search_fields = ("deal_no", "name")
+
+
+@admin.register(VendorPriceSubmission)
+class VendorPriceSubmissionAdmin(admin.ModelAdmin):
+    list_display = (
+        "deal_no",
+        "vendor",
+        "deal_round",
+        "is_submitted",
+        "expires_at",
+        "company",
+    )
+    list_filter = ("company", "is_submitted")
+    search_fields = ("deal_no", "vendor__name", "submission_token")
 
 
 @admin.register(Lead)

@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}Create New Deal{% endblock %}
+{% block extra_css %}{% include "includes/procurement_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="proc-wrap">
+  <h1 class="proc-page-title">Create New Deal</h1>
+  <p class="proc-page-sub">Create and manage deals with multiple products and vendors</p>
+
+  <form method="post" id="create-deal-form" class="tracker-card proc-form-card">
+    {% csrf_token %}
+    <input type="hidden" name="products_json" id="products-json" value="[]">
+
+    <section class="proc-section">
+      <h3><svg aria-hidden="true"><use href="#i-doc"/></svg> Deal Information</h3>
+      <div class="proc-field">
+        <label class="proc-field-label-row" for="deal-id">
+          <svg aria-hidden="true"><use href="#i-key"/></svg>
+          Deal ID
+        </label>
+        <input id="deal-id" type="text" value="{{ deal_no }}" readonly>
+        <span class="proc-help">Auto-generated deal identifier</span>
+      </div>
+    </section>
+
+    <section class="proc-section">
+      <h3><svg aria-hidden="true"><use href="#i-box"/></svg> Product Selection</h3>
+      <div class="proc-grid-4">
+        <div class="proc-field">
+          <label class="proc-field-label-row" for="category">
+            <svg aria-hidden="true"><use href="#i-layers"/></svg>
+            Category
+          </label>
+          <select id="category">
+            <option value="">Select Category</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="proc-field">
+          <label class="proc-field-label-row" for="product">
+            <svg aria-hidden="true"><use href="#i-box"/></svg>
+            Product Name
+          </label>
+          <select id="product" disabled>
+            <option value="">Select Category first</option>
+          </select>
+        </div>
+        <div class="proc-field">
+          <label class="proc-field-label-row" for="product-company">
+            <svg aria-hidden="true"><use href="#i-building"/></svg>
+            Product Company
+          </label>
+          <input id="product-company" type="text" readonly>
+          <span class="proc-help">Auto-populated based on product selection</span>
+        </div>
+        <div class="proc-field">
+          <label class="proc-field-label-row" for="quantity">
+            <svg aria-hidden="true"><use href="#i-layout-grid"/></svg>
+            Quantity
+          </label>
+          <input id="quantity" type="number" min="1" step="1">
+        </div>
+      </div>
+      <div class="proc-center">
+        <button type="button" class="btn btn-primary proc-submit" id="add-product">
+          <svg aria-hidden="true"><use href="#i-plus"/></svg>
+          Add Product
+        </button>
+      </div>
+    </section>
+
+    <section class="proc-section" id="selected-products-section" hidden>
+      <h3><svg aria-hidden="true"><use href="#i-layers"/></svg> Selected Products</h3>
+      <div class="tracker-table-scroll">
+        <table class="tracker-table-pro" id="selected-products-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Product Name</th>
+              <th>Product Company</th>
+              <th>Quantity</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="proc-section">
+      <h3><svg aria-hidden="true"><use href="#i-users"/></svg> Vendor Selection</h3>
+      <div class="proc-dual">
+        <div class="proc-listbox">
+          <h4>
+            <svg aria-hidden="true"><use href="#i-menu"/></svg>
+            Available Vendors
+          </h4>
+          <input type="search" class="proc-search" id="avail-search" placeholder="Search vendors…" aria-label="Search vendors">
+          <div class="proc-list" id="avail-list"><div class="proc-empty">Add products to see matching vendors</div></div>
+          <button type="button" class="proc-select-all" id="select-all-vendors">
+            <svg aria-hidden="true"><use href="#i-arrow-right"/></svg>
+            Select All
+          </button>
+        </div>
+        <div class="proc-arrows">
+          <button type="button" class="proc-arrow-btn" id="move-right" disabled title="Add selected">
+            <svg aria-hidden="true"><use href="#i-arrow-right"/></svg>
+          </button>
+          <button type="button" class="proc-arrow-btn" id="move-left" disabled title="Remove selected">
+            <svg aria-hidden="true"><use href="#i-arrow-left"/></svg>
+          </button>
+        </div>
+        <div class="proc-listbox">
+          <h4>
+            <svg aria-hidden="true"><use href="#i-check-circle"/></svg>
+            Selected Vendors
+          </h4>
+          <input type="search" class="proc-search" id="sel-search" placeholder="Search selected..." aria-label="Search selected vendors">
+          <div class="proc-list" id="sel-list"><div class="proc-empty">No vendors selected</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="proc-section">
+      <div class="proc-field">
+        <label class="proc-field-label-row" for="expiration_days">
+          <svg aria-hidden="true"><use href="#i-clock"/></svg>
+          Link Expiration (Days) <span class="proc-req">*</span>
+        </label>
+        <input id="expiration_days" name="expiration_days" type="number" min="1" value="1" required>
+        <span class="proc-help">The vendor price submission link will expire after the specified number of days.</span>
+      </div>
+    </section>
+
+    <div class="proc-center">
+      <button type="submit" class="btn btn-primary proc-submit">
+        <svg aria-hidden="true"><use href="#i-check-circle"/></svg>
+        Create Deal
+      </button>
+    </div>
+  </form>
+</div>
+
+{{ products_data|json_script:"proc-products-data" }}
+{{ vendors_data|json_script:"proc-vendors-data" }}
+<script>
+(function () {
+  var products = JSON.parse(document.getElementById("proc-products-data").textContent);
+  var vendors = JSON.parse(document.getElementById("proc-vendors-data").textContent);
+  var selectedProducts = [];
+  var available = [];
+  var selected = [];
+  var availFocus = [];
+  var selFocus = [];
+  var availAnchor = null;
+  var selAnchor = null;
+
+  var categoryEl = document.getElementById("category");
+  var productEl = document.getElementById("product");
+  var companyEl = document.getElementById("product-company");
+  var qtyEl = document.getElementById("quantity");
+  var productsJson = document.getElementById("products-json");
+  var form = document.getElementById("create-deal-form");
+
+  function productById(id) {
+    return products.find(function (row) { return String(row.id) === String(id); });
+  }
+  function fillCompany() {
+    var p = productById(productEl.value);
+    companyEl.value = (p && p.company_name) ? p.company_name : "";
+  }
+  function fillProducts() {
+    var cat = categoryEl.value;
+    productEl.innerHTML = "";
+    companyEl.value = "";
+    if (!cat) {
+      productEl.disabled = true;
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select Category first";
+      productEl.appendChild(placeholder);
+      return;
+    }
+    productEl.disabled = false;
+    var first = document.createElement("option");
+    first.value = "";
+    first.textContent = "Select Product";
+    productEl.appendChild(first);
+    products.filter(function (p) { return p.category === cat; }).forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      opt.setAttribute("data-company", p.company_name || "");
+      productEl.appendChild(opt);
+    });
+  }
+  categoryEl.addEventListener("change", fillProducts);
+  productEl.addEventListener("change", fillCompany);
+
+  function renderSelectedProducts() {
+    var section = document.getElementById("selected-products-section");
+    var tbody = document.querySelector("#selected-products-table tbody");
+    tbody.innerHTML = "";
+    section.hidden = selectedProducts.length === 0;
+    selectedProducts.forEach(function (row, idx) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + row.category + "</td><td>" + row.name + "</td><td>" + (row.company_name || "—") + "</td><td>" + row.quantity + "</td>";
+      var td = document.createElement("td");
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-ghost";
+      btn.textContent = "Remove";
+      btn.addEventListener("click", function () {
+        selectedProducts.splice(idx, 1);
+        renderSelectedProducts();
+      });
+      td.appendChild(btn);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    });
+    productsJson.value = JSON.stringify(selectedProducts.map(function (row) {
+      return { product_id: row.id, quantity: row.quantity };
+    }));
+    syncVendorPools();
+  }
+
+  document.getElementById("add-product").addEventListener("click", function () {
+    if (!categoryEl.value || !productEl.value || !qtyEl.value || Number(qtyEl.value) < 1) {
+      alert("Category, product, and quantity are required.");
+      return;
+    }
+    var id = Number(productEl.value);
+    if (selectedProducts.some(function (row) { return row.id === id; })) {
+      alert("This product is already added.");
+      return;
+    }
+    var p = products.find(function (row) { return row.id === id; });
+    selectedProducts.push({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      company_name: p.company_name,
+      quantity: Number(qtyEl.value)
+    });
+    qtyEl.value = "";
+    renderSelectedProducts();
+  });
+
+  function vendorOffersAll(v) {
+    if (!selectedProducts.length) return false;
+    var ids = v.product_ids || [];
+    return selectedProducts.every(function (p) {
+      return ids.indexOf(p.id) >= 0;
+    });
+  }
+  function syncVendorPools() {
+    var matching = vendors.filter(vendorOffersAll);
+    var matchingIds = matching.map(function (v) { return v.id; });
+    selected = selected.filter(function (v) { return matchingIds.indexOf(v.id) >= 0; });
+    var selectedIds = selected.map(function (v) { return v.id; });
+    available = matching.filter(function (v) { return selectedIds.indexOf(v.id) < 0; });
+    availFocus = availFocus.filter(function (id) {
+      return available.some(function (v) { return v.id === id; });
+    });
+    selFocus = selFocus.filter(function (id) {
+      return selected.some(function (v) { return v.id === id; });
+    });
+    renderVendors();
+  }
+  function emptyAvailText() {
+    if (!selectedProducts.length) return "Add products to see matching vendors";
+    if (!available.length && !selected.length) return "No vendors available for the selected products";
+    return "No vendors available";
+  }
+  function filtered(list, q) {
+    q = (q || "").toLowerCase();
+    return list.filter(function (v) { return !q || v.name.toLowerCase().indexOf(q) !== -1; });
+  }
+  function toggleId(arr, id) {
+    var i = arr.indexOf(id);
+    if (i >= 0) arr.splice(i, 1);
+    else arr.push(id);
+  }
+  function rangeIds(list, fromId, toId) {
+    var ids = list.map(function (v) { return v.id; });
+    var a = ids.indexOf(fromId);
+    var b = ids.indexOf(toId);
+    if (a < 0 || b < 0) return [toId];
+    if (a > b) { var t = a; a = b; b = t; }
+    return ids.slice(a, b + 1);
+  }
+  function renderList(el, list, focusIds, emptyText) {
+    el.innerHTML = "";
+    if (!list.length) {
+      el.innerHTML = '<div class="proc-empty">' + emptyText + '</div>';
+      return;
+    }
+    list.forEach(function (v) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = v.name;
+      if (focusIds.indexOf(v.id) >= 0) btn.className = "is-selected";
+      btn.addEventListener("click", function (e) {
+        if (el.id === "avail-list") {
+          selFocus = [];
+          selAnchor = null;
+          if (e.shiftKey && availAnchor != null) {
+            availFocus = rangeIds(list, availAnchor, v.id);
+          } else {
+            toggleId(availFocus, v.id);
+            availAnchor = v.id;
+          }
+        } else {
+          availFocus = [];
+          availAnchor = null;
+          if (e.shiftKey && selAnchor != null) {
+            selFocus = rangeIds(list, selAnchor, v.id);
+          } else {
+            toggleId(selFocus, v.id);
+            selAnchor = v.id;
+          }
+        }
+        renderVendors();
+      });
+      btn.addEventListener("dblclick", function () {
+        if (el.id === "avail-list") {
+          moveMany(available, selected, [v.id]);
+          availFocus = [];
+          availAnchor = null;
+        } else {
+          moveMany(selected, available, [v.id]);
+          selFocus = [];
+          selAnchor = null;
+        }
+        renderVendors();
+      });
+      el.appendChild(btn);
+    });
+  }
+  function renderVendors() {
+    var availQ = document.getElementById("avail-search").value;
+    var selQ = document.getElementById("sel-search").value;
+    renderList(document.getElementById("avail-list"), filtered(available, availQ), availFocus, emptyAvailText());
+    renderList(document.getElementById("sel-list"), filtered(selected, selQ), selFocus, "No vendors selected");
+    document.getElementById("move-right").disabled = !availFocus.length;
+    document.getElementById("move-left").disabled = !selFocus.length;
+    document.getElementById("select-all-vendors").hidden = available.length === 0;
+  }
+  function move(from, to, id) {
+    var idx = from.findIndex(function (v) { return v.id === id; });
+    if (idx < 0) return;
+    to.push(from.splice(idx, 1)[0]);
+  }
+  function moveMany(from, to, ids) {
+    ids.slice().forEach(function (id) { move(from, to, id); });
+  }
+  document.getElementById("move-right").addEventListener("click", function () {
+    if (!availFocus.length) return;
+    moveMany(available, selected, availFocus);
+    availFocus = [];
+    availAnchor = null;
+    renderVendors();
+  });
+  document.getElementById("move-left").addEventListener("click", function () {
+    if (!selFocus.length) return;
+    moveMany(selected, available, selFocus);
+    selFocus = [];
+    selAnchor = null;
+    renderVendors();
+  });
+  document.getElementById("select-all-vendors").addEventListener("click", function () {
+    selected = selected.concat(available);
+    available = [];
+    availFocus = [];
+    availAnchor = null;
+    renderVendors();
+  });
+  document.getElementById("avail-search").addEventListener("input", renderVendors);
+  document.getElementById("sel-search").addEventListener("input", renderVendors);
+
+  form.addEventListener("submit", function (e) {
+    if (!selectedProducts.length || !selected.length) {
+      e.preventDefault();
+      alert("Please add at least one product and one vendor.");
+      return;
+    }
+    document.querySelectorAll("input[name='vendor_ids']").forEach(function (n) { n.remove(); });
+    selected.forEach(function (v) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "vendor_ids";
+      input.value = v.id;
+      form.appendChild(input);
+    });
+  });
+
+  fillProducts();
+  renderVendors();
+})();
+</script>
+{% endblock %}

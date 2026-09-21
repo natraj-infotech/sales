@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('business', '0045_lead_and_whatsapp'),
+        ('business', '0047_lead_and_whatsapp'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

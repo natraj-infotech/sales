@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('business', '0046_lead_generated_by'),
+        ('business', '0048_lead_generated_by'),
     ]
 
     operations = [
