@@ -23,6 +23,59 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
+# HTTP only for loopback. Any public host (sslip.io, real domain, etc.) uses HTTPS
+# so OAuth callback URLs match Azure/Google (AADSTS50011 is http vs https).
+LOCAL_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+_LOCAL_HOSTNAMES = LOCAL_HOSTNAMES
+
+
+def _hostname_only(host: str) -> str:
+    host = host.strip().lower()
+    if host.startswith("[") and "]" in host:
+        return host[1:].split("]", 1)[0]
+    return host.split(":", 1)[0]
+
+
+def _is_local_host(host: str) -> bool:
+    return _hostname_only(host) in _LOCAL_HOSTNAMES
+
+
+_use_https = any(not _is_local_host(h) for h in ALLOWED_HOSTS if h and h != "*")
+
+# Reverse proxy (nginx / sslip.io / load balancer) terminates TLS and forwards
+# HTTP to Django. Trust X-Forwarded-Proto so request.is_secure() is correct.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+SESSION_COOKIE_SECURE = _use_https
+CSRF_COOKIE_SECURE = _use_https
+
+_csrf_env = [
+    origin.strip().rstrip("/")
+    for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if _csrf_env:
+    CSRF_TRUSTED_ORIGINS = _csrf_env
+else:
+    CSRF_TRUSTED_ORIGINS = []
+    _seen_origins: set[str] = set()
+    for _host in ALLOWED_HOSTS:
+        if not _host or _host == "*":
+            continue
+        if _host.startswith("."):
+            _origin = f"https://*{_host}"
+        else:
+            _scheme = "http" if _is_local_host(_host) else "https"
+            _origin = f"{_scheme}://{_host}"
+        if _origin not in _seen_origins:
+            _seen_origins.add(_origin)
+            CSRF_TRUSTED_ORIGINS.append(_origin)
+        if _is_local_host(_host) and ":" not in _host:
+            _origin_port = f"http://{_host}:8000"
+            if _origin_port not in _seen_origins:
+                _seen_origins.add(_origin_port)
+                CSRF_TRUSTED_ORIGINS.append(_origin_port)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -45,6 +98,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "accounts.middleware.PreferHttpsExceptLocalhostMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -140,6 +194,9 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
+# django-allauth default is "http", which made Microsoft receive
+# http://sales....sslip.io/accounts/microsoft/login/callback/.
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https" if _use_https else "http"
 
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True

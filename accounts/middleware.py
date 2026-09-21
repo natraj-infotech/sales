@@ -1,11 +1,41 @@
 import logging
 import uuid
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.http import Http404
 from django.shortcuts import redirect
 
 logger = logging.getLogger("accounts.exceptions")
+
+_LOCAL_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+class PreferHttpsExceptLocalhostMiddleware:
+    """Use HTTP only on loopback; treat every other host as HTTPS.
+
+    Django behind sslip.io / nginx often sees the request as HTTP, so
+    allauth would send http://... Microsoft callbacks (AADSTS50011).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            raw_host = request.get_host() or ""
+        except SuspiciousOperation:
+            return self.get_response(request)
+        if raw_host.startswith("[") and "]" in raw_host:
+            host = raw_host[1 : raw_host.index("]")].lower()
+        else:
+            host = raw_host.split(":")[0].strip().lower()
+        extra = getattr(settings, "LOCAL_HOSTNAMES", ())
+        local_hosts = _LOCAL_HOSTNAMES.union(extra)
+        if host and host not in local_hosts:
+            request.META["HTTP_X_FORWARDED_PROTO"] = "https"
+            request.META["wsgi.url_scheme"] = "https"
+        return self.get_response(request)
 
 
 class ExceptionLoggingMiddleware:
