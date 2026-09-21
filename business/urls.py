@@ -89,6 +89,9 @@ urlpatterns = [
         name="caselock_submission_status_update",
     ),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("leads/", views.lead_list, name="lead_list"),
+    path("leads/add/", views.lead_add, name="lead_add"),
+    path("leads/<int:pk>/", views.lead_detail, name="lead_detail"),
     path("client-renewals/", views.client_renewal_list, name="client_renewal_list"),
     path(
         "client-renewals/live/",

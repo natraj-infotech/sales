@@ -11,6 +11,7 @@ from .models import (
     CaseLockProduct,
     CaseLockSubmission,
     ClientSubscription,
+    Lead,
     Product,
     SupportTicket,
     SupportSLASettings,
@@ -773,3 +774,42 @@ class SubscriptionRenewForm(forms.Form):
                 else:
                     cleaned["resolved_vendor"] = vendor
         return cleaned
+
+
+class LeadForm(forms.ModelForm):
+    class Meta:
+        model = Lead
+        fields = (
+            "source",
+            "contact_name",
+            "company_name",
+            "email",
+            "phone",
+            "requirement",
+            "notes",
+            "products",
+            "status",
+        )
+        widgets = {
+            "requirement": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+            "products": forms.SelectMultiple(attrs={"size": 8}),
+        }
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.company = company
+        if company is not None:
+            self.fields["products"].queryset = company.products.all().order_by("name")
+        else:
+            self.fields["products"].queryset = Product.objects.none()
+        self.fields["products"].required = False
+        self.fields["email"].required = False
+        self.fields["phone"].required = False
+        self.fields["company_name"].required = False
+        self.fields["requirement"].required = False
+        self.fields["notes"].required = False
+
+
+class LeadStatusForm(forms.Form):
+    status = forms.ChoiceField(choices=Lead.Status.choices)
