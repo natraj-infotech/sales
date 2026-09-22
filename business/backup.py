@@ -212,7 +212,7 @@ def prune_old_backups(root: Path | None = None, *, keep_days: int | None = None)
     cutoff = timezone.now() - timedelta(days=days)
     pruned: list[str] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir():
+        if not child.is_dir() or child.name in {"exports", "uploads"}:
             continue
         # Prefer manifest created_at; fall back to directory mtime.
         created = None
@@ -242,7 +242,7 @@ def list_backups(root: Path | None = None) -> list[dict[str, Any]]:
     root = root or backup_root()
     items: list[dict[str, Any]] = []
     for child in sorted(root.iterdir(), reverse=True):
-        if not child.is_dir():
+        if not child.is_dir() or child.name in {"exports", "uploads"}:
             continue
         manifest_path = child / "manifest.json"
         info: dict[str, Any] = {
@@ -349,74 +349,21 @@ def restore_backup(
     restore_db: bool = True,
     restore_media: bool = True,
     root: Path | None = None,
+    merge: bool = False,
 ) -> dict[str, Any]:
     """
     Restore from BACKUP_DIR/<stamp>/.
 
-    Requires pg_restore on PATH (or BACKUP_PG_RESTORE). Destructive for DB
-    when restore_db=True (--clean --if-exists).
+    merge=False uses pg_restore --clean (full replace).
+    merge=True keeps extra live columns and upserts dump rows.
     """
-    root = root or backup_root()
-    dest_dir = root / stamp
-    if not dest_dir.is_dir():
-        raise BackupError(f"Backup not found: {stamp}")
+    from business.restore import restore_from_stamp
 
-    summary: dict[str, Any] = {"stamp": stamp, "db": False, "media": False}
-
-    if restore_db:
-        dump = dest_dir / "db.dump"
-        if not dump.is_file():
-            raise BackupError(f"Missing db.dump in {dest_dir}")
-        db = _db_settings()
-        binary = (getattr(settings, "BACKUP_PG_RESTORE", "") or "").strip() or (
-            shutil.which("pg_restore") or ""
-        )
-        if not binary:
-            raise BackupError(
-                "pg_restore not found. Install PostgreSQL client tools "
-                "or set BACKUP_PG_RESTORE."
-            )
-        env = os.environ.copy()
-        if db["PASSWORD"]:
-            env["PGPASSWORD"] = db["PASSWORD"]
-        cmd = [
-            binary,
-            "-h",
-            db["HOST"],
-            "-p",
-            db["PORT"],
-            "-U",
-            db["USER"],
-            "-d",
-            db["NAME"],
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            str(dump),
-        ]
-        logger.warning("Restoring database from %s", dump)
-        completed = subprocess.run(
-            cmd, env=env, capture_output=True, text=True, timeout=3600, check=False
-        )
-        # pg_restore often exits non-zero with warnings; treat missing DB hard errors.
-        if completed.returncode != 0:
-            err = (completed.stderr or completed.stdout or "").strip()
-            # Still raise so operator notices; common warnings are logged.
-            logger.error("pg_restore exit=%s stderr=%s", completed.returncode, err[:2000])
-            raise BackupError(f"pg_restore failed ({completed.returncode}): {err[:2000]}")
-        summary["db"] = True
-
-    if restore_media:
-        archive = dest_dir / "media.tar.gz"
-        if not archive.is_file():
-            raise BackupError(f"Missing media.tar.gz in {dest_dir}")
-        media_root = Path(settings.MEDIA_ROOT)
-        parent = media_root.parent
-        parent.mkdir(parents=True, exist_ok=True)
-        logger.warning("Restoring media into %s", media_root)
-        with tarfile.open(archive, "r:gz") as tar:
-            # Archive stores arcname "media" → extract beside MEDIA_ROOT parent.
-            tar.extractall(path=parent)
-        summary["media"] = True
-
-    return summary
+    result = restore_from_stamp(
+        stamp,
+        merge=merge,
+        restore_db=restore_db,
+        restore_media=restore_media,
+        root=root,
+    )
+    return result.to_dict()

@@ -72,6 +72,25 @@ def sales_module_required(view_func):
     return wrapper
 
 
+def backup_access_required(view_func):
+    """Company owner, or any logged-in user who does not have a company yet."""
+
+    @login_required
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        company = get_company_for_user(request.user)
+        if company is None:
+            return view_func(request, *args, **kwargs)
+        if not user_is_owner(request.user, company):
+            messages.error(request, "Only the company owner can manage backups.")
+            if user_has_sales_access(request.user, company):
+                return redirect("dashboard")
+            return redirect("access_pending")
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
+
+
 def company_owner_required(view_func):
     @login_required
     @wraps(view_func)

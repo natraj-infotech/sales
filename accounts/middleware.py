@@ -92,6 +92,8 @@ class RequireCompanyProfileMiddleware:
         "/vendor-price-submit/",
         "/privacy-policy/",
         "/whatsapp/",
+        "/backups/",
+        "/restore/",
     )
 
     EXACT_PATHS = (

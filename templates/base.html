@@ -679,6 +679,22 @@
       color: var(--accent-hover);
       font-size: 0.875rem;
       margin-bottom: 1rem;
+      white-space: pre-wrap;
+    }
+    .messages-banner--error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+    .messages-banner--success {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+    .messages-banner--warning {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #92400e;
     }
 
     .oauth-stack { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.15rem; }
@@ -2662,9 +2678,15 @@
           <svg class="nav-ic" aria-hidden="true"><use href="#i-building"/></svg>
           <span class="nav-text">Company profile</span>
         </a>
+        {% endif %}
+        {% if user_can_manage_backups %}
         <a href="{% url 'backup_list' %}" title="Backups">
           <svg class="nav-ic" aria-hidden="true"><use href="#i-download"/></svg>
           <span class="nav-text">Backups</span>
+        </a>
+        <a href="{% url 'restore_page' %}" title="Restore">
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-upload"/></svg>
+          <span class="nav-text">Restore</span>
         </a>
         {% endif %}
         {% if user_can_grant_sales %}
@@ -2694,8 +2716,16 @@
     <main class="tracker-main">
       {% if messages %}
         {% for message in messages %}
-          <div class="messages-banner">{{ message }}</div>
+          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}">{{ message }}</div>
         {% endfor %}
+      {% elif last_restore_notice %}
+          <div class="messages-banner messages-banner--{% if last_restore_notice.status == 'ok' %}success{% elif last_restore_notice.status == 'partial' %}warning{% else %}error{% endif %}">Restore {{ last_restore_notice.status }} from {{ last_restore_notice.stamp }}.
+{% for err in last_restore_notice.errors %}
+Error: {{ err }}
+{% endfor %}
+{% for warn in last_restore_notice.warnings %}
+Note: {{ warn }}
+{% endfor %}</div>
       {% endif %}
       {% block page_header %}{% endblock %}
       {% block content %}{% endblock %}
@@ -2737,6 +2767,21 @@
   {% else %}
   <div class="guest-wrap{% if public_page %} guest-wrap--wide{% endif %}">
     <main class="guest-main{% if public_page %} guest-main--wide{% endif %}">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}">{{ message }}</div>
+        {% endfor %}
+      {% elif last_restore_notice %}
+          <div class="messages-banner messages-banner--{% if last_restore_notice.status == 'ok' %}success{% else %}error{% endif %}">
+Restore {{ last_restore_notice.status }} from {{ last_restore_notice.stamp }}.
+{% for err in last_restore_notice.errors %}
+Error: {{ err }}
+{% endfor %}
+{% for warn in last_restore_notice.warnings %}
+Note: {{ warn }}
+{% endfor %}
+          </div>
+      {% endif %}
       {% block content_guest %}{% endblock %}
     </main>
   </div>

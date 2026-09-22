@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from accounts.models import CompanyProfile
 from accounts.permissions import (
+    backup_access_required,
     company_owner_required,
     company_users,
     get_company_for_user,
@@ -3778,44 +3779,31 @@ def _format_bytes(n: int) -> str:
     return f"{n} B"
 
 
-@company_owner_required
+@backup_access_required
 def backup_list(request):
     from django.conf import settings
 
-    from business.backup import backup_root, backups_enabled, list_backups, retention_days
+    from business.backup import backup_root, backups_enabled, retention_days
+    from business.restore import backups_for_ui
 
-    company = _company(request)
-    items = []
-    for raw in list_backups():
-        man = raw.get("manifest") or {}
-        db_bytes = (man.get("database") or {}).get("bytes") or 0
-        media_bytes = (man.get("media") or {}).get("bytes") or 0
-        items.append(
-            {
-                **raw,
-                "status": man.get("status") or ("ok" if raw.get("has_db") else "unknown"),
-                "created_at": man.get("created_at") or "",
-                "db_label": _format_bytes(db_bytes) if raw.get("has_db") else "—",
-                "media_label": _format_bytes(media_bytes) if raw.get("has_media") else "—",
-                "errors": man.get("errors") or [],
-            }
-        )
+    company = get_company_for_user(request.user)
     return render(
         request,
         "business/backup_list.html",
         {
             "company": company,
-            "object_list": items,
+            "object_list": backups_for_ui(),
             "backup_root": str(backup_root()),
             "backup_enabled": backups_enabled(),
             "retention_days": retention_days(),
             "schedule_hour": getattr(settings, "BACKUP_SCHEDULE_HOUR", 2),
             "schedule_minute": getattr(settings, "BACKUP_SCHEDULE_MINUTE", 0),
+            "restore_is_merge": company is not None,
         },
     )
 
 
-@company_owner_required
+@backup_access_required
 @require_http_methods(["POST"])
 def backup_create(request):
     from business.backup import BackupError, create_backup
@@ -3837,7 +3825,7 @@ def backup_create(request):
     return redirect("backup_list")
 
 
-@company_owner_required
+@backup_access_required
 @require_http_methods(["POST"])
 def backup_download_db_now(request):
     """Run pg_dump and stream the file to the browser as a local download."""
@@ -3858,11 +3846,9 @@ def backup_download_db_now(request):
     return response
 
 
-@company_owner_required
+@backup_access_required
 @require_http_methods(["GET"])
 def backup_download(request, stamp, kind):
-    from pathlib import Path
-
     from business.backup import backup_root
 
     stamp = (stamp or "").strip()
@@ -3900,11 +3886,10 @@ def backup_download(request, stamp, kind):
     )
 
 
-@company_owner_required
+@backup_access_required
 @require_http_methods(["POST"])
 def backup_delete(request, stamp):
     import shutil
-    from pathlib import Path
 
     from business.backup import backup_root
 
@@ -3919,3 +3904,126 @@ def backup_delete(request, stamp):
     shutil.rmtree(folder, ignore_errors=True)
     messages.success(request, f"Deleted backup {stamp}.")
     return redirect("backup_list")
+
+
+@backup_access_required
+@require_http_methods(["POST"])
+def backup_restore(request, stamp):
+    from business.backup import BackupError
+    from business.restore import restore_from_stamp
+
+    company = get_company_for_user(request.user)
+    merge = company is not None
+    next_name = "backup_list" if merge else "restore_page"
+
+    try:
+        result = restore_from_stamp(stamp, merge=merge)
+    except BackupError as exc:
+        messages.error(request, str(exc))
+        return redirect(next_name)
+    except Exception as exc:
+        messages.error(request, f"Restore failed: {exc}")
+        return redirect(next_name)
+
+    return _complete_restore(request, result, merge=merge, next_name=next_name)
+
+
+@backup_access_required
+def restore_page(request):
+    from django.conf import settings
+
+    company = get_company_for_user(request.user)
+    if request.method == "POST":
+        return _restore_from_upload(request, company)
+    return render(
+        request,
+        "business/restore.html",
+        {
+            "company": company,
+            "restore_is_merge": company is not None,
+            "upload_max_label": _format_bytes(
+                getattr(settings, "BACKUP_UPLOAD_MAX_BYTES", 0)
+            ),
+        },
+    )
+
+
+def _restore_from_upload(request, company):
+    import tempfile
+    from pathlib import Path
+
+    from django.conf import settings
+
+    from business.backup import BackupError
+    from business.restore import restore_from_uploaded_files
+
+    merge = company is not None
+    uploads = list(request.FILES.getlist("files"))
+    for key in ("db_file", "media_file", "zip_file"):
+        f = request.FILES.get(key)
+        if f:
+            uploads.append(f)
+
+    if not uploads:
+        messages.error(
+            request,
+            "Choose the backup file(s) you downloaded — database dump (.dump), "
+            "media archive (.tar.gz), or a zip that contains them.",
+        )
+        return redirect("restore_page")
+
+    max_bytes = int(getattr(settings, "BACKUP_UPLOAD_MAX_BYTES", 0) or 0)
+    try:
+        with tempfile.TemporaryDirectory(prefix="sales-restore-") as tmp_name:
+            tmp_path = Path(tmp_name)
+            saved: list[Path] = []
+            for uploaded in uploads:
+                name = Path(getattr(uploaded, "name", "") or "").name
+                if not name or name in {".", ".."} or "/" in name or "\\" in name:
+                    raise BackupError("One of the uploaded files has an invalid name.")
+                size = getattr(uploaded, "size", None)
+                if size == 0:
+                    raise BackupError(f"{name} is empty and cannot be restored.")
+                if max_bytes and size and size > max_bytes:
+                    raise BackupError(
+                        f"{name} is larger than the restore upload limit "
+                        f"({_format_bytes(max_bytes)})."
+                    )
+                dest = tmp_path / name
+                with dest.open("wb") as out:
+                    for chunk in uploaded.chunks():
+                        out.write(chunk)
+                saved.append(dest)
+            result = restore_from_uploaded_files(saved, merge=merge)
+    except BackupError as exc:
+        messages.error(request, str(exc))
+        return redirect("restore_page")
+    except Exception as exc:
+        logger.exception("Restore upload failed")
+        messages.error(request, f"Restore failed: {exc}")
+        return redirect("restore_page")
+
+    return _complete_restore(request, result, merge=merge, next_name="restore_page")
+
+
+def _complete_restore(request, result, *, merge: bool, next_name: str):
+    from django.contrib.auth import logout
+
+    from business.restore import format_restore_message
+
+    text = format_restore_message(result)
+    try:
+        if result.status == "ok":
+            messages.success(request, text)
+        else:
+            messages.error(request, text)
+    except Exception:
+        logger.exception("Could not store restore flash message")
+
+    if not merge:
+        try:
+            logout(request)
+        except Exception:
+            logger.exception("Could not log out after full restore")
+        return redirect("account_login")
+    return redirect(next_name)

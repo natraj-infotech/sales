@@ -348,6 +348,14 @@ BACKUP_PG_DUMP_TIMEOUT = int(os.environ.get("BACKUP_PG_DUMP_TIMEOUT", "3600") or
 # Daily schedule hour/minute in CELERY_TIMEZONE (Asia/Kolkata)
 BACKUP_SCHEDULE_HOUR = int(os.environ.get("BACKUP_SCHEDULE_HOUR", "2") or 2)
 BACKUP_SCHEDULE_MINUTE = int(os.environ.get("BACKUP_SCHEDULE_MINUTE", "0") or 0)
+# Large dump/media uploads for the Restore page (files over 10MB stream to disk).
+BACKUP_UPLOAD_MAX_BYTES = int(
+    os.environ.get("BACKUP_UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)) or 0
+) or (2 * 1024 * 1024 * 1024)
+DATA_UPLOAD_MAX_MEMORY_SIZE = BACKUP_UPLOAD_MAX_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("FILE_UPLOAD_MAX_MEMORY_SIZE", str(10 * 1024 * 1024)) or 0
+) or (10 * 1024 * 1024)
 
 from celery.schedules import crontab  # noqa: E402
 

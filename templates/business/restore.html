@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Restore{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <div>
+      <h1 class="tracker-page-title">Restore</h1>
+      <p class="tracker-page-subtitle">Upload the backup files you downloaded and restore them into this app</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'backup_list' %}">Backups</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .restore-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+    margin: 1rem 0 1.25rem;
+  }
+  .restore-file {
+    border: 1px solid var(--border, #d6deea);
+    border-radius: 10px;
+    background: #fafbfd;
+    padding: 0.95rem 1rem;
+  }
+  .restore-file label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+    color: var(--text, #1a1d21);
+  }
+  .restore-file input[type="file"] {
+    width: 100%;
+    font-size: 0.8125rem;
+  }
+  .restore-file .hint {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--muted, #64748b);
+    line-height: 1.4;
+  }
+</style>
+
+<div class="tracker-card">
+  <p style="margin-top:0;line-height:1.5;">
+    Restore the same files you saved from <strong>Backups</strong>:
+    the database dump (<code>.dump</code>) and/or the media archive (<code>.tar.gz</code>).
+    You can also upload a <code>.zip</code> that contains those files.
+  </p>
+  {% if restore_is_merge %}
+  <p class="muted" style="font-size:0.8125rem;line-height:1.45;">
+    A company profile already exists, so matching rows will be overwritten.
+    Extra columns already on this app are kept. New rows and columns from the backup are added.
+  </p>
+  {% else %}
+  <p class="muted" style="font-size:0.8125rem;line-height:1.45;">
+    No company profile is set up yet. The uploaded backup will be loaded in full
+    (database and any media files you include).
+  </p>
+  {% endif %}
+  <p class="muted" style="font-size:0.75rem;margin-bottom:0;">
+    Maximum upload size: {{ upload_max_label }}. If restore fails, the reason is shown at the top of this page.
+  </p>
+
+  <form method="post" enctype="multipart/form-data" id="restore-upload-form"
+    onsubmit="if(!confirm('Restore from the uploaded backup files? This will change data in the app.')) return false; this.querySelector('button[type=submit]').disabled=true;">
+    {% csrf_token %}
+    <div class="restore-grid">
+      <div class="restore-file">
+        <label for="id_db_file">Database dump</label>
+        <input type="file" name="db_file" id="id_db_file" accept=".dump,.backup,application/octet-stream">
+        <span class="hint">File from Download DB, e.g. <code>sales_db_*.dump</code></span>
+      </div>
+      <div class="restore-file">
+        <label for="id_media_file">Media archive</label>
+        <input type="file" name="media_file" id="id_media_file" accept=".gz,.tgz,.tar,application/gzip">
+        <span class="hint">File from Download media, e.g. <code>sales_media_*.tar.gz</code></span>
+      </div>
+      <div class="restore-file">
+        <label for="id_zip_file">Or a zip of both</label>
+        <input type="file" name="zip_file" id="id_zip_file" accept=".zip,application/zip">
+        <span class="hint">Zip that contains <code>db.dump</code> and/or <code>media.tar.gz</code></span>
+      </div>
+    </div>
+    <div class="restore-file" style="margin-bottom:1.25rem;">
+      <label for="id_files">Or select multiple downloaded files together</label>
+      <input type="file" name="files" id="id_files" multiple
+        accept=".dump,.backup,.gz,.tgz,.tar,.zip,.json,application/gzip,application/zip,application/octet-stream">
+      <span class="hint">You can select the dump and media files in one go.</span>
+    </div>
+    <button type="submit" class="btn-tracker-header">
+      <svg aria-hidden="true"><use href="#i-upload"/></svg>
+      Restore uploaded files
+    </button>
+  </form>
+</div>
+{% endblock %}

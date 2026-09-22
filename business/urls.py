@@ -102,6 +102,8 @@ urlpatterns = [
         name="backup_download",
     ),
     path("backups/<str:stamp>/delete/", views.backup_delete, name="backup_delete"),
+    path("backups/<str:stamp>/restore/", views.backup_restore, name="backup_restore"),
+    path("restore/", views.restore_page, name="restore_page"),
     path("leads/", views.lead_list, name="lead_list"),
     path("leads/add/", views.lead_add, name="lead_add"),
     path("leads/<int:pk>/", views.lead_detail, name="lead_detail"),

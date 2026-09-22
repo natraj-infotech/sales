@@ -222,6 +222,20 @@
 {% endblock %}
 
 {% block content %}
+{% if not editing %}
+<div class="tracker-card" style="margin-bottom:1rem;">
+  <h3 class="tracker-card-section-title" style="margin-top:0;">Restore from backup</h3>
+  <p class="muted" style="margin:-0.35rem 0 1rem;font-size:0.8125rem;line-height:1.45;">
+    You can restore even before a company profile is created. Upload the dump or media
+    files you previously downloaded from Backups.
+  </p>
+  <a class="btn-tracker-header" href="{% url 'restore_page' %}">
+    <svg aria-hidden="true"><use href="#i-upload"/></svg>
+    Open Restore
+  </a>
+</div>
+{% endif %}
+
 <div class="tracker-card">
   <div class="tracker-card-brand">
     <div class="wordmark-lg" aria-hidden="true">

@@ -11,6 +11,7 @@
     </div>
   </div>
   <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'restore_page' %}">Restore files</a>
     {% if backup_enabled %}
     <form method="post" action="{% url 'backup_download_db_now' %}" style="display:inline;">
       {% csrf_token %}
@@ -73,9 +74,8 @@
   </div>
   <p class="muted" style="margin:0;font-size:0.8125rem;line-height:1.45;">
     Each backup includes a PostgreSQL dump (<code>db.dump</code>) and media archive (<code>media.tar.gz</code>).
-    Restore from the server with
-    <code>python manage.py restore_backup &lt;stamp&gt; --confirm</code>
-    (owner-only page; restore stays on the CLI for safety).
+    Restore from this page: if a company profile already exists, matching rows are overwritten, extra live columns are kept, and new rows/columns from the backup are added.
+    If no company profile exists yet, the backup is loaded in full.
   </p>
 </div>
 
@@ -107,6 +107,16 @@
           <td>{{ b.media_label }}</td>
           <td class="col-actions">
             <div class="backup-actions">
+              {% if b.can_restore %}
+              <form method="post" action="{% url 'backup_restore' b.stamp %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn-table-edit"
+                  data-confirm="{% if restore_is_merge %}Restore backup {{ b.stamp|escapejs }}? Matching rows will be overwritten. Existing extra columns stay. New rows and columns from the backup will be added.{% else %}Restore backup {{ b.stamp|escapejs }} into this app? Database and media from the backup will be loaded.{% endif %}"
+                  onclick="if(!confirm(this.getAttribute('data-confirm'))) return false; this.disabled=true;">
+                  Restore
+                </button>
+              </form>
+              {% endif %}
               {% if b.has_db %}
               <a class="btn-table-edit" href="{% url 'backup_download' b.stamp 'db' %}">Download DB</a>
               {% endif %}
