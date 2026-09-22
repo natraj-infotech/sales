@@ -219,3 +219,55 @@ class WhatsAppConversationWelcomeTests(TestCase):
         )
         self.assertEqual(result["skipped"], "duplicate_message")
         mock_welcome.assert_not_called()
+
+
+class EnvWhatsAppAccountInboundTests(TestCase):
+    """Inbound without a DB WhatsAppAccount row still creates leads + welcome."""
+
+    def setUp(self):
+        user = User.objects.create_user(email="env@example.com", password="x")
+        self.company = CompanyProfile.objects.create(user=user, company_name="Env Co")
+
+    def _event(self, message_id="wamid.env1", wa_from="919111222333"):
+        return {
+            "type": "text",
+            "message": {
+                "from": wa_from,
+                "id": message_id,
+                "timestamp": "1700000000",
+                "type": "text",
+                "text": {"body": "Hi"},
+            },
+            "contacts": [{"profile": {"name": "Ravi"}, "wa_id": wa_from}],
+            "metadata": {"phone_number_id": "555444"},
+        }
+
+    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
+    @patch("whatsapp.conversation.send_welcome_menu")
+    def test_env_account_creates_lead_and_welcome(self, mock_welcome):
+        from whatsapp.account_resolve import EnvWhatsAppAccount
+        from whatsapp.conversation import handle_inbound_customer_message
+
+        account = EnvWhatsAppAccount(phone_number_id="555444", company=self.company)
+        result = handle_inbound_customer_message(account, self._event())
+        self.assertTrue(result["handled"])
+        self.assertTrue(result["welcome_sent"])
+        mock_welcome.assert_called_once()
+        lead = Lead.objects.get(whatsapp_wa_id="919111222333", company=self.company)
+        self.assertEqual(lead.contact_name, "Ravi")
+        self.assertEqual(lead.source, Lead.Source.WHATSAPP)
+
+    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
+    @patch("whatsapp.conversation.send_welcome_menu")
+    def test_welcome_and_lead_when_no_company_in_database(self, mock_welcome):
+        from whatsapp.account_resolve import EnvWhatsAppAccount
+        from whatsapp.conversation import handle_inbound_customer_message
+
+        CompanyProfile.objects.all().delete()
+        account = EnvWhatsAppAccount(phone_number_id="555444", company=None)
+        result = handle_inbound_customer_message(account, self._event())
+        self.assertTrue(result["welcome_sent"])
+        self.assertTrue(result["handled"])
+        lead = Lead.objects.get(whatsapp_wa_id="919111222333")
+        self.assertIsNone(lead.company_id)
+        mock_welcome.assert_called_once()

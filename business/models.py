@@ -1784,6 +1784,8 @@ class Lead(models.Model):
         CompanyProfile,
         on_delete=models.CASCADE,
         related_name="leads",
+        null=True,
+        blank=True,
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1857,13 +1859,27 @@ class Lead(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["company", "whatsapp_message_id"],
-                condition=~models.Q(whatsapp_message_id=""),
+                condition=~models.Q(whatsapp_message_id="")
+                & models.Q(company__isnull=False),
                 name="unique_lead_whatsapp_message_per_company",
             ),
             models.UniqueConstraint(
+                fields=["whatsapp_message_id"],
+                condition=~models.Q(whatsapp_message_id="")
+                & models.Q(company__isnull=True),
+                name="unique_lead_whatsapp_message_unassigned",
+            ),
+            models.UniqueConstraint(
                 fields=["company", "email_message_id"],
-                condition=~models.Q(email_message_id=""),
+                condition=~models.Q(email_message_id="")
+                & models.Q(company__isnull=False),
                 name="unique_lead_email_message_per_company",
+            ),
+            models.UniqueConstraint(
+                fields=["email_message_id"],
+                condition=~models.Q(email_message_id="")
+                & models.Q(company__isnull=True),
+                name="unique_lead_email_message_unassigned",
             ),
         ]
 

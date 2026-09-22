@@ -3661,6 +3661,11 @@ def caselock_submission_status_update(request, pk):
     return redirect(f"{reverse('caselock_inbox_list')}?tab=dashboard")
 
 
+def _leads_visible_to_company(company):
+    """Company leads plus WhatsApp/email ingest with no company assigned."""
+    return Lead.objects.filter(Q(company=company) | Q(company__isnull=True))
+
+
 @sales_module_required
 def lead_list(request):
     company = _company(request)
@@ -3668,7 +3673,7 @@ def lead_list(request):
     source = request.GET.get("source", "").strip().lower()
     status = request.GET.get("status", "").strip().lower()
     qs = (
-        Lead.objects.filter(company=company)
+        _leads_visible_to_company(company)
         .select_related("created_by")
         .prefetch_related("products")
         .order_by("-created_at", "-id")
@@ -3707,8 +3712,9 @@ def lead_detail(request, pk):
     lead = get_object_or_404(
         Lead.objects.select_related("created_by").prefetch_related("products"),
         pk=pk,
-        company=company,
     )
+    if lead.company_id is not None and lead.company_id != company.pk:
+        raise Http404
     status_form = LeadStatusForm(initial={"status": lead.status})
     if request.method == "POST":
         status_form = LeadStatusForm(request.POST)

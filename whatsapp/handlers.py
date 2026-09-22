@@ -15,12 +15,15 @@ from django.conf import settings
 from business.lead_ingest import create_lead_from_whatsapp
 from business.models import Product
 
+from .account_resolve import EnvWhatsAppAccount, resolve_lead_company
 from .models import WhatsAppAccount
 
 logger = logging.getLogger(__name__)
 
-FlowHandler = Callable[[WhatsAppAccount | None, dict[str, Any]], dict[str, Any]]
-WebhookHandler = Callable[[WhatsAppAccount | None, dict[str, Any]], None]
+AccountLike = WhatsAppAccount | EnvWhatsAppAccount | None
+
+FlowHandler = Callable[[AccountLike, dict[str, Any]], dict[str, Any]]
+WebhookHandler = Callable[[AccountLike, dict[str, Any]], None]
 
 _FLOW_HANDLERS: dict[str, FlowHandler] = {}
 _WEBHOOK_HANDLERS: list[tuple[str, WebhookHandler]] = []
@@ -49,7 +52,7 @@ def get_flow_handler(name: str | None) -> FlowHandler:
     return _FLOW_HANDLERS[key]
 
 
-def dispatch_webhook(account: WhatsAppAccount | None, event: dict[str, Any]) -> None:
+def dispatch_webhook(account: AccountLike, event: dict[str, Any]) -> None:
     event_type = (event.get("type") or "*").strip()
     for registered_type, handler in _WEBHOOK_HANDLERS:
         if registered_type in ("*", event_type):
@@ -60,9 +63,7 @@ def dispatch_webhook(account: WhatsAppAccount | None, event: dict[str, Any]) -> 
 
 
 @register_webhook_handler("*")
-def inbound_welcome_handler(
-    account: WhatsAppAccount | None, event: dict[str, Any]
-) -> None:
+def inbound_welcome_handler(account: AccountLike, event: dict[str, Any]) -> None:
     """Auto welcome/menu on new WhatsApp conversations (any inbound message type)."""
     if (event.get("type") or "") == "status":
         return
@@ -70,13 +71,16 @@ def inbound_welcome_handler(
         return
     from .conversation import handle_inbound_customer_message
 
-    handle_inbound_customer_message(account, event)
+    result = handle_inbound_customer_message(account, event)
+    if result.get("skipped") in ("no_account", "send_failed"):
+        logger.info("WhatsApp inbound welcome result=%s", result)
 
 
-def _product_options(account: WhatsAppAccount | None) -> list[dict[str, str]]:
-    if account is None:
+def _product_options(account: AccountLike) -> list[dict[str, str]]:
+    company = resolve_lead_company(account)
+    if company is None:
         return []
-    qs = Product.objects.filter(company=account.company).order_by("name")[:100]
+    qs = Product.objects.filter(company=company).order_by("name")[:100]
     return [{"id": str(p.pk), "title": p.name[:30]} for p in qs]
 
 
@@ -128,7 +132,8 @@ def lead_flow_handler(
             or data.get("full_name")
             or ""
         ).strip()
-        if contact_name and account is not None:
+        company = resolve_lead_company(account)
+        if contact_name:
             product_ids = _parse_product_ids(data)
             wa_id = (
                 data.get("wa_id")
@@ -141,7 +146,7 @@ def lead_flow_handler(
                 or ""
             )
             create_lead_from_whatsapp(
-                company=account.company,
+                company=company,
                 contact_name=contact_name,
                 company_name=(data.get("company_name") or data.get("company") or "").strip(),
                 email=(data.get("email") or "").strip(),

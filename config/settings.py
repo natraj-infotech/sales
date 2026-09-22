@@ -293,10 +293,13 @@ ZOHO_REDIRECT_URI = os.environ.get(
 # WhatsApp Cloud API (shared infrastructure — leads, future features)
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
 WHATSAPP_ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "").strip()
-WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v21.0").strip() or "v21.0"
+WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v26.0").strip() or "v26.0"
+WHATSAPP_WABA_ID = os.environ.get("WHATSAPP_WABA_ID", "").strip()
+WHATSAPP_META_APP_ID = os.environ.get("WHATSAPP_META_APP_ID", "").strip()
 WHATSAPP_DEFAULT_PHONE_NUMBER_ID = os.environ.get(
     "WHATSAPP_DEFAULT_PHONE_NUMBER_ID", ""
 ).strip()
+WHATSAPP_DEFAULT_COMPANY_ID = os.environ.get("WHATSAPP_DEFAULT_COMPANY_ID", "").strip()
 WHATSAPP_DEFAULT_FLOW_HANDLER = (
     os.environ.get("WHATSAPP_DEFAULT_FLOW_HANDLER", "lead") or "lead"
 ).strip()

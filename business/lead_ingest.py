@@ -6,6 +6,7 @@ import logging
 from typing import Any, Iterable
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 from accounts.models import CompanyProfile
 
@@ -14,8 +15,14 @@ from .models import Lead, Product
 logger = logging.getLogger(__name__)
 
 
-def _product_qs(company: CompanyProfile, product_ids: Iterable[int] | None):
-    if not product_ids:
+def _company_scope(company: CompanyProfile | None) -> Q:
+    if company is None:
+        return Q(company__isnull=True)
+    return Q(company=company)
+
+
+def _product_qs(company: CompanyProfile | None, product_ids: Iterable[int] | None):
+    if not product_ids or company is None:
         return Product.objects.none()
     ids = [int(pk) for pk in product_ids if pk is not None]
     if not ids:
@@ -26,7 +33,7 @@ def _product_qs(company: CompanyProfile, product_ids: Iterable[int] | None):
 @transaction.atomic
 def create_lead(
     *,
-    company: CompanyProfile,
+    company: CompanyProfile | None,
     source: str,
     contact_name: str,
     company_name: str = "",
@@ -56,18 +63,15 @@ def create_lead(
 
     whatsapp_message_id = (whatsapp_message_id or "").strip()
     email_message_id = (email_message_id or "").strip()
+    scope = _company_scope(company)
 
     if whatsapp_message_id:
-        existing = Lead.objects.filter(
-            company=company, whatsapp_message_id=whatsapp_message_id
-        ).first()
+        existing = Lead.objects.filter(scope, whatsapp_message_id=whatsapp_message_id).first()
         if existing:
             return existing, False
 
     if email_message_id:
-        existing = Lead.objects.filter(
-            company=company, email_message_id=email_message_id
-        ).first()
+        existing = Lead.objects.filter(scope, email_message_id=email_message_id).first()
         if existing:
             return existing, False
 
@@ -88,17 +92,14 @@ def create_lead(
             raw_payload=raw_payload or {},
         )
     except IntegrityError:
-        # Race on unique message id — return the winner.
         if whatsapp_message_id:
             existing = Lead.objects.filter(
-                company=company, whatsapp_message_id=whatsapp_message_id
+                scope, whatsapp_message_id=whatsapp_message_id
             ).first()
             if existing:
                 return existing, False
         if email_message_id:
-            existing = Lead.objects.filter(
-                company=company, email_message_id=email_message_id
-            ).first()
+            existing = Lead.objects.filter(scope, email_message_id=email_message_id).first()
             if existing:
                 return existing, False
         raise
@@ -111,14 +112,14 @@ def create_lead(
         "Lead created id=%s source=%s company_id=%s",
         lead.pk,
         lead.source,
-        company.pk,
+        company.pk if company is not None else None,
     )
     return lead, True
 
 
 def create_lead_from_whatsapp(
     *,
-    company: CompanyProfile,
+    company: CompanyProfile | None,
     contact_name: str,
     phone: str = "",
     company_name: str = "",
@@ -146,7 +147,7 @@ def create_lead_from_whatsapp(
 
 def create_lead_from_email(
     *,
-    company: CompanyProfile,
+    company: CompanyProfile | None,
     contact_name: str,
     email: str = "",
     phone: str = "",
@@ -173,7 +174,7 @@ def create_lead_from_email(
 
 def get_or_create_lead_by_whatsapp_id(
     *,
-    company: CompanyProfile,
+    company: CompanyProfile | None,
     whatsapp_wa_id: str,
     contact_name: str = "",
     phone: str = "",
@@ -187,8 +188,9 @@ def get_or_create_lead_by_whatsapp_id(
     if not wa_id:
         raise ValueError("whatsapp_wa_id is required")
 
+    scope = _company_scope(company)
     existing = (
-        Lead.objects.filter(company=company, whatsapp_wa_id=wa_id)
+        Lead.objects.filter(scope, whatsapp_wa_id=wa_id)
         .order_by("-last_inbound_at", "-id")
         .first()
     )

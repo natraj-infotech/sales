@@ -12,19 +12,10 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .encryption import FlowEncryptionError, decrypt_request, encrypt_response
 from .handlers import dispatch_webhook, get_flow_handler
-from .models import WhatsAppAccount, WhatsAppMessageLog
+from .account_resolve import account_log_fields, resolve_webhook_account
+from .models import WhatsAppMessageLog
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_account(phone_number_id: str | None) -> WhatsAppAccount | None:
-    if not phone_number_id:
-        return None
-    return (
-        WhatsAppAccount.objects.select_related("company")
-        .filter(phone_number_id=str(phone_number_id), is_active=True)
-        .first()
-    )
 
 
 @csrf_exempt
@@ -32,6 +23,11 @@ def _resolve_account(phone_number_id: str | None) -> WhatsAppAccount | None:
 def webhook(request):
     if request.method == "GET":
         return _webhook_verify(request)
+    logger.info(
+        "WhatsApp webhook POST host=%s content_length=%s",
+        request.get_host(),
+        request.META.get("CONTENT_LENGTH", "?"),
+    )
     return _webhook_receive(request)
 
 
@@ -51,19 +47,42 @@ def _webhook_receive(request):
     try:
         body = json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
+        logger.warning("WhatsApp webhook POST invalid JSON")
         return HttpResponseBadRequest("Invalid JSON")
 
-    for entry in body.get("entry") or []:
+    obj = body.get("object")
+    entries = body.get("entry") or []
+    logger.info(
+        "WhatsApp webhook payload object=%s entries=%s",
+        obj,
+        len(entries),
+    )
+    if obj and obj != "whatsapp_business_account":
+        logger.warning("WhatsApp webhook unexpected object=%s", obj)
+
+    message_count = 0
+    status_count = 0
+
+    for entry in entries:
         for change in entry.get("changes") or []:
             value = change.get("value") or {}
             metadata = value.get("metadata") or {}
             phone_number_id = metadata.get("phone_number_id")
-            account = _resolve_account(phone_number_id)
+            account = resolve_webhook_account(phone_number_id)
+            company, db_account = account_log_fields(account)
+            if account is None and phone_number_id:
+                logger.warning(
+                    "WhatsApp webhook: no account for phone_number_id=%s "
+                    "(inbound logged; welcome/outbound need WHATSAPP_ACCESS_TOKEN "
+                    "or WhatsAppAccount row)",
+                    phone_number_id,
+                )
 
             for status in value.get("statuses") or []:
+                status_count += 1
                 WhatsAppMessageLog.objects.create(
-                    company=account.company if account else None,
-                    account=account,
+                    company=company,
+                    account=db_account,
                     direction=WhatsAppMessageLog.Direction.INBOUND,
                     wa_message_id=status.get("id", ""),
                     event_type=f"status:{status.get('status', '')}",
@@ -75,9 +94,10 @@ def _webhook_receive(request):
                 )
 
             for message in value.get("messages") or []:
+                message_count += 1
                 WhatsAppMessageLog.objects.create(
-                    company=account.company if account else None,
-                    account=account,
+                    company=company,
+                    account=db_account,
                     direction=WhatsAppMessageLog.Direction.INBOUND,
                     wa_message_id=message.get("id", ""),
                     wa_from=message.get("from", ""),
@@ -93,6 +113,23 @@ def _webhook_receive(request):
                         "contacts": value.get("contacts") or [],
                     },
                 )
+
+    if not message_count and not status_count:
+        fields = [
+            (change.get("field") or "?")
+            for entry in entries
+            for change in (entry.get("changes") or [])
+        ]
+        logger.warning(
+            "WhatsApp webhook POST had no messages/statuses; change fields=%s",
+            fields or ["none"],
+        )
+    else:
+        logger.info(
+            "WhatsApp webhook processed messages=%s statuses=%s",
+            message_count,
+            status_count,
+        )
 
     return JsonResponse({"ok": True})
 
@@ -117,7 +154,7 @@ def flow_data_exchange(request):
         or body.get("phone_number_id")
         or getattr(settings, "WHATSAPP_DEFAULT_PHONE_NUMBER_ID", "")
     )
-    account = _resolve_account(phone_number_id)
+    account = resolve_webhook_account(phone_number_id)
 
     handler_name = request.GET.get("handler") or getattr(
         settings, "WHATSAPP_DEFAULT_FLOW_HANDLER", "lead"

@@ -20,7 +20,7 @@ from .client import (
     send_interactive_reply_buttons,
     send_text_message,
 )
-from .models import WhatsAppAccount
+from .account_resolve import WhatsAppAccountLike, resolve_lead_company
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def _parse_buttons() -> list[dict[str, str]]:
     return buttons[:3] or [{"id": "lead", "title": "New enquiry"}]
 
 
-def send_welcome_menu(*, account: WhatsAppAccount, to: str) -> None:
+def send_welcome_menu(*, account: WhatsAppAccountLike, to: str) -> None:
     """Send the configured welcome/menu (flow, buttons, or text)."""
     body = (
         getattr(settings, "WHATSAPP_WELCOME_BODY", "")
@@ -135,7 +135,7 @@ def send_welcome_menu(*, account: WhatsAppAccount, to: str) -> None:
 
 @transaction.atomic
 def handle_inbound_customer_message(
-    account: WhatsAppAccount | None,
+    account: WhatsAppAccountLike | None,
     event: dict[str, Any],
 ) -> dict[str, Any]:
     """
@@ -152,6 +152,10 @@ def handle_inbound_customer_message(
     }
     if account is None:
         result["skipped"] = "no_account"
+        logger.warning(
+            "WhatsApp inbound skipped welcome: no account (set WHATSAPP_ACCESS_TOKEN "
+            "or an active WhatsAppAccount for this phone_number_id)"
+        )
         return result
 
     message = event.get("message") or {}
@@ -167,9 +171,10 @@ def handle_inbound_customer_message(
         result["skipped"] = "missing_from"
         return result
 
+    company = resolve_lead_company(account)
     contact_name = _contact_name_from_event(event, wa_from)
     lead, _created = get_or_create_lead_by_whatsapp_id(
-        company=account.company,
+        company=company,
         whatsapp_wa_id=wa_from,
         contact_name=contact_name,
         phone=wa_from,
@@ -198,16 +203,19 @@ def handle_inbound_customer_message(
         update_fields.append("phone")
     lead.save(update_fields=update_fields)
 
-    if new_convo:
+    never_welcomed = lead.last_welcome_sent_at is None
+    should_welcome = new_convo or never_welcomed
+    if should_welcome:
         try:
             send_welcome_menu(account=account, to=wa_from)
             lead.last_welcome_sent_at = timezone.now()
             lead.save(update_fields=["last_welcome_sent_at", "updated_at"])
             result["welcome_sent"] = True
             logger.info(
-                "WhatsApp welcome sent lead_id=%s wa_from=%s",
+                "WhatsApp welcome sent lead_id=%s wa_from=%s new_convo=%s",
                 lead.pk,
                 wa_from,
+                new_convo,
             )
         except WhatsAppClientError:
             logger.exception(
@@ -216,6 +224,13 @@ def handle_inbound_customer_message(
                 wa_from,
             )
             result["skipped"] = "send_failed"
+    elif not never_welcomed:
+        result["skipped"] = "not_new_conversation"
+        logger.info(
+            "WhatsApp welcome skipped lead_id=%s wa_from=%s (within inactivity window)",
+            lead.pk,
+            wa_from,
+        )
 
     result["handled"] = True
     result["lead_id"] = lead.pk
