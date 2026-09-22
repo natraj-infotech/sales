@@ -463,7 +463,7 @@ def create_quote_from_renewal_invite(
         get_resp = requests.get(
             f"{_crm_api_root(company)}/Quotes/{quote_id}",
             headers=_crm_headers(company),
-            params={"fields": "Quote_Number,Subject"},
+            params={"fields": "Quote_Number,Quote_Stage,Subject"},
             timeout=30,
         )
         if get_resp.ok:
@@ -475,6 +475,59 @@ def create_quote_from_renewal_invite(
 
     quote_url = _quote_ui_url(company, quote_id)
     return quote_id, quote_number, quote_url
+
+
+def _quote_stage_value(value) -> str:
+    if isinstance(value, dict):
+        return str(value.get("name") or value.get("display_value") or "").strip()
+    return str(value or "").strip()
+
+
+def fetch_quote_statuses(
+    company: CompanyProfile, quote_ids: list[str]
+) -> dict[str, dict]:
+    """Return {quote_id: {stage, quote_number, modified_time}} for Zoho Quotes."""
+    ids = [str(qid).strip() for qid in quote_ids if str(qid).strip()]
+    if not ids:
+        return {}
+    result: dict[str, dict] = {}
+    headers = _crm_headers(company)
+    root = _crm_api_root(company)
+    for index in range(0, len(ids), 50):
+        chunk = ids[index : index + 50]
+        try:
+            resp = requests.get(
+                f"{root}/Quotes",
+                headers=headers,
+                params={
+                    "ids": ",".join(chunk),
+                    "fields": "Quote_Number,Quote_Stage,Modified_Time",
+                },
+                timeout=30,
+            )
+        except requests.RequestException:
+            logger.exception(
+                "Zoho quote status network error company_id=%s", company.pk
+            )
+            continue
+        if not resp.ok:
+            logger.warning(
+                "Zoho quote status failed company_id=%s status=%s body=%s",
+                company.pk,
+                resp.status_code,
+                (resp.text or "")[:300],
+            )
+            continue
+        for record in (resp.json() or {}).get("data") or []:
+            qid = str(record.get("id") or "").strip()
+            if not qid:
+                continue
+            result[qid] = {
+                "stage": _quote_stage_value(record.get("Quote_Stage")),
+                "quote_number": str(record.get("Quote_Number") or "").strip(),
+                "modified_time": record.get("Modified_Time") or "",
+            }
+    return result
 
 
 def new_oauth_state() -> str:

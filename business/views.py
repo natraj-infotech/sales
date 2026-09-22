@@ -43,6 +43,7 @@ from .forms import (
     SupportTicketForm,
     TicketPriorityRuleFormSet,
     VendorForm,
+    RenewalSLASettingsForm,
 )
 from . import helpdesk_bridge
 from .analytics import sales_dashboard_charts, ticket_charts_from_views
@@ -385,6 +386,31 @@ def _format_date(value):
     return date_format(value, "d M Y")
 
 
+def _sla_row_payload(invite, sla_settings):
+    from business.renewal_sla import sla_status_for_invite
+
+    raw = sla_status_for_invite(invite, sla_settings)
+    return {
+        "status": raw["status"],
+        "label": raw["label"],
+        "zoho_status": raw["zoho_status"],
+        "zoho_status_label": raw["zoho_status_label"],
+        "zoho_stage": raw["zoho_stage"],
+        "target_hours": raw["target_hours"],
+        "elapsed_hours": raw["elapsed_hours"],
+        "elapsed_label": raw["elapsed_label"],
+        "remaining_hours": raw["remaining_hours"],
+        "remaining_label": raw["remaining_label"],
+        "qty_to_quote_hours": raw["qty_to_quote_hours"],
+        "qty_to_quote_label": raw["qty_to_quote_label"],
+        "quote_to_send_hours": raw["quote_to_send_hours"],
+        "quote_to_send_label": raw["quote_to_send_label"],
+        "clock_mode": raw["clock_mode"],
+        "quantity_at": _format_dt(raw["quantity_at"]),
+        "quote_number_at": _format_dt(raw["quote_number_at"]),
+        "quote_sent_at": _format_dt(raw["quote_sent_at"]),
+        "due_at": _format_dt(raw["due_at"]),
+    }
 
 
 def _company_group_key(name):
@@ -459,8 +485,12 @@ def _display_ref_id(row):
     )
 
 
-def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=False):
+def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=False, sla_settings=None):
     """One product row per company, collapsing reminder emails for the same item."""
+    if sla_settings is None and invites:
+        from business.renewal_sla import get_or_create_renewal_sla_settings
+
+        sla_settings = get_or_create_renewal_sla_settings(invites[0].company)
     buckets = {}
     for invite in invites:
         emails = invite.sent_to_emails or [invite.client_email]
@@ -603,6 +633,7 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                 row["deal_status"],
                 row["deal_status_set_at"],
             ),
+            "sla": _sla_row_payload(row["zoho_invite"], sla_settings),
         }
         _sort_key, label = _company_group_key(row["company_name"])
         bucket = grouped.setdefault(
@@ -627,6 +658,21 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
 def client_renewal_list(request):
     company = _company(request)
     from business.renewal_read_tracking import poll_outlook_read_receipts_for_company
+    from business.renewal_sla import (
+        get_or_create_renewal_sla_settings,
+        sync_zoho_quote_sent_status,
+    )
+
+    sla_settings = get_or_create_renewal_sla_settings(company)
+    sla_form = RenewalSLASettingsForm(instance=sla_settings)
+    sla_modal_open = False
+    if request.method == "POST" and request.POST.get("form") == "renewal_sla":
+        sla_form = RenewalSLASettingsForm(request.POST, instance=sla_settings)
+        if sla_form.is_valid():
+            sla_form.save()
+            messages.success(request, "Renewal SLA settings saved.")
+            return redirect("client_renewal_list")
+        sla_modal_open = True
 
     _, poll_logs = poll_outlook_read_receipts_for_company(company)
     for message in poll_logs:
@@ -636,6 +682,12 @@ def client_renewal_list(request):
     from business.zoho_crm import zoho_configured
 
     configured = zoho_configured()
+    try:
+        sync_zoho_quote_sent_status(company, invites)
+    except Exception:
+        logger.exception(
+            "renewal SLA Zoho sync failed company_id=%s", company.pk
+        )
     return render(
         request,
         "business/client_renewal_list.html",
@@ -645,9 +697,13 @@ def client_renewal_list(request):
                 invites,
                 zoho_connected=company.zoho_connected,
                 zoho_configured=configured,
+                sla_settings=sla_settings,
             ),
             "zoho_connected": company.zoho_connected,
             "zoho_configured": configured,
+            "sla_form": sla_form,
+            "sla_settings": sla_settings,
+            "sla_modal_open": sla_modal_open,
         },
     )
 
@@ -672,6 +728,28 @@ def client_renewal_report(request):
 
 
 @sales_module_required
+def client_renewal_product_changes(request):
+    company = _company(request)
+    rows = company.subscription_product_renewals.order_by("-created_at", "-id")
+    return JsonResponse(
+        {
+            "ok": True,
+            "items": [
+                {
+                    "id": row.pk,
+                    "client_name": row.client_name,
+                    "old_product_name": row.old_product_name,
+                    "new_product_name": row.new_product_name,
+                    "applied": row.applied,
+                    "created_at": _format_dt(row.created_at),
+                }
+                for row in rows
+            ],
+        }
+    )
+
+
+@sales_module_required
 def client_renewal_live(request):
     """Poll Outlook and return current renewal invite statuses as JSON."""
     company = _company(request)
@@ -680,8 +758,19 @@ def client_renewal_live(request):
     try:
         updated, poll_logs = poll_outlook_read_receipts_for_company(company)
         invites = list(_renewal_invite_queryset(company))
+        from business.renewal_sla import (
+            get_or_create_renewal_sla_settings,
+            sync_zoho_quote_sent_status,
+        )
         from business.zoho_crm import zoho_configured
 
+        sla_settings = get_or_create_renewal_sla_settings(company)
+        try:
+            sync_zoho_quote_sent_status(company, invites)
+        except Exception:
+            logger.exception(
+                "renewal SLA Zoho live sync failed company_id=%s", company.pk
+            )
         return JsonResponse(
             {
                 "ok": True,
@@ -692,6 +781,7 @@ def client_renewal_live(request):
                     invites,
                     zoho_connected=company.zoho_connected,
                     zoho_configured=zoho_configured(),
+                    sla_settings=sla_settings,
                 ),
             }
         )
@@ -807,8 +897,24 @@ def client_renewal_detail(request, pk):
         company=company,
         submitted_at__isnull=False,
     )
+    from business.renewal_sla import (
+        get_or_create_renewal_sla_settings,
+        sync_zoho_quote_sent_status,
+    )
     from business.zoho_crm import zoho_configured
 
+    sla_settings = get_or_create_renewal_sla_settings(company)
+    try:
+        sync_zoho_quote_sent_status(company, [invite])
+        invite.refresh_from_db(
+            fields=["zoho_quote_stage", "zoho_quote_sent_at", "zoho_quote_number"]
+        )
+    except Exception:
+        logger.exception(
+            "renewal detail Zoho SLA sync failed company_id=%s invite_id=%s",
+            company.pk,
+            invite.pk,
+        )
     return render(
         request,
         "business/client_renewal_detail.html",
@@ -820,6 +926,7 @@ def client_renewal_detail(request, pk):
             "zoho_configured": zoho_configured(),
             "zoho_connected": company.zoho_connected,
             "quoteable_count": invite.lines.filter(renewal_count__gt=0).count(),
+            "sla": _sla_row_payload(invite, sla_settings),
         },
     )
 
@@ -859,6 +966,8 @@ def client_renewal_send_quotation(request, pk):
         invite.zoho_quote_number = quote_number
         invite.zoho_quote_url = quote_url
         invite.quotation_sent_at = timezone.now()
+        invite.zoho_quote_stage = "Draft"
+        invite.zoho_quote_sent_at = None
         invite.quotation_error = ""
         invite.save(
             update_fields=[
@@ -866,6 +975,8 @@ def client_renewal_send_quotation(request, pk):
                 "zoho_quote_number",
                 "zoho_quote_url",
                 "quotation_sent_at",
+                "zoho_quote_stage",
+                "zoho_quote_sent_at",
                 "quotation_error",
             ]
         )

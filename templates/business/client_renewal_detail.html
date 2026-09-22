@@ -188,14 +188,27 @@
   <div class="cr-quote-panel">
     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;justify-content:space-between;">
       <h4 class="tracker-card-section-title" style="margin:0;">Zoho quotation</h4>
-      {% if invite.quotation_sent_at %}
-      <span class="cr-quote-status cr-quote-status--sent">Created in Zoho</span>
+      {% if invite.zoho_quote_sent_at %}
+      <span class="cr-quote-status cr-quote-status--sent">Sent from Zoho</span>
+      {% elif invite.quotation_sent_at %}
+      <span class="cr-quote-status cr-quote-status--pending">Draft pending</span>
       {% elif invite.quotation_error %}
       <span class="cr-quote-status cr-quote-status--error">Last attempt failed</span>
       {% else %}
-      <span class="cr-quote-status cr-quote-status--pending">Not sent</span>
+      <span class="cr-quote-status cr-quote-status--pending">Not created</span>
       {% endif %}
     </div>
+
+    {% if sla and sla.status != "off" %}
+    <p class="cr-quote-note">
+      SLA: <strong>{{ sla.label }}</strong>
+      · {{ sla.zoho_status_label }}
+      · {{ sla.elapsed_label }} / {{ sla.target_hours }}h
+      {% if sla.quantity_at %} · qty {{ sla.quantity_at }}{% endif %}
+      {% if sla.quote_number_at %} · quote no. {{ sla.quote_number_at }}{% endif %}
+      {% if sla.quote_sent_at %} · sent {{ sla.quote_sent_at }}{% endif %}
+    </p>
+    {% endif %}
 
     {% if invite.quotation_sent_at %}
     <p class="cr-quote-note">

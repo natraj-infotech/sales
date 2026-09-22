@@ -17,6 +17,12 @@
     <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'client_renewal_report' %}">
       Download report
     </a>
+    <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cr-product-renewals-btn">
+      New product renewal
+    </button>
+    <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cr-sla-settings-btn">
+      SLA settings
+    </button>
     <button type="button" class="btn-tracker-header btn-tracker-ghost" id="cr-refresh-btn">
       Refresh now
     </button>
@@ -206,15 +212,26 @@
     line-height: 1.45;
   }
   .cr-modal-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
     border: none;
     background: transparent;
     color: #64748b;
-    font-size: 0.84rem;
-    font-weight: 600;
+    font-size: 1.55rem;
+    font-weight: 500;
+    line-height: 1;
     cursor: pointer;
-    padding: 0.1rem 0;
+    padding: 0;
+    border-radius: 8px;
   }
-  .cr-modal-x:hover { color: #0f172a; }
+  .cr-modal-x:hover {
+    color: #0f172a;
+    background: #f1f5f9;
+  }
   .cr-deal-list {
     display: flex;
     flex-direction: column;
@@ -351,25 +368,18 @@
     justify-content: flex-end;
     margin-top: 1rem;
   }
-  .cr-win-toggle {
+  .cr-win-toggle-row {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 1rem;
-    align-items: center;
-    min-height: 2.2rem;
+    margin-bottom: 0.55rem;
   }
-  .cr-win-toggle label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
+  .cr-win-toggle-row .cr-win-form-section-title {
     margin: 0;
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: #0f172a;
-    cursor: pointer;
   }
-  .cr-win-toggle input {
-    width: auto;
-    margin: 0;
+  .cr-win-product-picker[hidden] {
+    display: none !important;
   }
   .cr-win-product-picker {
     position: relative;
@@ -423,8 +433,36 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .cr-win-product-list::-webkit-scrollbar {
+    display: none;
+  }
+  .cr-win-product-cols {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0 0.65rem 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+  .cr-win-product-cols span:last-child,
+  .cr-win-product-price {
+    flex-shrink: 0;
+    min-width: 4.5rem;
+    text-align: right;
   }
   .cr-win-product-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem;
+    width: 100%;
     text-align: left;
     border: 1px solid #e2e8f0;
     background: #f8fafc;
@@ -439,14 +477,47 @@
     background: #eff6ff;
     border-color: #93c5fd;
   }
+  .cr-win-product-name {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.35;
+  }
   .cr-win-product-empty {
     margin: 0.2rem 0 0;
     color: #64748b;
     font-size: 0.8rem;
   }
   .cr-win-product-price {
-    color: #64748b;
-    font-weight: 600;
+    color: #334155;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+  }
+  .cr-win-product-trigger-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+  }
+  .cr-win-product-trigger-main #cr-win-product-trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cr-win-product-trigger-main .cr-win-product-price {
+    color: #0f172a;
+  }
+  .cr-win-toggle-row .sla-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
   }
   @media (max-width: 640px) {
     .cr-win-form-grid { grid-template-columns: 1fr; }
@@ -467,7 +538,7 @@
   }
   table.cr-table {
     width: 100%;
-    min-width: 980px;
+    min-width: 1180px;
     border-collapse: collapse;
     table-layout: fixed;
     font-size: 0.84rem;
@@ -485,13 +556,14 @@
     text-align: left;
     white-space: nowrap;
   }
-  .cr-th-company { width: 18%; }
-  .cr-th-product { width: 21%; }
-  .cr-th-ref { width: 18%; }
-  .cr-th-qty { width: 7%; text-align: center; }
-  .cr-th-renew { width: 8%; text-align: center; }
-  .cr-th-zoho { width: 15%; }
-  .cr-th-deal { width: 13%; }
+  .cr-th-company { width: 15%; }
+  .cr-th-product { width: 15%; }
+  .cr-th-ref { width: 13%; }
+  .cr-th-qty { width: 6%; text-align: center; }
+  .cr-th-renew { width: 7%; text-align: center; }
+  .cr-th-zoho { width: 13%; }
+  .cr-th-sla { width: 16%; }
+  .cr-th-deal { width: 15%; }
   .cr-company-row > td {
     border-bottom: 1px solid #e5e7eb;
     background: #fff;
@@ -502,7 +574,7 @@
   }
 
   .cr-company-cell {
-    width: 18%;
+    width: 15%;
     padding: 1rem 1.1rem;
     font-weight: 700;
     color: #0f172a;
@@ -521,7 +593,7 @@
     min-width: 0;
   }
   .cr-products-cell {
-    width: 82%;
+    width: 85%;
     padding: 0;
     vertical-align: top;
   }
@@ -530,12 +602,13 @@
     border-collapse: collapse;
     table-layout: fixed;
   }
-  .cr-products .cr-col-product { width: 25.61%; }
-  .cr-products .cr-col-ref { width: 21.95%; }
-  .cr-products .cr-col-qty { width: 8.54%; text-align: center; white-space: nowrap; }
-  .cr-products .cr-col-renew { width: 9.76%; text-align: center; white-space: nowrap; }
-  .cr-products .cr-col-zoho { width: 18.29%; }
-  .cr-products .cr-col-deal { width: 15.85%; }
+  .cr-products .cr-col-product { width: 17.65%; }
+  .cr-products .cr-col-ref { width: 15.29%; }
+  .cr-products .cr-col-qty { width: 7.06%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-renew { width: 8.24%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-zoho { width: 15.29%; }
+  .cr-products .cr-col-sla { width: 18.82%; }
+  .cr-products .cr-col-deal { width: 17.65%; }
   .cr-products td {
     padding: 0.85rem 1rem;
     border-bottom: 1px solid #eef2f7;
@@ -582,6 +655,62 @@
   }
   .cr-info-modal-card {
     width: min(64rem, calc(100vw - 2rem));
+  }
+  .cr-pr-table-wrap {
+    margin-top: 0.95rem;
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+  table.cr-pr-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+  }
+  .cr-pr-table th,
+  .cr-pr-table td {
+    padding: 0.7rem 0.85rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  .cr-pr-table th {
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .cr-pr-table tr:last-child td {
+    border-bottom: none;
+  }
+  .cr-pr-empty {
+    margin: 0.95rem 0 0;
+    color: #64748b;
+    font-size: 0.84rem;
+  }
+  .cr-pr-status {
+    display: inline-block;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .cr-pr-status--draft {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .cr-pr-status--applied {
+    background: #d1fae5;
+    color: #065f46;
+  }
+  .cr-pr-arrow {
+    color: #94a3b8;
+    font-weight: 700;
+    padding: 0 0.25rem;
   }
   .cr-info-tabs {
     display: flex;
@@ -750,6 +879,151 @@
     .cr-ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .cr-info-email-card .cr-ts-grid { grid-template-columns: 1fr; }
   }
+  .cr-sla-modal-card {
+    width: min(34rem, calc(100vw - 2rem));
+  }
+  .cr-sla-settings {
+    padding: 1rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .cr-sla-settings-head {
+    display: none;
+  }
+  .cr-sla-block {
+    padding: 0.95rem 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #f8fafc;
+  }
+  .cr-sla-block-label {
+    display: block;
+    margin: 0 0 0.65rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .cr-sla-settings .sla-mode-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+    gap: 0.6rem;
+  }
+  .cr-sla-settings .sla-mode-cards .radio-card span {
+    justify-content: center;
+    min-height: 2.85rem;
+    font-size: 0.9rem;
+  }
+  .cr-sla-hours-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+  .cr-sla-hours-row input[type="number"] {
+    width: 5.5rem;
+    max-width: 5.5rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 0.55rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .cr-sla-hours-unit {
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: #334155;
+  }
+  .cr-sla-field input[type="number"],
+  .cr-sla-field input[type="time"] {
+    width: 100%;
+    max-width: 10.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 0.5rem 0.7rem;
+    font: inherit;
+    background: #fff;
+  }
+  .cr-sla-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .cr-sla-day {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.38rem 0.7rem;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 999px;
+    background: #fff;
+    font-size: 0.84rem;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .cr-sla-day:has(input:checked) {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+  .cr-sla-times {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+  }
+  .cr-sla-times .cr-sla-field label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.84rem;
+    font-weight: 650;
+    color: #334155;
+  }
+  .cr-sla-work.is-disabled {
+    display: none;
+  }
+  .cr-sla-save {
+    margin-top: 0.15rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .cr-sla-save .cr-meta {
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+  .cr-sla-cell {
+    min-width: 0;
+  }
+  .cr-sla-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .cr-sla-badge--off { background: #f1f5f9; color: #64748b; }
+  .cr-sla-badge--on_track { background: #dbeafe; color: #1d4ed8; }
+  .cr-sla-badge--overdue,
+  .cr-sla-badge--breached { background: #fee2e2; color: #b91c1c; }
+  .cr-sla-badge--met { background: #d1fae5; color: #065f46; }
+  .cr-sla-zoho {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: #0f172a;
+    margin-bottom: 0.18rem;
+  }
+  .cr-errorlist {
+    margin: 0.25rem 0 0;
+    padding-left: 1.1rem;
+    color: #b91c1c;
+    font-size: 0.75rem;
+  }
 </style>
 
 <div class="cr-sheet">
@@ -763,6 +1037,7 @@
           <th class="cr-th-qty">Prev qty</th>
           <th class="cr-th-renew">Renewal qty</th>
           <th class="cr-th-zoho">Zoho</th>
+          <th class="cr-th-sla">SLA</th>
           <th class="cr-th-deal">Deal Status</th>
         </tr>
       </thead>
@@ -775,7 +1050,7 @@
               <span>{{ group.company_name }}</span>
             </div>
           </td>
-          <td class="cr-products-cell" colspan="6">
+          <td class="cr-products-cell" colspan="7">
             <table class="cr-products">
               <tbody>
                 {% for row in group.rows %}
@@ -815,6 +1090,15 @@
                     </div>
                     {% else %}
                     —
+                    {% endif %}
+                  </td>
+                  <td class="cr-col-sla cr-sla-cell" data-col="sla">
+                    {% if row.sla.status == "off" %}
+                    <span class="cr-sla-badge cr-sla-badge--off">—</span>
+                    {% else %}
+                    <span class="cr-sla-zoho">{{ row.sla.zoho_status_label }}</span>
+                    <span class="cr-sla-badge cr-sla-badge--{{ row.sla.status }}">{{ row.sla.label }}</span>
+                    <span class="cr-meta">{{ row.sla.elapsed_label }} / {{ row.sla.target_hours }}h</span>
                     {% endif %}
                   </td>
                   <td class="cr-col-deal cr-deal-cell" data-col="deal">
@@ -863,7 +1147,7 @@
         </tr>
         {% empty %}
         <tr id="cr-empty-row" class="cr-empty-row">
-          <td colspan="7">
+          <td colspan="8">
             No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
           </td>
         </tr>
@@ -881,7 +1165,7 @@
         <h3 id="cr-deal-title">Deal Status</h3>
         <p id="cr-deal-text" class="cr-modal-sub">Set Win or Lost for each company and product.</p>
       </div>
-      <button type="button" class="cr-modal-x" data-close="1">Close</button>
+      <button type="button" class="cr-modal-x" data-close="1" aria-label="Close">&times;</button>
     </div>
     <div id="cr-deal-list" class="cr-deal-list"></div>
     <p id="cr-deal-error" class="cr-modal-error" hidden></p>
@@ -896,7 +1180,7 @@
         <h3 id="cr-info-title">Company details</h3>
         <p id="cr-info-sub" class="cr-modal-sub">Choose Product info or Email info.</p>
       </div>
-      <button type="button" class="cr-modal-x" data-info-close="1">Close</button>
+      <button type="button" class="cr-modal-x" data-info-close="1" aria-label="Close">&times;</button>
     </div>
     <div class="cr-info-tabs" role="tablist">
       <button type="button" class="cr-info-tab" id="cr-info-tab-product" data-tab="product">Product info</button>
@@ -907,6 +1191,90 @@
     </div>
   </div>
 </div>
+
+<div id="cr-pr-modal" class="cr-modal" hidden>
+  <div class="cr-modal-backdrop" data-pr-close="1"></div>
+  <div class="cr-modal-card cr-info-modal-card" role="dialog" aria-modal="true" aria-labelledby="cr-pr-title">
+    <div class="cr-modal-head">
+      <div>
+        <h3 id="cr-pr-title">New product renewal</h3>
+        <p class="cr-modal-sub">Subscriptions renewed onto a different product — before vs after.</p>
+      </div>
+      <button type="button" class="cr-modal-x" data-pr-close="1" aria-label="Close">&times;</button>
+    </div>
+    <div id="cr-pr-body"></div>
+  </div>
+</div>
+
+{% if sla_form %}
+<div id="cr-sla-modal" class="cr-modal"{% if not sla_modal_open %} hidden{% endif %}>
+  <div class="cr-modal-backdrop" data-sla-close="1"></div>
+  <div class="cr-modal-card cr-sla-modal-card" role="dialog" aria-modal="true" aria-labelledby="cr-sla-title">
+    <div class="cr-modal-head">
+      <div>
+        <h3 id="cr-sla-title">SLA settings</h3>
+      </div>
+      <button type="button" class="cr-modal-x" data-sla-close="1" aria-label="Close">&times;</button>
+    </div>
+    <form method="post" class="cr-sla-settings" id="cr-sla-form">
+      {% csrf_token %}
+      <input type="hidden" name="form" value="renewal_sla">
+      {{ sla_form.non_field_errors }}
+      <div class="cr-sla-block">
+        <label class="cr-sla-block-label" for="{{ sla_form.target_hours.id_for_label }}">{{ sla_form.target_hours.label }}</label>
+        <div class="cr-sla-hours-row">
+          {{ sla_form.target_hours }}
+          <span class="cr-sla-hours-unit">hours</span>
+        </div>
+        {{ sla_form.target_hours.errors }}
+      </div>
+      <div class="cr-sla-block">
+        <span class="cr-sla-block-label">{{ sla_form.clock_mode.label }}</span>
+        <div class="sla-mode-cards">
+          {% for radio in sla_form.clock_mode %}
+          <label class="radio-card">
+            {{ radio.tag }}
+            <span>{{ radio.choice_label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {{ sla_form.clock_mode.errors }}
+      </div>
+      <div class="cr-sla-block cr-sla-work" id="cr-sla-work">
+        <span class="cr-sla-block-label">Office hours</span>
+        <div class="cr-sla-days">
+          <label class="cr-sla-day">{{ sla_form.work_monday }} {{ sla_form.work_monday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_tuesday }} {{ sla_form.work_tuesday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_wednesday }} {{ sla_form.work_wednesday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_thursday }} {{ sla_form.work_thursday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_friday }} {{ sla_form.work_friday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_saturday }} {{ sla_form.work_saturday.label }}</label>
+          <label class="cr-sla-day">{{ sla_form.work_sunday }} {{ sla_form.work_sunday.label }}</label>
+        </div>
+        {{ sla_form.work_monday.errors }}
+        <div class="cr-sla-times">
+          <div class="cr-sla-field">
+            <label for="{{ sla_form.work_start.id_for_label }}">{{ sla_form.work_start.label }}</label>
+            {{ sla_form.work_start }}
+            {{ sla_form.work_start.errors }}
+          </div>
+          <div class="cr-sla-field">
+            <label for="{{ sla_form.work_end.id_for_label }}">{{ sla_form.work_end.label }}</label>
+            {{ sla_form.work_end }}
+            {{ sla_form.work_end.errors }}
+          </div>
+        </div>
+      </div>
+      <div class="cr-sla-save">
+        <button type="submit" class="btn-tracker-header">Save</button>
+        {% if sla_settings %}
+        <span class="cr-meta">Saved {{ sla_settings.updated_at|date:"d M Y, H:i" }}</span>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {{ renewal_groups|json_script:"cr-groups-data" }}
 <input type="hidden" id="cr-csrf" value="{{ csrf_token }}">
 
@@ -914,10 +1282,16 @@
 (function () {
   var LIVE_URL = "{% url 'client_renewal_live' %}";
   var LIST_URL = "{% url 'client_renewal_list' %}";
+  var PRODUCT_RENEWALS_URL = "{% url 'client_renewal_product_changes' %}";
   var POLL_MS = 15000;
   var tbody = document.getElementById("cr-tbody");
   var meta = document.getElementById("cr-live-meta");
   var refreshBtn = document.getElementById("cr-refresh-btn");
+  var productRenewalsBtn = document.getElementById("cr-product-renewals-btn");
+  var productRenewalsModal = document.getElementById("cr-pr-modal");
+  var productRenewalsBody = document.getElementById("cr-pr-body");
+  var slaSettingsBtn = document.getElementById("cr-sla-settings-btn");
+  var slaModal = document.getElementById("cr-sla-modal");
   var timer = null;
   var inFlight = false;
   var CSRF = (document.getElementById("cr-csrf") || {}).value || "";
@@ -1070,6 +1444,29 @@
     return '<div class="cr-zoho-actions">' + parts.join("") + "</div>";
   }
 
+  function slaHtml(row) {
+    var sla = row.sla || {};
+    if (!sla.status || sla.status === "off") {
+      return '<span class="cr-sla-badge cr-sla-badge--off">—</span>';
+    }
+    var target = sla.target_hours != null ? sla.target_hours + "h" : "—";
+    return (
+      '<span class="cr-sla-zoho">' +
+      escapeHtml(sla.zoho_status_label || "—") +
+      "</span>" +
+      '<span class="cr-sla-badge cr-sla-badge--' +
+      escapeHtml(sla.status) +
+      '">' +
+      escapeHtml(sla.label || "—") +
+      "</span>" +
+      '<span class="cr-meta">' +
+      escapeHtml(sla.elapsed_label || "—") +
+      " / " +
+      escapeHtml(target) +
+      "</span>"
+    );
+  }
+
   function emailTimelineHtml(row) {
     var ts = row.timestamps || {};
     var sent = ts.sent || [];
@@ -1114,11 +1511,49 @@
       responseBlock = '<span class="cr-status cr-status--pending">Pending</span>';
     }
 
+    var sla = row.sla || {};
+    var slaBlock;
+    if (!sla.status || sla.status === "off") {
+      slaBlock = '<span class="cr-status cr-status--no">—</span><span class="cr-meta">SLA starts after quantity</span>';
+    } else {
+      slaBlock =
+        '<span class="cr-sla-badge cr-sla-badge--' +
+        escapeHtml(sla.status) +
+        '">' +
+        escapeHtml(sla.label || "—") +
+        "</span>" +
+        '<span class="cr-meta">' +
+        escapeHtml(sla.zoho_status_label || "") +
+        "</span>" +
+        (sla.quantity_at
+          ? '<span class="cr-meta">Qty received ' + escapeHtml(sla.quantity_at) + "</span>"
+          : "") +
+        (sla.quote_number_at
+          ? '<span class="cr-meta">Quote no. ' +
+            escapeHtml(sla.quote_number_at) +
+            " · " +
+            escapeHtml(sla.qty_to_quote_label || "—") +
+            "</span>"
+          : "") +
+        (sla.quote_sent_at
+          ? '<span class="cr-meta">Quote sent ' +
+            escapeHtml(sla.quote_sent_at) +
+            " · total " +
+            escapeHtml(sla.elapsed_label || "—") +
+            "</span>"
+          : '<span class="cr-meta">Total ' +
+            escapeHtml(sla.elapsed_label || "—") +
+            " / " +
+            escapeHtml(String(sla.target_hours || "—")) +
+            "h</span>");
+    }
+
     return (
       '<div class="cr-ts-grid">' +
       '<div class="cr-ts-item">' + sentBlock + "</div>" +
       '<div class="cr-ts-item">' + readBlock + "</div>" +
-      '<div class="cr-ts-item">' + responseBlock + "</div></div>"
+      '<div class="cr-ts-item">' + responseBlock + "</div>" +
+      '<div class="cr-ts-item">' + slaBlock + "</div></div>"
     );
   }
 
@@ -1243,6 +1678,83 @@
     }
   }
 
+  function closeProductRenewalsModal() {
+    if (!productRenewalsModal) return;
+    productRenewalsModal.hidden = true;
+  }
+
+  function openSlaModal() {
+    if (!slaModal) return;
+    slaModal.hidden = false;
+  }
+
+  function closeSlaModal() {
+    if (!slaModal) return;
+    slaModal.hidden = true;
+  }
+
+  function renderProductRenewals(items) {
+    if (!productRenewalsBody) return;
+    if (!items.length) {
+      productRenewalsBody.innerHTML =
+        '<p class="cr-pr-empty">No product changes yet. They appear here when a subscription is renewed onto a different product.</p>';
+      return;
+    }
+    var rows = items.map(function (item) {
+      var statusClass = item.applied ? "cr-pr-status--applied" : "cr-pr-status--draft";
+      var statusLabel = item.applied ? "Renewed" : "Draft";
+      return (
+        "<tr>" +
+          "<td>" + escapeHtml(item.client_name || "Client") + "</td>" +
+          "<td>" + escapeHtml(item.old_product_name || "—") + "</td>" +
+          "<td>" + escapeHtml(item.new_product_name || "—") + "</td>" +
+          "<td>" + escapeHtml(item.created_at || "") + "</td>" +
+          '<td><span class="cr-pr-status ' + statusClass + '">' + statusLabel + "</span></td>" +
+        "</tr>"
+      );
+    }).join("");
+    productRenewalsBody.innerHTML =
+      '<div class="cr-pr-table-wrap">' +
+        '<table class="cr-pr-table">' +
+          "<thead><tr>" +
+            "<th>Client</th><th>Before</th><th>After</th><th>Date</th><th>Status</th>" +
+          "</tr></thead>" +
+          "<tbody>" + rows + "</tbody>" +
+        "</table>" +
+      "</div>";
+  }
+
+  function openProductRenewalsModal() {
+    if (!productRenewalsModal) return;
+    if (productRenewalsBody) {
+      productRenewalsBody.innerHTML = '<p class="cr-pr-empty">Loading…</p>';
+    }
+    productRenewalsModal.hidden = false;
+    fetch(PRODUCT_RENEWALS_URL, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || !data.ok) {
+            throw new Error((data && data.error) || "Could not load list.");
+          }
+          return data;
+        });
+      })
+      .then(function (data) {
+        renderProductRenewals(data.items || []);
+      })
+      .catch(function (err) {
+        if (productRenewalsBody) {
+          productRenewalsBody.innerHTML =
+            '<p class="cr-pr-empty">' +
+            escapeHtml(err.message || "Could not load list.") +
+            "</p>";
+        }
+      });
+  }
+
   function bindInfoButtons() {
     if (!tbody) return;
     tbody.querySelectorAll(".cr-company-row .cr-expand-btn").forEach(function (btn) {
@@ -1288,6 +1800,7 @@
       '<td class="cr-col-qty">' + qtyHtml(row.previous_quantity, false) + "</td>" +
       '<td class="cr-col-renew">' + qtyHtml(row.renewal_quantity, changed) + "</td>" +
       '<td class="cr-col-zoho" data-col="zoho">' + zohoHtml(row) + "</td>" +
+      '<td class="cr-col-sla cr-sla-cell" data-col="sla">' + slaHtml(row) + "</td>" +
       '<td class="cr-col-deal cr-deal-cell" data-col="deal">' + dealHtml(row) + "</td>";
 
     bindZoho(tr);
@@ -1301,7 +1814,7 @@
     tbody.innerHTML = "";
     if (!currentGroups.length) {
       tbody.innerHTML =
-        '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="7">' +
+        '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="8">' +
         "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
         "</td></tr>";
       if (infoModal && !infoModal.hidden) renderInfoBody();
@@ -1321,7 +1834,7 @@
         "<span>" +
         escapeHtml(companyName) +
         "</span></div></td>" +
-        '<td class="cr-products-cell" colspan="6"><table class="cr-products"><tbody></tbody></table></td>';
+        '<td class="cr-products-cell" colspan="7"><table class="cr-products"><tbody></tbody></table></td>';
       var innerBody = companyTr.querySelector("tbody");
       (group.rows || []).forEach(function (row) {
         innerBody.appendChild(createProductRow(row));
@@ -1434,12 +1947,6 @@
     );
   }
 
-  function productLabel(product) {
-    if (!product) return "";
-    var price = product.price != null ? String(product.price) : "";
-    return price ? product.name + " — " + price : product.name;
-  }
-
   function findDealProduct(productId) {
     var selected = String(productId || "");
     if (!selected) return null;
@@ -1457,17 +1964,25 @@
     var search = document.getElementById("cr-win-product-search");
     var list = document.getElementById("cr-win-product-list");
     var empty = document.getElementById("cr-win-product-empty");
-    var yesRadio = form.querySelector('input[name="renew_other_plan"][value="1"]');
-    var noRadio = form.querySelector('input[name="renew_other_plan"][value="0"]');
+    var otherPlanToggle = form.querySelector("#cr-win-other-plan");
     if (!wrap || !hidden || !trigger || !panel || !list) return;
 
     function setSelected(product) {
       hidden.value = product ? String(product.id) : "";
+      var triggerPrice = document.getElementById("cr-win-product-trigger-price");
       if (product) {
-        triggerLabel.textContent = productLabel(product);
+        triggerLabel.textContent = product.name || "";
+        if (triggerPrice) {
+          triggerPrice.textContent = product.price != null ? String(product.price) : "";
+          triggerPrice.hidden = !product.price;
+        }
         trigger.classList.remove("is-empty");
       } else {
         triggerLabel.textContent = "Select a product";
+        if (triggerPrice) {
+          triggerPrice.textContent = "";
+          triggerPrice.hidden = true;
+        }
         trigger.classList.add("is-empty");
       }
     }
@@ -1486,10 +2001,10 @@
         btn.className = "cr-win-product-item";
         if (String(product.id) === hidden.value) btn.classList.add("is-selected");
         btn.innerHTML =
-          escapeHtml(product.name || "") +
-          (product.price
-            ? ' <span class="cr-win-product-price">' + escapeHtml(product.price) + "</span>"
-            : "");
+          '<span class="cr-win-product-name">' + escapeHtml(product.name || "") + "</span>" +
+          '<span class="cr-win-product-price">' +
+            escapeHtml(product.price != null ? String(product.price) : "") +
+          "</span>";
         btn.addEventListener("click", function () {
           setSelected(product);
           panel.hidden = true;
@@ -1499,7 +2014,7 @@
     }
 
     function syncToggle() {
-      var enabled = !!(yesRadio && yesRadio.checked);
+      var enabled = !!(otherPlanToggle && otherPlanToggle.checked);
       wrap.hidden = !enabled;
       if (!enabled) {
         setSelected(null);
@@ -1511,8 +2026,7 @@
     renderList("");
     syncToggle();
 
-    if (yesRadio) yesRadio.addEventListener("change", syncToggle);
-    if (noRadio) noRadio.addEventListener("change", syncToggle);
+    if (otherPlanToggle) otherPlanToggle.addEventListener("change", syncToggle);
     trigger.addEventListener("click", function () {
       panel.hidden = !panel.hidden;
       if (!panel.hidden && search) {
@@ -1543,18 +2057,16 @@
       "</div>" +
       '<form id="cr-win-form" class="cr-win-form">' +
         '<section class="cr-win-form-section">' +
-          '<h4 class="cr-win-form-section-title">Renew other plan</h4>' +
+          '<div class="cr-win-toggle-row">' +
+            '<h4 class="cr-win-form-section-title">Renew other plan</h4>' +
+            '<label class="sla-switch" title="Renew other plan">' +
+              '<input type="checkbox" id="cr-win-other-plan" name="renew_other_plan" value="1"' +
+                (otherPlan ? " checked" : "") +
+              ">" +
+              '<span class="slider"></span>' +
+            "</label>" +
+          "</div>" +
           '<div class="cr-win-form-grid" style="grid-template-columns:1fr;">' +
-            '<div class="cr-win-form-field">' +
-              '<div class="cr-win-toggle">' +
-                '<label><input type="radio" name="renew_other_plan" value="0"' +
-                  (otherPlan ? "" : " checked") +
-                "> No</label>" +
-                '<label><input type="radio" name="renew_other_plan" value="1"' +
-                  (otherPlan ? " checked" : "") +
-                "> Yes</label>" +
-              "</div>" +
-            "</div>" +
             '<div id="cr-win-product-wrap" class="cr-win-form-field cr-win-product-picker"' +
               (otherPlan ? "" : " hidden") +
             ">" +
@@ -1563,11 +2075,15 @@
                 escapeHtml(draft.product || "") +
               '">' +
               '<button type="button" class="cr-win-product-trigger" id="cr-win-product-trigger">' +
-                '<span id="cr-win-product-trigger-label">Select a product</span>' +
+                '<span class="cr-win-product-trigger-main">' +
+                  '<span id="cr-win-product-trigger-label">Select a product</span>' +
+                  '<span class="cr-win-product-price" id="cr-win-product-trigger-price" hidden></span>' +
+                "</span>" +
                 '<span class="cr-win-product-caret" aria-hidden="true">▾</span>' +
               "</button>" +
               '<div class="cr-win-product-panel" id="cr-win-product-panel" hidden>' +
                 '<input type="search" class="cr-win-product-search" id="cr-win-product-search" placeholder="Search products" autocomplete="off">' +
+                '<div class="cr-win-product-cols" aria-hidden="true"><span>Product</span><span>Price</span></div>' +
                 '<div class="cr-win-product-list" id="cr-win-product-list"></div>' +
                 '<p class="cr-win-product-empty" id="cr-win-product-empty" hidden>No matching products.</p>' +
               "</div>" +
@@ -1663,9 +2179,10 @@
       bindWinProductPicker(form, draft.product || "");
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        var otherPlan = form.querySelector('input[name="renew_other_plan"]:checked');
+        var otherPlanToggle = form.querySelector("#cr-win-other-plan");
+        var otherPlanOn = !!(otherPlanToggle && otherPlanToggle.checked);
         var productId = (form.product && form.product.value) || "";
-        if (otherPlan && otherPlan.value === "1" && !productId) {
+        if (otherPlanOn && !productId) {
           setDealError("Select a new renewal product.");
           return;
         }
@@ -1678,8 +2195,8 @@
           billing_amount: form.billing_amount.value,
           vendor: form.vendor.value,
           invoice_number: form.invoice_number.value,
-          renew_other_plan: otherPlan ? otherPlan.value : "0",
-          product: otherPlan && otherPlan.value === "1" ? productId : "",
+          renew_other_plan: otherPlanOn ? "1" : "0",
+          product: otherPlanOn ? productId : "",
         };
         var pdfInput = form.querySelector('[name="invoice_pdf"]');
         if (pdfInput && pdfInput.files && pdfInput.files[0]) {
@@ -1777,6 +2294,16 @@
       if (e.target && e.target.getAttribute("data-info-close") === "1") closeInfoModal();
     });
   }
+  if (productRenewalsModal) {
+    productRenewalsModal.addEventListener("click", function (e) {
+      if (e.target && e.target.getAttribute("data-pr-close") === "1") closeProductRenewalsModal();
+    });
+  }
+  if (slaModal) {
+    slaModal.addEventListener("click", function (e) {
+      if (e.target && e.target.getAttribute("data-sla-close") === "1") closeSlaModal();
+    });
+  }
   if (infoTabProduct) {
     infoTabProduct.addEventListener("click", function () {
       setInfoTab("product");
@@ -1795,7 +2322,15 @@
       closeDealModal();
       return;
     }
-    if (infoModal && !infoModal.hidden) closeInfoModal();
+    if (infoModal && !infoModal.hidden) {
+      closeInfoModal();
+      return;
+    }
+    if (productRenewalsModal && !productRenewalsModal.hidden) {
+      closeProductRenewalsModal();
+      return;
+    }
+    if (slaModal && !slaModal.hidden) closeSlaModal();
   });
 
   function setMeta(text, isError) {
@@ -1843,6 +2378,32 @@
 
   if (refreshBtn) {
     refreshBtn.addEventListener("click", function () { poll(); });
+  }
+  if (productRenewalsBtn) {
+    productRenewalsBtn.addEventListener("click", function () {
+      openProductRenewalsModal();
+    });
+  }
+  if (slaSettingsBtn) {
+    slaSettingsBtn.addEventListener("click", function () {
+      openSlaModal();
+    });
+  }
+
+  function syncSlaWorkFields() {
+    var form = document.getElementById("cr-sla-form");
+    var work = document.getElementById("cr-sla-work");
+    if (!form || !work) return;
+    var selected = form.querySelector('input[name="clock_mode"]:checked');
+    var working = selected && selected.value === "working_hours";
+    work.classList.toggle("is-disabled", !working);
+  }
+  var slaForm = document.getElementById("cr-sla-form");
+  if (slaForm) {
+    slaForm.querySelectorAll('input[name="clock_mode"]').forEach(function (input) {
+      input.addEventListener("change", syncSlaWorkFields);
+    });
+    syncSlaWorkFields();
   }
 
   document.addEventListener("visibilitychange", function () {

@@ -956,7 +956,7 @@ def _fields_html(fields: list[tuple[str, str]]) -> str:
         parts.append(
             f"""
             <tr>
-              <td style="padding:12px;border:1px solid {_BORDER};background-color:{_TABLE_HEAD};color:{_MUTED};font-family:{_FONT};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;width:34%;">{escape(label)}</td>
+              <td style="padding:12px;border:1px solid {_BORDER};color:{_TEXT};font-family:{_FONT};font-size:14px;width:34%;">{escape(label)}</td>
               <td style="padding:12px;border:1px solid {_BORDER};color:{_TEXT};font-family:{_FONT};font-size:14px;">{escape(str(value))}</td>
             </tr>
             """.strip()

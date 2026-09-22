@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.conf import settings
 from django.db import models
@@ -418,6 +418,7 @@ class ClientSubscription(models.Model):
         if invoice_pdf:
             update_fields.append("renewal_draft_invoice_pdf")
         self.save(update_fields=update_fields)
+        self.sync_product_renewal(product, applied=False)
 
     def apply_saved_renewal(
         self,
@@ -433,6 +434,7 @@ class ClientSubscription(models.Model):
     ) -> None:
         """Apply renewal to the live subscription and mark the Win form filled."""
         applied_product = product or self.renewal_draft_product
+        old_product = self.product
         self.start_date = start_date
         self.end_date = end_date
         self.quantity = quantity
@@ -479,6 +481,91 @@ class ClientSubscription(models.Model):
         if applied_pdf:
             update_fields.extend(["invoice_pdf", "renewal_draft_invoice_pdf"])
         self.save(update_fields=update_fields)
+        self.sync_product_renewal(
+            applied_product,
+            applied=True,
+            old_product=old_product,
+        )
+
+    def sync_product_renewal(
+        self,
+        new_product,
+        *,
+        applied=False,
+        old_product=None,
+    ):
+        """Keep a before/after list when renewal switches the product."""
+        old_product = old_product or self.product
+        old_id = getattr(old_product, "pk", None)
+        new_id = getattr(new_product, "pk", None)
+        pending = self.product_renewals.filter(applied=False).order_by("-id")
+        if not new_product or new_id == old_id:
+            pending.delete()
+            return None
+        client_name = ""
+        if getattr(self, "client_id", None):
+            client_name = self.client.name
+        now = timezone.now()
+        row = pending.first()
+        if row is None:
+            row = SubscriptionProductRenewal(
+                company=self.company,
+                subscription=self,
+                client_name=client_name,
+                old_product=old_product,
+                old_product_name=old_product.name if old_product else "",
+            )
+        row.client_name = client_name or row.client_name
+        row.new_product = new_product
+        row.new_product_name = new_product.name
+        if applied:
+            row.applied = True
+            row.applied_at = now
+        row.save()
+        if applied:
+            pending.exclude(pk=row.pk).delete()
+        return row
+
+
+class SubscriptionProductRenewal(models.Model):
+    """Product swap made while renewing a subscription."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="subscription_product_renewals",
+    )
+    subscription = models.ForeignKey(
+        ClientSubscription,
+        on_delete=models.CASCADE,
+        related_name="product_renewals",
+    )
+    client_name = models.CharField(max_length=255)
+    old_product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    new_product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    old_product_name = models.CharField(max_length=255)
+    new_product_name = models.CharField(max_length=255)
+    applied = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.client_name}: {self.old_product_name} → {self.new_product_name}"
 
 
 class SubscriptionExpiryNotice(models.Model):
@@ -526,6 +613,8 @@ class SubscriptionRenewalInvite(models.Model):
     zoho_quote_number = models.CharField(max_length=128, blank=True)
     zoho_quote_url = models.URLField(blank=True)
     quotation_sent_at = models.DateTimeField(null=True, blank=True)
+    zoho_quote_stage = models.CharField(max_length=64, blank=True)
+    zoho_quote_sent_at = models.DateTimeField(null=True, blank=True)
     quotation_error = models.TextField(blank=True)
     deal_status = models.CharField(
         max_length=16,
@@ -735,6 +824,62 @@ class SubscriptionRenewalInvite(models.Model):
             return
         recipient.opened_at = timezone.now()
         recipient.save(update_fields=["opened_at"])
+
+
+class RenewalSLASettings(models.Model):
+    """Per-company clock and target for renewal quotation SLA."""
+
+    class ClockMode(models.TextChoices):
+        ALWAYS = "24x7", "24/7"
+        WORKING = "working_hours", "Working hours"
+
+    company = models.OneToOneField(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="renewal_sla_settings",
+    )
+    clock_mode = models.CharField(
+        max_length=20,
+        choices=ClockMode.choices,
+        default=ClockMode.WORKING,
+    )
+    target_hours = models.PositiveIntegerField(
+        default=8,
+        help_text="Hours allowed from renewal quantity received until the Zoho quote is sent.",
+    )
+    work_start = models.TimeField(default=time(9, 30))
+    work_end = models.TimeField(default=time(18, 30))
+    work_monday = models.BooleanField(default=True)
+    work_tuesday = models.BooleanField(default=True)
+    work_wednesday = models.BooleanField(default=True)
+    work_thursday = models.BooleanField(default=True)
+    work_friday = models.BooleanField(default=True)
+    work_saturday = models.BooleanField(default=False)
+    work_sunday = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "renewal SLA settings"
+        verbose_name_plural = "renewal SLA settings"
+
+    def __str__(self):
+        return f"Renewal SLA settings for {self.company}"
+
+    def working_weekdays(self) -> set[int]:
+        mapping = (
+            (self.work_monday, 0),
+            (self.work_tuesday, 1),
+            (self.work_wednesday, 2),
+            (self.work_thursday, 3),
+            (self.work_friday, 4),
+            (self.work_saturday, 5),
+            (self.work_sunday, 6),
+        )
+        days = {index for enabled, index in mapping if enabled}
+        return days or {0, 1, 2, 3, 4}
+
+    def uses_working_hours(self) -> bool:
+        return self.clock_mode == self.ClockMode.WORKING and self.work_end > self.work_start
 
 
 class SubscriptionRenewalInviteRecipient(models.Model):

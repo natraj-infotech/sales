@@ -16,6 +16,7 @@ from .models import (
     SupportTicket,
     SupportSLASettings,
     TicketPriorityRule,
+    RenewalSLASettings,
 )
 
 
@@ -115,6 +116,76 @@ TicketPriorityRuleFormSet = formset_factory(
     extra=1,
     can_delete=True,
 )
+
+
+class RenewalSLASettingsForm(forms.ModelForm):
+    class Meta:
+        model = RenewalSLASettings
+        fields = (
+            "clock_mode",
+            "target_hours",
+            "work_start",
+            "work_end",
+            "work_monday",
+            "work_tuesday",
+            "work_wednesday",
+            "work_thursday",
+            "work_friday",
+            "work_saturday",
+            "work_sunday",
+        )
+        labels = {
+            "clock_mode": "Count time",
+            "target_hours": "Send quote within",
+            "work_start": "From",
+            "work_end": "To",
+            "work_monday": "Mon",
+            "work_tuesday": "Tue",
+            "work_wednesday": "Wed",
+            "work_thursday": "Thu",
+            "work_friday": "Fri",
+            "work_saturday": "Sat",
+            "work_sunday": "Sun",
+        }
+        widgets = {
+            "clock_mode": forms.RadioSelect,
+            "target_hours": forms.NumberInput(attrs={"min": 1, "max": 168}),
+            "work_start": forms.TimeInput(attrs={"type": "time"}),
+            "work_end": forms.TimeInput(attrs={"type": "time"}),
+        }
+        help_texts = {
+            "clock_mode": "",
+            "target_hours": "",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["clock_mode"].help_text = ""
+        self.fields["target_hours"].help_text = ""
+        for name in ("work_start", "work_end"):
+            self.fields[name].input_formats = ["%H:%M", "%H:%M:%S"]
+            self.fields[name].widget.format = "%H:%M"
+
+    def clean(self):
+        cleaned = super().clean()
+        mode = cleaned.get("clock_mode")
+        start = cleaned.get("work_start")
+        end = cleaned.get("work_end")
+        if mode == RenewalSLASettings.ClockMode.WORKING and start and end and end <= start:
+            self.add_error("work_end", "Office end must be after office start.")
+        if mode == RenewalSLASettings.ClockMode.WORKING:
+            days = [
+                cleaned.get("work_monday"),
+                cleaned.get("work_tuesday"),
+                cleaned.get("work_wednesday"),
+                cleaned.get("work_thursday"),
+                cleaned.get("work_friday"),
+                cleaned.get("work_saturday"),
+                cleaned.get("work_sunday"),
+            ]
+            if not any(days):
+                self.add_error("work_monday", "Tick at least one working day.")
+        return cleaned
 
 
 class VendorForm(forms.ModelForm):
@@ -776,6 +847,12 @@ class SubscriptionRenewForm(forms.Form):
         self.fields["product"].choices = [("", "Select a product")] + [
             (str(p.pk), p.name) for p in products
         ]
+
+    def clean_renew_other_plan(self):
+        raw = self.data.get("renew_other_plan")
+        if isinstance(raw, bool):
+            return raw
+        return str(raw or "").strip().lower() in {"1", "true", "on", "yes"}
 
     def clean(self):
         cleaned = super().clean()

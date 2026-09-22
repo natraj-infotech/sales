@@ -10,6 +10,7 @@ from .models import (
     Product,
     Lead,
     ClientSubscription,
+    SubscriptionProductRenewal,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
@@ -19,6 +20,7 @@ from .models import (
     SupportTicketMeta,
     SupportSLASettings,
     TicketPriorityRule,
+    RenewalSLASettings,
     OemDiaryCompany,
     OemDiaryEmail,
     ProcurementDeal,
@@ -122,6 +124,21 @@ class ClientSubscriptionAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(SubscriptionProductRenewal)
+class SubscriptionProductRenewalAdmin(admin.ModelAdmin):
+    list_display = (
+        "client_name",
+        "old_product_name",
+        "new_product_name",
+        "applied",
+        "created_at",
+        "company",
+    )
+    list_filter = ("company", "applied")
+    search_fields = ("client_name", "old_product_name", "new_product_name")
+    readonly_fields = ("created_at", "applied_at")
+
+
 class SubscriptionRenewalInviteRecipientInline(admin.TabularInline):
     model = SubscriptionRenewalInviteRecipient
     extra = 0
@@ -141,6 +158,8 @@ class SubscriptionRenewalInviteAdmin(admin.ModelAdmin):
         "submitted_at",
         "submitted_by_email",
         "quotation_sent_at",
+        "zoho_quote_stage",
+        "zoho_quote_sent_at",
         "deal_status",
         "zoho_quote_number",
         "created_at",
@@ -223,6 +242,19 @@ class SupportTicketMetaAdmin(admin.ModelAdmin):
     )
     list_filter = ("department", "is_internal", "is_oem", "priority_source")
     search_fields = ("ticket__title", "remarks", "created_by__email", "oem_company_name", "oem_to_email")
+
+
+@admin.register(RenewalSLASettings)
+class RenewalSLASettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "company",
+        "clock_mode",
+        "target_hours",
+        "work_start",
+        "work_end",
+        "updated_at",
+    )
+    list_filter = ("clock_mode",)
 
 
 @admin.register(SupportSLASettings)

@@ -117,6 +117,11 @@ urlpatterns = [
         name="client_renewal_report",
     ),
     path(
+        "client-renewals/product-renewals/",
+        views.client_renewal_product_changes,
+        name="client_renewal_product_changes",
+    ),
+    path(
         "client-renewals/<uuid:pk>/",
         views.client_renewal_detail,
         name="client_renewal_detail",

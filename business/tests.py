@@ -23,10 +23,12 @@ from business.models import (
     ClientSubscription,
     Product,
     Vendor,
+    SubscriptionProductRenewal,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
     SubscriptionRenewalInviteRecipient,
+    RenewalSLASettings,
     annotate_internal_case_locks,
 )
 
@@ -383,6 +385,10 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, "VPN")
         self.assertContains(response, "Quotation ID")
         self.assertContains(response, 'class="cr-th-ref"')
+        self.assertContains(response, 'class="cr-th-sla"')
+        self.assertContains(response, "SLA settings")
+        self.assertContains(response, 'id="cr-sla-settings-btn"')
+        self.assertContains(response, 'id="cr-sla-modal"')
         self.assertNotContains(response, 'class="cr-th-email"')
         self.assertContains(response, "Connect Zoho")
         self.assertContains(response, ">Win</button>")
@@ -492,6 +498,136 @@ class ClientRenewalTabRowsTests(TestCase):
         payload = self._quote_payload(pending)
         self.assertEqual(payload["Product_Details"][0]["quantity"], 5)
         self.assertIn("no renewal qty yet", payload["Description"])
+
+    def test_sla_payload_tracks_quantity_to_quote_send(self):
+        from datetime import time as dt_time
+
+        from business.renewal_sla import sla_status_for_invite
+
+        settings_obj = RenewalSLASettings(
+            clock_mode=RenewalSLASettings.ClockMode.ALWAYS,
+            target_hours=8,
+            work_start=dt_time(9, 30),
+            work_end=dt_time(18, 30),
+        )
+        start = timezone.now() - timedelta(hours=3)
+        self.invite.submitted_at = start
+        self.invite.quotation_sent_at = start + timedelta(hours=1)
+        self.invite.zoho_quote_stage = "Draft"
+        self.invite.save(
+            update_fields=["submitted_at", "quotation_sent_at", "zoho_quote_stage"]
+        )
+        data = sla_status_for_invite(self.invite, settings_obj)
+        self.assertEqual(data["zoho_status"], "draft_pending")
+        self.assertEqual(data["status"], "on_track")
+        self.assertAlmostEqual(data["qty_to_quote_hours"], 1.0, places=1)
+        self.assertAlmostEqual(data["elapsed_hours"], 3.0, places=1)
+
+        self.invite.zoho_quote_stage = "Delivered"
+        self.invite.zoho_quote_sent_at = start + timedelta(hours=2)
+        data = sla_status_for_invite(self.invite, settings_obj)
+        self.assertEqual(data["zoho_status"], "sent")
+        self.assertEqual(data["status"], "met")
+        self.assertAlmostEqual(data["elapsed_hours"], 2.0, places=1)
+
+    def test_save_sla_settings_from_list_page(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("client_renewal_list"),
+            {
+                "form": "renewal_sla",
+                "clock_mode": "24x7",
+                "target_hours": "9",
+                "work_start": "09:30",
+                "work_end": "18:30",
+                "work_monday": "on",
+                "work_tuesday": "on",
+                "work_wednesday": "on",
+                "work_thursday": "on",
+                "work_friday": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        settings_obj = RenewalSLASettings.objects.get(company=self.company)
+        self.assertEqual(settings_obj.clock_mode, "24x7")
+        self.assertEqual(settings_obj.target_hours, 9)
+        self.assertTrue(settings_obj.work_monday)
+        self.assertFalse(settings_obj.work_saturday)
+
+    def test_invalid_sla_settings_keep_modal_open(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("client_renewal_list"),
+            {
+                "form": "renewal_sla",
+                "clock_mode": "working_hours",
+                "target_hours": "8",
+                "work_start": "09:30",
+                "work_end": "18:30",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["sla_modal_open"])
+        self.assertContains(response, 'id="cr-sla-modal"')
+        self.assertNotContains(response, 'id="cr-sla-modal" hidden')
+        self.assertContains(response, "Tick at least one working day.")
+
+
+class RenewalSLAClockTests(SimpleTestCase):
+    def _working(self):
+        from datetime import time as dt_time
+
+        return RenewalSLASettings(
+            clock_mode=RenewalSLASettings.ClockMode.WORKING,
+            target_hours=8,
+            work_start=dt_time(9, 30),
+            work_end=dt_time(18, 30),
+            work_monday=True,
+            work_tuesday=True,
+            work_wednesday=True,
+            work_thursday=True,
+            work_friday=True,
+            work_saturday=False,
+            work_sunday=False,
+        )
+
+    def test_working_hours_skip_weekend(self):
+        from datetime import datetime
+
+        from business.renewal_sla import add_clock_hours, elapsed_seconds
+
+        tz = timezone.get_current_timezone()
+        friday = timezone.make_aware(datetime(2026, 9, 18, 17, 0), tz)
+        monday = timezone.make_aware(datetime(2026, 9, 21, 10, 0), tz)
+        seconds = elapsed_seconds(friday, monday, self._working())
+        self.assertAlmostEqual(seconds / 3600, 2.0, places=2)
+        due = add_clock_hours(friday, 8, self._working())
+        self.assertEqual(timezone.localtime(due).strftime("%Y-%m-%d %H:%M"), "2026-09-21 16:00")
+
+    def test_24x7_counts_calendar_hours(self):
+        from datetime import datetime, time as dt_time
+
+        from business.renewal_sla import elapsed_seconds
+
+        settings_obj = RenewalSLASettings(
+            clock_mode=RenewalSLASettings.ClockMode.ALWAYS,
+            target_hours=8,
+            work_start=dt_time(9, 30),
+            work_end=dt_time(18, 30),
+        )
+        tz = timezone.get_current_timezone()
+        start = timezone.make_aware(datetime(2026, 9, 18, 17, 0), tz)
+        end = timezone.make_aware(datetime(2026, 9, 21, 10, 0), tz)
+        seconds = elapsed_seconds(start, end, settings_obj)
+        self.assertAlmostEqual(seconds / 3600, 65.0, places=2)
+
+    def test_quote_stage_sent_and_draft(self):
+        from business.renewal_sla import quote_stage_is_sent
+
+        self.assertFalse(quote_stage_is_sent("Draft"))
+        self.assertFalse(quote_stage_is_sent("Negotiation"))
+        self.assertTrue(quote_stage_is_sent("Delivered"))
+        self.assertTrue(quote_stage_is_sent("Sent"))
 
 
 class ReminderScheduleOverlapTests(SimpleTestCase):
@@ -1378,6 +1514,25 @@ class ClientRenewalDealStatusTests(TestCase):
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.product_id, self.product.pk)
         self.assertEqual(self.subscription.renewal_draft_product_id, cheap.pk)
+        change = SubscriptionProductRenewal.objects.get(
+            subscription=self.subscription
+        )
+        self.assertEqual(change.old_product_name, self.product.name)
+        self.assertEqual(change.new_product_name, cheap.name)
+        self.assertFalse(change.applied)
+
+        list_page = self.client.get(reverse("client_renewal_list"))
+        self.assertContains(list_page, "New product renewal")
+        self.assertContains(list_page, "sla-switch")
+        self.assertContains(list_page, "cr-win-product-cols")
+        history = self.client.get(reverse("client_renewal_product_changes"))
+        self.assertEqual(history.status_code, 200)
+        history_data = history.json()
+        self.assertTrue(history_data["ok"])
+        self.assertEqual(len(history_data["items"]), 1)
+        self.assertEqual(history_data["items"][0]["old_product_name"], self.product.name)
+        self.assertEqual(history_data["items"][0]["new_product_name"], cheap.name)
+        self.assertFalse(history_data["items"][0]["applied"])
 
         renew = self.client.get(
             reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
@@ -1403,6 +1558,35 @@ class ClientRenewalDealStatusTests(TestCase):
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.product_id, cheap.pk)
         self.assertEqual(self.subscription.product.name, cheap.name)
+        change.refresh_from_db()
+        self.assertTrue(change.applied)
+        self.assertEqual(change.old_product_name, self.product.name)
+        self.assertEqual(change.new_product_name, cheap.name)
+        self.assertEqual(SubscriptionProductRenewal.objects.count(), 1)
+
+    def test_same_plan_renewal_does_not_create_product_change(self):
+        self.client.post(
+            self.url,
+            {
+                "deal_status": "win",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_win_form",
+                "subscription_id": self.subscription.pk,
+                "start_date": "2026-09-11",
+                "end_date": "2027-09-10",
+                "quantity": "2",
+                "billing_amount": "9000.00",
+                "vendor": str(self.vendor.pk),
+                "renew_other_plan": "0",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SubscriptionProductRenewal.objects.count(), 0)
 
     def test_add_subscription_form_has_optional_invoice_fields(self):
         response = self.client.get(reverse("subscription_add"))
