@@ -32,6 +32,11 @@ def _resolve_account(phone_number_id: str | None) -> WhatsAppAccount | None:
 def webhook(request):
     if request.method == "GET":
         return _webhook_verify(request)
+    logger.info(
+        "WhatsApp webhook POST host=%s content_length=%s",
+        request.get_host(),
+        request.META.get("CONTENT_LENGTH", "?"),
+    )
     return _webhook_receive(request)
 
 
@@ -51,9 +56,23 @@ def _webhook_receive(request):
     try:
         body = json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
+        logger.warning("WhatsApp webhook POST invalid JSON")
         return HttpResponseBadRequest("Invalid JSON")
 
-    for entry in body.get("entry") or []:
+    obj = body.get("object")
+    entries = body.get("entry") or []
+    logger.info(
+        "WhatsApp webhook payload object=%s entries=%s",
+        obj,
+        len(entries),
+    )
+    if obj and obj != "whatsapp_business_account":
+        logger.warning("WhatsApp webhook unexpected object=%s", obj)
+
+    message_count = 0
+    status_count = 0
+
+    for entry in entries:
         for change in entry.get("changes") or []:
             value = change.get("value") or {}
             metadata = value.get("metadata") or {}
@@ -61,6 +80,7 @@ def _webhook_receive(request):
             account = _resolve_account(phone_number_id)
 
             for status in value.get("statuses") or []:
+                status_count += 1
                 WhatsAppMessageLog.objects.create(
                     company=account.company if account else None,
                     account=account,
@@ -75,6 +95,7 @@ def _webhook_receive(request):
                 )
 
             for message in value.get("messages") or []:
+                message_count += 1
                 WhatsAppMessageLog.objects.create(
                     company=account.company if account else None,
                     account=account,
@@ -93,6 +114,23 @@ def _webhook_receive(request):
                         "contacts": value.get("contacts") or [],
                     },
                 )
+
+    if not message_count and not status_count:
+        fields = [
+            (change.get("field") or "?")
+            for entry in entries
+            for change in (entry.get("changes") or [])
+        ]
+        logger.warning(
+            "WhatsApp webhook POST had no messages/statuses; change fields=%s",
+            fields or ["none"],
+        )
+    else:
+        logger.info(
+            "WhatsApp webhook processed messages=%s statuses=%s",
+            message_count,
+            status_count,
+        )
 
     return JsonResponse({"ok": True})
 

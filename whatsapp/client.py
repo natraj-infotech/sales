@@ -18,7 +18,7 @@ class WhatsAppClientError(Exception):
 
 
 def _graph_url(phone_number_id: str, path: str = "messages") -> str:
-    version = getattr(settings, "WHATSAPP_API_VERSION", "v21.0")
+    version = getattr(settings, "WHATSAPP_API_VERSION", "v26.0")
     return f"https://graph.facebook.com/{version}/{phone_number_id}/{path}"
 
 
