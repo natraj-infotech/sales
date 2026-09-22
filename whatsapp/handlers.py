@@ -71,7 +71,9 @@ def inbound_welcome_handler(account: AccountLike, event: dict[str, Any]) -> None
         return
     from .conversation import handle_inbound_customer_message
 
-    handle_inbound_customer_message(account, event)
+    result = handle_inbound_customer_message(account, event)
+    if result.get("skipped") in ("no_account", "send_failed"):
+        logger.info("WhatsApp inbound welcome result=%s", result)
 
 
 def _product_options(account: AccountLike) -> list[dict[str, str]]:

@@ -20,12 +20,9 @@ from .client import (
     send_interactive_reply_buttons,
     send_text_message,
 )
-from .account_resolve import EnvWhatsAppAccount, resolve_lead_company
-from .models import WhatsAppAccount
+from .account_resolve import WhatsAppAccountLike, resolve_lead_company
 
 logger = logging.getLogger(__name__)
-
-WhatsAppAccountLike = WhatsAppAccount | EnvWhatsAppAccount
 
 
 def inactivity_hours() -> float:
@@ -155,6 +152,10 @@ def handle_inbound_customer_message(
     }
     if account is None:
         result["skipped"] = "no_account"
+        logger.warning(
+            "WhatsApp inbound skipped welcome: no account (set WHATSAPP_ACCESS_TOKEN "
+            "or an active WhatsAppAccount for this phone_number_id)"
+        )
         return result
 
     message = event.get("message") or {}
@@ -202,16 +203,19 @@ def handle_inbound_customer_message(
         update_fields.append("phone")
     lead.save(update_fields=update_fields)
 
-    if new_convo:
+    never_welcomed = lead.last_welcome_sent_at is None
+    should_welcome = new_convo or never_welcomed
+    if should_welcome:
         try:
             send_welcome_menu(account=account, to=wa_from)
             lead.last_welcome_sent_at = timezone.now()
             lead.save(update_fields=["last_welcome_sent_at", "updated_at"])
             result["welcome_sent"] = True
             logger.info(
-                "WhatsApp welcome sent lead_id=%s wa_from=%s",
+                "WhatsApp welcome sent lead_id=%s wa_from=%s new_convo=%s",
                 lead.pk,
                 wa_from,
+                new_convo,
             )
         except WhatsAppClientError:
             logger.exception(
@@ -220,6 +224,13 @@ def handle_inbound_customer_message(
                 wa_from,
             )
             result["skipped"] = "send_failed"
+    elif not never_welcomed:
+        result["skipped"] = "not_new_conversation"
+        logger.info(
+            "WhatsApp welcome skipped lead_id=%s wa_from=%s (within inactivity window)",
+            lead.pk,
+            wa_from,
+        )
 
     result["handled"] = True
     result["lead_id"] = lead.pk

@@ -8,7 +8,8 @@ from typing import Any
 import requests
 from django.conf import settings
 
-from .models import WhatsAppAccount, WhatsAppMessageLog
+from .account_resolve import WhatsAppAccountLike, account_log_fields
+from .models import WhatsAppMessageLog
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def _graph_url(phone_number_id: str, path: str = "messages") -> str:
 
 def send_text_message(
     *,
-    account: WhatsAppAccount,
+    account: WhatsAppAccountLike,
     to: str,
     body: str,
     preview_url: bool = False,
@@ -55,9 +56,10 @@ def send_text_message(
     except ValueError:
         data = {"raw": resp.text}
 
+    company, db_account = account_log_fields(account)
     WhatsAppMessageLog.objects.create(
-        company=account.company,
-        account=account,
+        company=company,
+        account=db_account,
         direction=WhatsAppMessageLog.Direction.OUTBOUND,
         wa_to=to,
         event_type="text",
@@ -67,13 +69,13 @@ def send_text_message(
 
     if resp.status_code >= 400:
         logger.error("WhatsApp send failed: %s %s", resp.status_code, data)
-        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}")
+        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}: {data}")
     return data
 
 
 def send_template_message(
     *,
-    account: WhatsAppAccount,
+    account: WhatsAppAccountLike,
     to: str,
     template_name: str,
     language_code: str = "en",
@@ -109,9 +111,10 @@ def send_template_message(
     except ValueError:
         data = {"raw": resp.text}
 
+    company, db_account = account_log_fields(account)
     WhatsAppMessageLog.objects.create(
-        company=account.company,
-        account=account,
+        company=company,
+        account=db_account,
         direction=WhatsAppMessageLog.Direction.OUTBOUND,
         wa_to=to,
         event_type=f"template:{template_name}",
@@ -119,13 +122,13 @@ def send_template_message(
         wa_message_id=(data.get("messages") or [{}])[0].get("id", ""),
     )
     if resp.status_code >= 400:
-        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}")
+        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}: {data}")
     return data
 
 
 def _post_message(
     *,
-    account: WhatsAppAccount,
+    account: WhatsAppAccountLike,
     payload: dict[str, Any],
     event_type: str,
     wa_to: str,
@@ -148,9 +151,10 @@ def _post_message(
     except ValueError:
         data = {"raw": resp.text}
 
+    company, db_account = account_log_fields(account)
     WhatsAppMessageLog.objects.create(
-        company=account.company,
-        account=account,
+        company=company,
+        account=db_account,
         direction=WhatsAppMessageLog.Direction.OUTBOUND,
         wa_to=wa_to,
         event_type=event_type,
@@ -159,13 +163,13 @@ def _post_message(
     )
     if resp.status_code >= 400:
         logger.error("WhatsApp send failed: %s %s", resp.status_code, data)
-        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}")
+        raise WhatsAppClientError(f"WhatsApp API error {resp.status_code}: {data}")
     return data
 
 
 def send_interactive_reply_buttons(
     *,
-    account: WhatsAppAccount,
+    account: WhatsAppAccountLike,
     to: str,
     body_text: str,
     buttons: list[dict[str, str]],
@@ -215,7 +219,7 @@ def send_interactive_reply_buttons(
 
 def send_flow_message(
     *,
-    account: WhatsAppAccount,
+    account: WhatsAppAccountLike,
     to: str,
     body_text: str,
     flow_id: str,

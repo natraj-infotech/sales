@@ -12,14 +12,10 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .encryption import FlowEncryptionError, decrypt_request, encrypt_response
 from .handlers import dispatch_webhook, get_flow_handler
-from .account_resolve import resolve_lead_company, resolve_webhook_account
-from .models import WhatsAppAccount, WhatsAppMessageLog
+from .account_resolve import account_log_fields, resolve_webhook_account
+from .models import WhatsAppMessageLog
 
 logger = logging.getLogger(__name__)
-
-
-def _company_for_account(account):
-    return resolve_lead_company(account)
 
 
 @csrf_exempt
@@ -73,8 +69,14 @@ def _webhook_receive(request):
             metadata = value.get("metadata") or {}
             phone_number_id = metadata.get("phone_number_id")
             account = resolve_webhook_account(phone_number_id)
-            company = _company_for_account(account)
-            db_account = account if isinstance(account, WhatsAppAccount) else None
+            company, db_account = account_log_fields(account)
+            if account is None and phone_number_id:
+                logger.warning(
+                    "WhatsApp webhook: no account for phone_number_id=%s "
+                    "(inbound logged; welcome/outbound need WHATSAPP_ACCESS_TOKEN "
+                    "or WhatsAppAccount row)",
+                    phone_number_id,
+                )
 
             for status in value.get("statuses") or []:
                 status_count += 1

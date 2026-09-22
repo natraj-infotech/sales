@@ -12,7 +12,6 @@ from .models import WhatsAppAccount
 if TYPE_CHECKING:
     from accounts.models import CompanyProfile
 
-
 @dataclass
 class EnvWhatsAppAccount:
     """Outbound credentials from .env when no WhatsAppAccount row exists."""
@@ -29,6 +28,9 @@ class EnvWhatsAppAccount:
             (self.access_token or "").strip()
             or (getattr(settings, "WHATSAPP_ACCESS_TOKEN", "") or "").strip()
         )
+
+
+WhatsAppAccountLike = WhatsAppAccount | EnvWhatsAppAccount
 
 
 def resolve_lead_company(account: WhatsAppAccount | EnvWhatsAppAccount | None):
@@ -78,3 +80,12 @@ def resolve_webhook_account(
         return None
 
     return EnvWhatsAppAccount(phone_number_id=pid)
+
+
+def account_log_fields(account: WhatsAppAccountLike | None) -> tuple:
+    """(company, db WhatsAppAccount) for WhatsAppMessageLog rows."""
+    if account is None:
+        return None, None
+    company = resolve_lead_company(account)
+    db_account = account if isinstance(account, WhatsAppAccount) else None
+    return company, db_account
