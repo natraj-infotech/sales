@@ -20,9 +20,12 @@ from .client import (
     send_interactive_reply_buttons,
     send_text_message,
 )
+from .account_resolve import EnvWhatsAppAccount, resolve_lead_company
 from .models import WhatsAppAccount
 
 logger = logging.getLogger(__name__)
+
+WhatsAppAccountLike = WhatsAppAccount | EnvWhatsAppAccount
 
 
 def inactivity_hours() -> float:
@@ -87,7 +90,7 @@ def _parse_buttons() -> list[dict[str, str]]:
     return buttons[:3] or [{"id": "lead", "title": "New enquiry"}]
 
 
-def send_welcome_menu(*, account: WhatsAppAccount, to: str) -> None:
+def send_welcome_menu(*, account: WhatsAppAccountLike, to: str) -> None:
     """Send the configured welcome/menu (flow, buttons, or text)."""
     body = (
         getattr(settings, "WHATSAPP_WELCOME_BODY", "")
@@ -135,7 +138,7 @@ def send_welcome_menu(*, account: WhatsAppAccount, to: str) -> None:
 
 @transaction.atomic
 def handle_inbound_customer_message(
-    account: WhatsAppAccount | None,
+    account: WhatsAppAccountLike | None,
     event: dict[str, Any],
 ) -> dict[str, Any]:
     """
@@ -167,9 +170,10 @@ def handle_inbound_customer_message(
         result["skipped"] = "missing_from"
         return result
 
+    company = resolve_lead_company(account)
     contact_name = _contact_name_from_event(event, wa_from)
     lead, _created = get_or_create_lead_by_whatsapp_id(
-        company=account.company,
+        company=company,
         whatsapp_wa_id=wa_from,
         contact_name=contact_name,
         phone=wa_from,

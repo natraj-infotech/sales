@@ -241,6 +241,7 @@ WHATSAPP_META_APP_ID = os.environ.get("WHATSAPP_META_APP_ID", "").strip()
 WHATSAPP_DEFAULT_PHONE_NUMBER_ID = os.environ.get(
     "WHATSAPP_DEFAULT_PHONE_NUMBER_ID", ""
 ).strip()
+WHATSAPP_DEFAULT_COMPANY_ID = os.environ.get("WHATSAPP_DEFAULT_COMPANY_ID", "").strip()
 WHATSAPP_DEFAULT_FLOW_HANDLER = (
     os.environ.get("WHATSAPP_DEFAULT_FLOW_HANDLER", "lead") or "lead"
 ).strip()

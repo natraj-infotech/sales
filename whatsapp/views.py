@@ -12,19 +12,14 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .encryption import FlowEncryptionError, decrypt_request, encrypt_response
 from .handlers import dispatch_webhook, get_flow_handler
+from .account_resolve import resolve_lead_company, resolve_webhook_account
 from .models import WhatsAppAccount, WhatsAppMessageLog
 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_account(phone_number_id: str | None) -> WhatsAppAccount | None:
-    if not phone_number_id:
-        return None
-    return (
-        WhatsAppAccount.objects.select_related("company")
-        .filter(phone_number_id=str(phone_number_id), is_active=True)
-        .first()
-    )
+def _company_for_account(account):
+    return resolve_lead_company(account)
 
 
 @csrf_exempt
@@ -77,13 +72,15 @@ def _webhook_receive(request):
             value = change.get("value") or {}
             metadata = value.get("metadata") or {}
             phone_number_id = metadata.get("phone_number_id")
-            account = _resolve_account(phone_number_id)
+            account = resolve_webhook_account(phone_number_id)
+            company = _company_for_account(account)
+            db_account = account if isinstance(account, WhatsAppAccount) else None
 
             for status in value.get("statuses") or []:
                 status_count += 1
                 WhatsAppMessageLog.objects.create(
-                    company=account.company if account else None,
-                    account=account,
+                    company=company,
+                    account=db_account,
                     direction=WhatsAppMessageLog.Direction.INBOUND,
                     wa_message_id=status.get("id", ""),
                     event_type=f"status:{status.get('status', '')}",
@@ -97,8 +94,8 @@ def _webhook_receive(request):
             for message in value.get("messages") or []:
                 message_count += 1
                 WhatsAppMessageLog.objects.create(
-                    company=account.company if account else None,
-                    account=account,
+                    company=company,
+                    account=db_account,
                     direction=WhatsAppMessageLog.Direction.INBOUND,
                     wa_message_id=message.get("id", ""),
                     wa_from=message.get("from", ""),
@@ -155,7 +152,7 @@ def flow_data_exchange(request):
         or body.get("phone_number_id")
         or getattr(settings, "WHATSAPP_DEFAULT_PHONE_NUMBER_ID", "")
     )
-    account = _resolve_account(phone_number_id)
+    account = resolve_webhook_account(phone_number_id)
 
     handler_name = request.GET.get("handler") or getattr(
         settings, "WHATSAPP_DEFAULT_FLOW_HANDLER", "lead"
