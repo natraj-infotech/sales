@@ -57,7 +57,7 @@
         <p class="muted" style="margin:0.75rem 0 0;font-size:0.875rem;">
           Suggested renewal:
           {{ suggested_start|date:"d M Y" }} to {{ suggested_end|date:"d M Y" }}
-          (same term length as the current period).
+          (one year after the new start date). You can edit either date.
         </p>
       </section>
 
@@ -122,6 +122,32 @@
 </div>
 <script>
 (function () {
+  var startInput = document.getElementById("id_start_date");
+  var endInput = document.getElementById("id_end_date");
+  if (startInput && endInput) {
+    startInput.addEventListener("change", function () {
+      var next = addOneYear(startInput.value);
+      if (next) endInput.value = next;
+    });
+  }
+
+  function addOneYear(value) {
+    if (!value) return "";
+    var parts = value.split("-");
+    if (parts.length !== 3) return "";
+    var year = parseInt(parts[0], 10) + 1;
+    var month = parseInt(parts[1], 10);
+    var day = parseInt(parts[2], 10);
+    if (!year || !month || !day) return "";
+    var dt = new Date(year, month - 1, day);
+    if (dt.getFullYear() !== year || dt.getMonth() !== month - 1) {
+      dt = new Date(year, month, 0);
+    }
+    var m = String(dt.getMonth() + 1).padStart(2, "0");
+    var d = String(dt.getDate()).padStart(2, "0");
+    return dt.getFullYear() + "-" + m + "-" + d;
+  }
+
   var select = document.getElementById("id_vendor");
   if (!select) return;
   var lastValue = select.value;

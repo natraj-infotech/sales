@@ -2,15 +2,83 @@
 {% block title %}Client renewals{% endblock %}
 
 {% block page_header %}
-<div class="tracker-page-header">
+<style>
+  .cr-page-header {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .cr-page-header .tracker-page-header-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+  }
+  .cr-header-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .cr-page-header .tracker-page-subtitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cr-page-header .tracker-page-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+  .cr-live-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 22rem;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0.45rem 0 0;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .cr-live-state {
+    flex: 0 0 5.75rem;
+    text-align: center;
+  }
+  .cr-live-time {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+  }
+  .cr-live-meta.is-error {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+  @media (max-width: 1100px) {
+    .cr-page-header { flex-wrap: wrap; }
+    .cr-page-header .tracker-page-actions { flex-wrap: wrap; }
+    .cr-live-meta {
+      width: 100%;
+      max-width: none;
+    }
+  }
+</style>
+<div class="tracker-page-header cr-page-header">
   <div class="tracker-page-header-text">
     <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-mail"/></svg>
-    <div>
+    <div class="cr-header-copy">
       <h1 class="tracker-page-title">Client renewals</h1>
       <p class="tracker-page-subtitle">
         Renewal reminder emails and Outlook read / response status
-        <span id="cr-live-meta" class="cr-live-meta">Live polling…</span>
       </p>
+      <div id="cr-live-meta" class="cr-live-meta" title="Checking…">
+        <span id="cr-live-state" class="cr-live-state">Checking…</span>
+        <span id="cr-live-time" class="cr-live-time">Last check —</span>
+      </div>
     </div>
   </div>
   <div class="tracker-page-actions">
@@ -147,20 +215,6 @@
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-  }
-  .cr-live-meta {
-    display: inline-block;
-    margin-left: 0.5rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    background: #eff6ff;
-    color: #1d4ed8;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  .cr-live-meta.is-error {
-    background: #fef2f2;
-    color: #b91c1c;
   }
   .cr-flash td {
     animation: crFlash 1.2s ease;
@@ -1024,7 +1078,227 @@
     color: #b91c1c;
     font-size: 0.75rem;
   }
+  .cr-filters {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.75rem 0.85rem;
+    margin: 0 0 0.85rem;
+    padding: 0.85rem 1rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+  }
+  .cr-filter {
+    position: relative;
+    min-width: 11.5rem;
+    flex: 1 1 11.5rem;
+    max-width: 16rem;
+  }
+  .cr-filter-btn {
+    width: 100%;
+    height: 100%;
+    min-height: 3.05rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.12rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: #0f172a;
+  }
+  .cr-filter-btn:hover,
+  .cr-filter.is-open .cr-filter-btn {
+    border-color: #93c5fd;
+    background: #f8fafc;
+  }
+  .cr-filter-kicker {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+  .cr-filter-value {
+    width: 100%;
+    font-size: 0.86rem;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cr-filter-panel {
+    position: absolute;
+    z-index: 40;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.35rem);
+    min-width: 14rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    padding: 0.55rem;
+  }
+  .cr-filter-panel[hidden] { display: none; }
+  .cr-filter-search {
+    width: 100%;
+    margin: 0 0 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.84rem;
+  }
+  .cr-filter-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    max-height: 14rem;
+    overflow: auto;
+  }
+  .cr-filter-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    color: #0f172a;
+    cursor: pointer;
+  }
+  .cr-filter-option:hover { background: #eff6ff; }
+  .cr-filter-option input { margin-top: 0.15rem; }
+  .cr-filter-option span { line-height: 1.3; }
+  .cr-filter-empty {
+    margin: 0.35rem 0.2rem;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+  .cr-filter-chip {
+    position: relative;
+    min-width: 11.5rem;
+    flex: 1 1 11.5rem;
+    max-width: 16rem;
+  }
+  .cr-filter-chip input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .cr-filter-chip span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 3.05rem;
+    box-sizing: border-box;
+    padding: 0.4rem 0.7rem;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    font-size: 0.84rem;
+    font-weight: 650;
+    color: #334155;
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .cr-filter-chip input:focus-visible + span {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+  }
+  .cr-filter-chip input:checked + span {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+  }
+  .cr-filter-clear {
+    min-width: 11.5rem;
+    flex: 1 1 11.5rem;
+    max-width: 16rem;
+    min-height: 3.05rem;
+    box-sizing: border-box;
+    padding: 0.4rem 0.7rem;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .cr-filter-clear:hover { background: #f8fafc; }
+  .cr-filter-count {
+    margin-left: auto;
+    align-self: center;
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  .cr-sheet {
+    position: relative;
+    z-index: 1;
+  }
 </style>
+
+<div class="cr-filters" id="cr-filters">
+  <div class="cr-filter" data-filter="company">
+    <button type="button" class="cr-filter-btn" id="cr-filter-company-btn" aria-haspopup="listbox" aria-expanded="false">
+      <span class="cr-filter-kicker">Company</span>
+      <span class="cr-filter-value" id="cr-filter-company-value">All</span>
+    </button>
+    <div class="cr-filter-panel" id="cr-filter-company-panel" hidden>
+      <input type="search" class="cr-filter-search" id="cr-filter-company-search" placeholder="Search companies" autocomplete="off">
+      <div class="cr-filter-options" id="cr-filter-company-options"></div>
+    </div>
+  </div>
+  <div class="cr-filter" data-filter="product">
+    <button type="button" class="cr-filter-btn" id="cr-filter-product-btn" aria-haspopup="listbox" aria-expanded="false">
+      <span class="cr-filter-kicker">Product</span>
+      <span class="cr-filter-value" id="cr-filter-product-value">All</span>
+    </button>
+    <div class="cr-filter-panel" id="cr-filter-product-panel" hidden>
+      <input type="search" class="cr-filter-search" id="cr-filter-product-search" placeholder="Search products" autocomplete="off">
+      <div class="cr-filter-options" id="cr-filter-product-options"></div>
+    </div>
+  </div>
+  <div class="cr-filter" data-filter="sla">
+    <button type="button" class="cr-filter-btn" id="cr-filter-sla-btn" aria-haspopup="listbox" aria-expanded="false">
+      <span class="cr-filter-kicker">SLA</span>
+      <span class="cr-filter-value" id="cr-filter-sla-value">All</span>
+    </button>
+    <div class="cr-filter-panel" id="cr-filter-sla-panel" hidden>
+      <div class="cr-filter-options" id="cr-filter-sla-options">
+        <label class="cr-filter-option"><input type="checkbox" value="on_track"><span>On track</span></label>
+        <label class="cr-filter-option"><input type="checkbox" value="overdue"><span>Overdue</span></label>
+        <label class="cr-filter-option"><input type="checkbox" value="breached"><span>Breached</span></label>
+        <label class="cr-filter-option"><input type="checkbox" value="met"><span>Met</span></label>
+        <label class="cr-filter-option"><input type="checkbox" value="off"><span>Not started</span></label>
+      </div>
+    </div>
+  </div>
+  <label class="cr-filter-chip">
+    <input type="checkbox" id="cr-filter-fill">
+    <span>Fill form pending</span>
+  </label>
+  <label class="cr-filter-chip">
+    <input type="checkbox" id="cr-filter-deal">
+    <span>Win / Lost pending</span>
+  </label>
+  <button type="button" class="cr-filter-clear" id="cr-filter-clear">Clear</button>
+  <span class="cr-filter-count" id="cr-filter-count"></span>
+</div>
 
 <div class="cr-sheet">
   <div class="cr-sheet-scroll">
@@ -1286,6 +1560,8 @@
   var POLL_MS = 15000;
   var tbody = document.getElementById("cr-tbody");
   var meta = document.getElementById("cr-live-meta");
+  var liveState = document.getElementById("cr-live-state");
+  var liveTime = document.getElementById("cr-live-time");
   var refreshBtn = document.getElementById("cr-refresh-btn");
   var productRenewalsBtn = document.getElementById("cr-product-renewals-btn");
   var productRenewalsModal = document.getElementById("cr-pr-modal");
@@ -1311,13 +1587,16 @@
   var infoTabProduct = document.getElementById("cr-info-tab-product");
   var infoTabEmail = document.getElementById("cr-info-tab-email");
   var currentGroups = [];
+  var groupsReady = false;
   var openInfoCompany = "";
   var openInfoTab = "";
   try {
     var groupsEl = document.getElementById("cr-groups-data");
     currentGroups = groupsEl ? JSON.parse(groupsEl.textContent) : [];
+    groupsReady = !!groupsEl;
   } catch (err) {
     currentGroups = [];
+    groupsReady = false;
   }
 
   function escapeHtml(text) {
@@ -1781,6 +2060,294 @@
     });
   }
 
+  var SLA_LABELS = {
+    on_track: "On track",
+    overdue: "Overdue",
+    breached: "Breached",
+    met: "Met",
+    off: "Not started",
+  };
+  var filterState = {
+    companies: {},
+    products: {},
+    sla: {},
+    fillForm: false,
+    winLost: false,
+  };
+  var companyNamesKey = "";
+  var productNamesKey = "";
+  var lastCompanyNames = [];
+  var lastProductNames = [];
+
+  function selectedValues(map) {
+    return Object.keys(map).filter(function (key) { return map[key]; });
+  }
+
+  function filtersActive() {
+    return !!(
+      selectedValues(filterState.companies).length ||
+      selectedValues(filterState.products).length ||
+      selectedValues(filterState.sla).length ||
+      filterState.fillForm ||
+      filterState.winLost
+    );
+  }
+
+  function choiceSummary(values, labels) {
+    if (!values.length) return "All";
+    if (values.length === 1) return (labels && labels[values[0]]) || values[0];
+    return values.length + " selected";
+  }
+
+  function updateFilterButtons() {
+    var companyValue = document.getElementById("cr-filter-company-value");
+    var productValue = document.getElementById("cr-filter-product-value");
+    var slaValue = document.getElementById("cr-filter-sla-value");
+    if (companyValue) companyValue.textContent = choiceSummary(selectedValues(filterState.companies));
+    if (productValue) productValue.textContent = choiceSummary(selectedValues(filterState.products));
+    if (slaValue) slaValue.textContent = choiceSummary(selectedValues(filterState.sla), SLA_LABELS);
+  }
+
+  function updateFilterCount(shown, total) {
+    var el = document.getElementById("cr-filter-count");
+    if (!el) return;
+    if (!total) {
+      el.textContent = "";
+      return;
+    }
+    el.textContent = shown === total
+      ? shown + (shown === 1 ? " product" : " products")
+      : "Showing " + shown + " of " + total;
+  }
+
+  function rowMatches(row, companyName) {
+    var companies = selectedValues(filterState.companies);
+    if (companies.length && companies.indexOf(companyName) === -1) return false;
+    var products = selectedValues(filterState.products);
+    var productName = (row.product_name || "").trim() || "—";
+    if (products.length && products.indexOf(productName) === -1) return false;
+    var slas = selectedValues(filterState.sla);
+    if (slas.length) {
+      var status = (row.sla && row.sla.status) || "off";
+      if (slas.indexOf(status) === -1) return false;
+    }
+    if (filterState.fillForm && !(row.deal_status === "win" && row.form_empty)) return false;
+    if (filterState.winLost) {
+      var actionable = row.kind === "line" && row.deal_status_url && row.subscription_id;
+      var openDeal = row.deal_status !== "win" && row.deal_status !== "lost" && row.deal_status !== "cancel";
+      if (!(actionable && openDeal)) return false;
+    }
+    return true;
+  }
+
+  function filteredGroups() {
+    var visible = [];
+    var shown = 0;
+    var total = 0;
+    currentGroups.forEach(function (group) {
+      var companyName = group.company_name || "—";
+      var rows = group.rows || [];
+      total += rows.length;
+      var kept = rows.filter(function (row) {
+        return rowMatches(row, companyName);
+      });
+      shown += kept.length;
+      if (kept.length) {
+        visible.push({ company_name: group.company_name, rows: kept });
+      }
+    });
+    return { visible: visible, shown: shown, total: total };
+  }
+
+  function uniqueSorted(names) {
+    var seen = {};
+    var list = [];
+    names.forEach(function (name) {
+      var key = (name || "").trim() || "—";
+      if (seen[key]) return;
+      seen[key] = true;
+      list.push(key);
+    });
+    list.sort(function (a, b) { return a.localeCompare(b); });
+    return list;
+  }
+
+  function pruneSelection(map, allowed) {
+    Object.keys(map).forEach(function (key) {
+      if (allowed.indexOf(key) === -1) delete map[key];
+    });
+  }
+
+  function fillChoiceList(container, names, stateMap, query) {
+    if (!container) return;
+    var q = (query || "").trim().toLowerCase();
+    container.innerHTML = "";
+    var shown = 0;
+    names.forEach(function (name) {
+      if (q && name.toLowerCase().indexOf(q) === -1) return;
+      shown += 1;
+      var label = document.createElement("label");
+      label.className = "cr-filter-option";
+      var input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = name;
+      input.checked = !!stateMap[name];
+      input.addEventListener("change", function () {
+        if (input.checked) stateMap[name] = true;
+        else delete stateMap[name];
+        updateFilterButtons();
+        renderFiltered();
+      });
+      var span = document.createElement("span");
+      span.textContent = name;
+      label.appendChild(input);
+      label.appendChild(span);
+      container.appendChild(label);
+    });
+    if (!shown) {
+      var empty = document.createElement("p");
+      empty.className = "cr-filter-empty";
+      empty.textContent = names.length ? "No matches" : "Nothing to filter yet";
+      container.appendChild(empty);
+    }
+  }
+
+  function syncFilterChoices() {
+    var companies = [];
+    var products = [];
+    currentGroups.forEach(function (group) {
+      companies.push(group.company_name || "—");
+      (group.rows || []).forEach(function (row) {
+        products.push(row.product_name || "");
+      });
+    });
+    lastCompanyNames = uniqueSorted(companies);
+    lastProductNames = uniqueSorted(products);
+    var nextCompanyKey = lastCompanyNames.join("\n");
+    var nextProductKey = lastProductNames.join("\n");
+    pruneSelection(filterState.companies, lastCompanyNames);
+    pruneSelection(filterState.products, lastProductNames);
+    if (nextCompanyKey !== companyNamesKey) {
+      companyNamesKey = nextCompanyKey;
+      var companySearch = document.getElementById("cr-filter-company-search");
+      fillChoiceList(
+        document.getElementById("cr-filter-company-options"),
+        lastCompanyNames,
+        filterState.companies,
+        companySearch ? companySearch.value : ""
+      );
+    }
+    if (nextProductKey !== productNamesKey) {
+      productNamesKey = nextProductKey;
+      var productSearch = document.getElementById("cr-filter-product-search");
+      fillChoiceList(
+        document.getElementById("cr-filter-product-options"),
+        lastProductNames,
+        filterState.products,
+        productSearch ? productSearch.value : ""
+      );
+    }
+    updateFilterButtons();
+  }
+
+  function closeOpenFilters() {
+    var open = document.querySelectorAll(".cr-filter.is-open");
+    if (!open.length) return false;
+    open.forEach(function (el) {
+      el.classList.remove("is-open");
+      var panel = el.querySelector(".cr-filter-panel");
+      var btn = el.querySelector(".cr-filter-btn");
+      if (panel) panel.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    });
+    return true;
+  }
+
+  function bindFilters() {
+    document.querySelectorAll(".cr-filter-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var wrap = btn.closest(".cr-filter");
+        var panel = wrap ? wrap.querySelector(".cr-filter-panel") : null;
+        var willOpen = !(wrap && wrap.classList.contains("is-open"));
+        closeOpenFilters();
+        if (willOpen && wrap && panel) {
+          wrap.classList.add("is-open");
+          panel.hidden = false;
+          btn.setAttribute("aria-expanded", "true");
+          var search = panel.querySelector(".cr-filter-search");
+          if (search) search.focus();
+        }
+      });
+    });
+    var companySearch = document.getElementById("cr-filter-company-search");
+    if (companySearch) {
+      companySearch.addEventListener("input", function () {
+        fillChoiceList(
+          document.getElementById("cr-filter-company-options"),
+          lastCompanyNames,
+          filterState.companies,
+          companySearch.value
+        );
+      });
+    }
+    var productSearch = document.getElementById("cr-filter-product-search");
+    if (productSearch) {
+      productSearch.addEventListener("input", function () {
+        fillChoiceList(
+          document.getElementById("cr-filter-product-options"),
+          lastProductNames,
+          filterState.products,
+          productSearch.value
+        );
+      });
+    }
+    document.querySelectorAll("#cr-filter-sla-options input").forEach(function (input) {
+      input.addEventListener("change", function () {
+        if (input.checked) filterState.sla[input.value] = true;
+        else delete filterState.sla[input.value];
+        updateFilterButtons();
+        renderFiltered();
+      });
+    });
+    var fill = document.getElementById("cr-filter-fill");
+    var deal = document.getElementById("cr-filter-deal");
+    if (fill) {
+      fill.addEventListener("change", function () {
+        filterState.fillForm = !!fill.checked;
+        renderFiltered();
+      });
+    }
+    if (deal) {
+      deal.addEventListener("change", function () {
+        filterState.winLost = !!deal.checked;
+        renderFiltered();
+      });
+    }
+    var clearBtn = document.getElementById("cr-filter-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        Object.keys(filterState.companies).forEach(function (key) { delete filterState.companies[key]; });
+        Object.keys(filterState.products).forEach(function (key) { delete filterState.products[key]; });
+        Object.keys(filterState.sla).forEach(function (key) { delete filterState.sla[key]; });
+        filterState.fillForm = false;
+        filterState.winLost = false;
+        if (fill) fill.checked = false;
+        if (deal) deal.checked = false;
+        document.querySelectorAll("#cr-filters input[type='checkbox']").forEach(function (input) {
+          input.checked = false;
+        });
+        updateFilterButtons();
+        renderFiltered();
+      });
+    }
+    document.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest(".cr-filter")) return;
+      closeOpenFilters();
+    });
+  }
+
   function createProductRow(row) {
     var tr = document.createElement("tr");
     tr.className = "cr-product-row";
@@ -1808,19 +2375,18 @@
     return tr;
   }
 
-  function applyGroups(groups) {
+  function paintGroups(groups, emptyMessage) {
     if (!tbody) return;
-    currentGroups = groups || [];
     tbody.innerHTML = "";
-    if (!currentGroups.length) {
+    if (!groups.length) {
       tbody.innerHTML =
         '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="8">' +
-        "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients." +
+        escapeHtml(emptyMessage) +
         "</td></tr>";
       if (infoModal && !infoModal.hidden) renderInfoBody();
       return;
     }
-    currentGroups.forEach(function (group) {
+    groups.forEach(function (group) {
       var companyName = group.company_name || "—";
       var companyTr = document.createElement("tr");
       companyTr.className = "cr-company-row";
@@ -1843,6 +2409,32 @@
     });
     bindInfoButtons();
     if (infoModal && !infoModal.hidden) renderInfoBody();
+  }
+
+  function renderFiltered() {
+    if (!tbody) return;
+    syncFilterChoices();
+    if (!currentGroups.length) {
+      paintGroups(
+        [],
+        "No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients."
+      );
+      updateFilterCount(0, 0);
+      return;
+    }
+    var result = filteredGroups();
+    if (!result.visible.length) {
+      paintGroups([], "No renewals match these filters.");
+    } else {
+      paintGroups(result.visible);
+    }
+    updateFilterCount(result.shown, result.total);
+  }
+
+  function applyGroups(groups) {
+    currentGroups = groups || [];
+    groupsReady = true;
+    renderFiltered();
   }
 
 
@@ -2041,6 +2633,23 @@
     }
   }
 
+  function addOneYear(value) {
+    if (!value) return "";
+    var parts = value.split("-");
+    if (parts.length !== 3) return "";
+    var year = parseInt(parts[0], 10) + 1;
+    var month = parseInt(parts[1], 10);
+    var day = parseInt(parts[2], 10);
+    if (!year || !month || !day) return "";
+    var dt = new Date(year, month - 1, day);
+    if (dt.getFullYear() !== year || dt.getMonth() !== month - 1) {
+      dt = new Date(year, month, 0);
+    }
+    var m = String(dt.getMonth() + 1).padStart(2, "0");
+    var d = String(dt.getDate()).padStart(2, "0");
+    return dt.getFullYear() + "-" + m + "-" + d;
+  }
+
   function renderWinForm(item) {
     if (!dealList) return;
     var draft = item.draft || {};
@@ -2175,6 +2784,14 @@
     if (backBtn) {
       backBtn.addEventListener("click", function () { closeDealModal(); });
     }
+    var startInput = document.getElementById("cr-win-start");
+    var endInput = document.getElementById("cr-win-end");
+    if (startInput && endInput) {
+      startInput.addEventListener("change", function () {
+        var next = addOneYear(startInput.value);
+        if (next) endInput.value = next;
+      });
+    }
     if (form) {
       bindWinProductPicker(form, draft.product || "");
       form.addEventListener("submit", function (e) {
@@ -2283,6 +2900,8 @@
   }
 
   bindServerRows();
+  bindFilters();
+  if (groupsReady) renderFiltered();
 
   if (dealModal) {
     dealModal.addEventListener("click", function (e) {
@@ -2330,19 +2949,27 @@
       closeProductRenewalsModal();
       return;
     }
-    if (slaModal && !slaModal.hidden) closeSlaModal();
+    if (slaModal && !slaModal.hidden) {
+      closeSlaModal();
+      return;
+    }
+    closeOpenFilters();
   });
 
-  function setMeta(text, isError) {
+  function setMeta(state, detail, isError) {
+    if (liveState) liveState.textContent = state || "";
+    if (detail != null && liveTime) liveTime.textContent = detail;
     if (!meta) return;
-    meta.textContent = text;
     meta.classList.toggle("is-error", !!isError);
+    meta.title = [state || "", detail || (liveTime ? liveTime.textContent : "")]
+      .filter(function (part) { return part; })
+      .join(" · ");
   }
 
   function poll() {
     if (inFlight) return;
     inFlight = true;
-    setMeta("Polling Outlook…", false);
+    setMeta("Checking…", null, false);
     fetch(LIVE_URL, {
       headers: { "X-Requested-With": "XMLHttpRequest" },
       credentials: "same-origin",
@@ -2353,17 +2980,18 @@
       })
       .then(function (data) {
         applyGroups(data.groups || []);
-        var suffix = data.updated ? " · " + data.updated + " updated" : "";
-        setMeta("Live · last check " + (data.polled_at || "just now") + suffix, false);
+        var detail = "Last check " + (data.polled_at || "just now");
+        if (data.updated) detail += " · " + data.updated + " updated";
+        setMeta("Live", detail, false);
         if (data.logs && data.logs.length) {
           var fail = data.logs.filter(function (m) {
             return String(m).toLowerCase().indexOf("failed") !== -1;
           });
-          if (fail.length) setMeta(fail[0], true);
+          if (fail.length) setMeta("Error", fail[0], true);
         }
       })
       .catch(function (err) {
-        setMeta("Live poll failed — retrying", true);
+        setMeta("Error", "Could not refresh — retrying", true);
         console.error(err);
       })
       .finally(function () {

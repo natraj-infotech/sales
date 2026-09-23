@@ -672,14 +672,42 @@
     }
 
     .messages-banner {
-      padding: 0.65rem 1rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.65rem 0.75rem 0.65rem 1rem;
       background: var(--accent-soft);
       border: 1px solid #bfdbfe;
       border-radius: var(--radius-sm);
       color: var(--accent-hover);
       font-size: 0.875rem;
       margin-bottom: 1rem;
+    }
+    .messages-banner-text {
+      flex: 1 1 auto;
+      min-width: 0;
       white-space: pre-wrap;
+    }
+    .messages-banner-close {
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 0 0.2rem;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 1.25rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    .messages-banner-close:hover,
+    .messages-banner-close:focus {
+      opacity: 1;
+    }
+    html.hide-restore-notice .messages-banner--restore {
+      display: none !important;
     }
     .messages-banner--error {
       background: #fef2f2;
@@ -2619,6 +2647,19 @@
     }
   </style>
   {% block extra_css %}{% endblock %}
+  {% if last_restore_notice %}
+  <script>
+  (function () {
+    var id = "{{ last_restore_notice.id|default:last_restore_notice.stamp|escapejs }}";
+    var key = "tracker365-dismissed-restore-notice";
+    try {
+      if (id && localStorage.getItem(key) === id) {
+        document.documentElement.classList.add("hide-restore-notice");
+      }
+    } catch (e) {}
+  })();
+  </script>
+  {% endif %}
 </head>
 <body>
   {% include "includes/tracker_svg_sprite.html" %}
@@ -2716,16 +2757,22 @@
     <main class="tracker-main">
       {% if messages %}
         {% for message in messages %}
-          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}">{{ message }}</div>
+          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}"{% if message.tags and 'success' in message.tags and 'error' not in message.tags %} data-autohide="5000"{% endif %}>
+            <span class="messages-banner-text">{{ message }}</span>
+            <button type="button" class="messages-banner-close" aria-label="Dismiss message">&times;</button>
+          </div>
         {% endfor %}
       {% elif last_restore_notice %}
-          <div class="messages-banner messages-banner--{% if last_restore_notice.status == 'ok' %}success{% elif last_restore_notice.status == 'partial' %}warning{% else %}error{% endif %}">Restore {{ last_restore_notice.status }} from {{ last_restore_notice.stamp }}.
+          <div class="messages-banner messages-banner--restore messages-banner--{% if last_restore_notice.status == 'ok' %}success{% elif last_restore_notice.status == 'partial' %}warning{% else %}error{% endif %}" data-restore-id="{{ last_restore_notice.id|default:last_restore_notice.stamp }}"{% if last_restore_notice.status == 'ok' %} data-autohide="5000"{% endif %}>
+            <span class="messages-banner-text">Restore {{ last_restore_notice.status }} from {{ last_restore_notice.stamp }}.
 {% for err in last_restore_notice.errors %}
 Error: {{ err }}
 {% endfor %}
 {% for warn in last_restore_notice.warnings %}
 Note: {{ warn }}
-{% endfor %}</div>
+{% endfor %}</span>
+            <button type="button" class="messages-banner-close" aria-label="Dismiss message">&times;</button>
+          </div>
       {% endif %}
       {% block page_header %}{% endblock %}
       {% block content %}{% endblock %}
@@ -2733,7 +2780,6 @@ Note: {{ warn }}
   </div>
   <script>
   (function () {
-    var KEY = "tracker365-sidebar-collapsed";
     var layout = document.getElementById("app-layout");
     var sidebar = document.getElementById("app-sidebar");
     var toggleBtn = document.getElementById("sidebar-toggle");
@@ -2749,16 +2795,8 @@ Note: {{ warn }}
         "title",
         collapsed ? "Expand sidebar" : "Collapse sidebar"
       );
-      try {
-        localStorage.setItem(KEY, collapsed ? "1" : "0");
-      } catch (e) {}
     }
-    try {
-      if (localStorage.getItem(KEY) === "0") setCollapsed(false);
-      else setCollapsed(true);
-    } catch (e) {
-      setCollapsed(true);
-    }
+    setCollapsed(true);
     toggleBtn.addEventListener("click", function () {
       setCollapsed(!layout.classList.contains("sidebar-collapsed"));
     });
@@ -2769,22 +2807,43 @@ Note: {{ warn }}
     <main class="guest-main{% if public_page %} guest-main--wide{% endif %}">
       {% if messages %}
         {% for message in messages %}
-          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}">{{ message }}</div>
-        {% endfor %}
-      {% elif last_restore_notice %}
-          <div class="messages-banner messages-banner--{% if last_restore_notice.status == 'ok' %}success{% else %}error{% endif %}">
-Restore {{ last_restore_notice.status }} from {{ last_restore_notice.stamp }}.
-{% for err in last_restore_notice.errors %}
-Error: {{ err }}
-{% endfor %}
-{% for warn in last_restore_notice.warnings %}
-Note: {{ warn }}
-{% endfor %}
+          <div class="messages-banner{% if message.tags %} messages-banner--{{ message.tags }}{% endif %}"{% if message.tags and 'success' in message.tags and 'error' not in message.tags %} data-autohide="5000"{% endif %}>
+            <span class="messages-banner-text">{{ message }}</span>
+            <button type="button" class="messages-banner-close" aria-label="Dismiss message">&times;</button>
           </div>
+        {% endfor %}
       {% endif %}
       {% block content_guest %}{% endblock %}
     </main>
   </div>
   {% endif %}
+  <script>
+  (function () {
+    var banners = document.querySelectorAll(".messages-banner");
+    for (var i = 0; i < banners.length; i++) {
+      (function (el) {
+        if (el.classList.contains("messages-banner--restore")) {
+          if (document.documentElement.classList.contains("hide-restore-notice")) {
+            if (el.parentNode) el.parentNode.removeChild(el);
+            return;
+          }
+          var restoreId = el.getAttribute("data-restore-id");
+          if (restoreId) {
+            try {
+              localStorage.setItem("tracker365-dismissed-restore-notice", restoreId);
+            } catch (e) {}
+          }
+        }
+        function dismiss() {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        }
+        var btn = el.querySelector(".messages-banner-close");
+        if (btn) btn.addEventListener("click", dismiss);
+        var ms = parseInt(el.getAttribute("data-autohide") || "0", 10);
+        if (ms > 0) window.setTimeout(dismiss, ms);
+      })(banners[i]);
+    }
+  })();
+  </script>
 </body>
 </html>

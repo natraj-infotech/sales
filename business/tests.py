@@ -385,6 +385,11 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, "VPN")
         self.assertContains(response, "Quotation ID")
         self.assertContains(response, 'class="cr-th-ref"')
+        self.assertContains(response, 'id="cr-filters"')
+        self.assertContains(response, "Fill form pending")
+        self.assertContains(response, "Win / Lost pending")
+        self.assertContains(response, "Not started")
+        self.assertContains(response, "On track")
         self.assertContains(response, 'class="cr-th-sla"')
         self.assertContains(response, "SLA settings")
         self.assertContains(response, 'id="cr-sla-settings-btn"')
@@ -1389,6 +1394,34 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertFalse(self.subscription.win_form_completed)
         self.assertEqual(self.subscription.quantity, 1)
         self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
+
+    def test_unsaved_forms_use_client_quantity_and_one_year(self):
+        self.invite.submitted_at = timezone.now()
+        self.invite.save(update_fields=["submitted_at"])
+        line = self.invite.lines.get()
+        line.renewal_count = 4
+        line.save(update_fields=["renewal_count"])
+
+        response = self.client.post(
+            self.url,
+            {
+                "deal_status": "win",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        draft = response.json()["items"][0]["draft"]
+        self.assertEqual(draft["quantity"], 4)
+        self.assertEqual(draft["start_date"], "2026-09-11")
+        self.assertEqual(draft["end_date"], "2027-09-11")
+
+        renew = self.client.get(
+            reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        )
+        self.assertEqual(renew.status_code, 200)
+        form = renew.context["form"]
+        self.assertEqual(form.initial["quantity"], 4)
+        self.assertEqual(form.initial["start_date"], date(2026, 9, 11))
+        self.assertEqual(form.initial["end_date"], date(2027, 9, 11))
 
     def test_cancel_is_rejected(self):
         response = self.client.post(

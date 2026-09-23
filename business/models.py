@@ -19,6 +19,13 @@ def subscription_draft_invoice_upload_to(instance, filename):
     return f"subscription_invoice_drafts/{company_id}/{filename}"
 
 
+def _add_one_year(day):
+    try:
+        return day.replace(year=day.year + 1)
+    except ValueError:
+        return day.replace(year=day.year + 1, day=28)
+
+
 def _field_file_meta(field_file) -> tuple[str, str]:
     if not field_file:
         return "", ""
@@ -290,18 +297,27 @@ class ClientSubscription(models.Model):
         return (self.end_date - timezone.localdate()).days
 
     def renewal_dates(self, today=None):
-        """Next start/end after renew: same term length, starting day after current end."""
+        """Next period starts the day after the current end and runs for one year."""
         today = today or timezone.localdate()
         if self.end_date:
-            term_days = (self.end_date - self.start_date).days
-            if term_days < 1:
-                term_days = 365
             new_start = self.end_date + timedelta(days=1)
-            new_end = new_start + timedelta(days=term_days)
         else:
             new_start = today
-            new_end = today + timedelta(days=365)
-        return new_start, new_end
+        return new_start, _add_one_year(new_start)
+
+    def client_renewal_quantity(self):
+        """Quantity the client submitted on a renewal email, if any."""
+        line = (
+            self.renewal_invite_lines.filter(
+                renewal_count__isnull=False,
+                invite__submitted_at__isnull=False,
+            )
+            .order_by("-invite__submitted_at", "-id")
+            .first()
+        )
+        if line is None or line.renewal_count is None:
+            return None
+        return int(line.renewal_count)
 
     @property
     def win_form_empty(self) -> bool:
@@ -331,7 +347,8 @@ class ClientSubscription(models.Model):
             )
         else:
             start, end = suggested_start, suggested_end
-            quantity = self.quantity
+            submitted_qty = self.client_renewal_quantity()
+            quantity = submitted_qty if submitted_qty is not None else self.quantity
             amount = self.billing_amount
             vendor_id = self.vendor_id
             product_id = None
