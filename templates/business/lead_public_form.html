@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}New enquiry{% endblock %}
+
+{% block content_guest %}
+<div class="card" style="max-width: 520px; margin: 1.5rem auto;">
+  <h1 style="font-size: 1.35rem; margin: 0 0 0.35rem;">New enquiry</h1>
+  {% if company %}
+  <p style="color: #64748b; margin: 0 0 1.25rem; font-size: 0.95rem;">
+    {{ company.company_name }}
+  </p>
+  {% endif %}
+
+  <form method="post" action="">
+    {% csrf_token %}
+    {{ form.website }}
+    {% if form.non_field_errors %}
+    <div class="form-errors" style="margin-bottom: 1rem;">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <p class="form-field">
+      <label for="id_contact_name">{{ form.contact_name.label }} *</label>
+      {{ form.contact_name }}
+      {{ form.contact_name.errors }}
+    </p>
+    <p class="form-field">
+      <label for="id_company_name">{{ form.company_name.label }}</label>
+      {{ form.company_name }}
+    </p>
+    <p class="form-field">
+      <label for="id_email">{{ form.email.label }}</label>
+      {{ form.email }}
+    </p>
+    <p class="form-field">
+      <label for="id_phone">{{ form.phone.label }}</label>
+      {{ form.phone }}
+    </p>
+    <p class="form-field">
+      <label for="id_requirement">{{ form.requirement.label }}</label>
+      {{ form.requirement }}
+    </p>
+    {% if form.products.field.queryset %}
+    <fieldset class="form-field" style="border: none; padding: 0; margin: 0 0 1rem;">
+      <legend style="font-weight: 600; margin-bottom: 0.5rem;">Products of interest</legend>
+      {{ form.products }}
+    </fieldset>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+      Submit enquiry
+    </button>
+  </form>
+</div>
+{% endblock %}

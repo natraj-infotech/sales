@@ -973,5 +973,43 @@ class LeadForm(forms.ModelForm):
         self.fields["notes"].required = False
 
 
+class LeadPublicForm(forms.Form):
+    """Guest lead enquiry (WhatsApp CTA and other public links)."""
+
+    contact_name = forms.CharField(max_length=255, label="Your name")
+    company_name = forms.CharField(
+        max_length=255, label="Company", required=False
+    )
+    email = forms.EmailField(required=False)
+    phone = forms.CharField(max_length=64, required=False, label="Phone")
+    requirement = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 4}),
+        required=False,
+        label="What do you need?",
+    )
+    products = forms.ModelMultipleChoiceField(
+        queryset=Product.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    website = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.company = company
+        if company is not None:
+            self.fields["products"].queryset = company.products.all().order_by("name")
+        else:
+            self.fields["products"].queryset = Product.objects.none()
+
+    def clean_website(self):
+        if (self.cleaned_data.get("website") or "").strip():
+            raise forms.ValidationError("Invalid submission.")
+        return ""
+
+    def product_ids(self) -> list[int]:
+        return [p.pk for p in self.cleaned_data.get("products") or []]
+
+
 class LeadStatusForm(forms.Form):
     status = forms.ChoiceField(choices=Lead.Status.choices)

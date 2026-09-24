@@ -17,6 +17,7 @@ from business.models import Lead
 from .client import (
     WhatsAppClientError,
     send_flow_message,
+    send_interactive_cta_url,
     send_interactive_reply_buttons,
     send_text_message,
 )
@@ -87,8 +88,13 @@ def _parse_buttons() -> list[dict[str, str]]:
     return buttons[:3] or [{"id": "lead", "title": "New enquiry"}]
 
 
-def send_welcome_menu(*, account: WhatsAppAccountLike, to: str) -> None:
-    """Send the configured welcome/menu (flow, buttons, or text)."""
+def send_welcome_menu(
+    *,
+    account: WhatsAppAccountLike,
+    to: str,
+    contact_name: str = "",
+) -> None:
+    """Send the configured welcome/menu (CTA URL, flow, buttons, or text)."""
     body = (
         getattr(settings, "WHATSAPP_WELCOME_BODY", "")
         or "Welcome to Tracker365. How can we help you today?"
@@ -102,6 +108,10 @@ def send_welcome_menu(*, account: WhatsAppAccountLike, to: str) -> None:
     flow_cta = (
         getattr(settings, "WHATSAPP_WELCOME_FLOW_CTA", "") or "Open form"
     ).strip()
+    cta_label = (
+        getattr(settings, "WHATSAPP_WELCOME_CTA_DISPLAY_TEXT", "")
+        or "Open enquiry form"
+    ).strip()
 
     if mode == "flow" or (mode == "auto" and flow_id):
         if not flow_id:
@@ -112,6 +122,27 @@ def send_welcome_menu(*, account: WhatsAppAccountLike, to: str) -> None:
             body_text=body,
             flow_id=flow_id,
             flow_cta=flow_cta,
+            header_text=header,
+            footer_text=footer,
+        )
+        return
+
+    use_cta = mode == "cta_url" or (mode == "auto" and not flow_id)
+    if use_cta:
+        from business.lead_public_urls import build_lead_public_enquiry_url
+
+        company = resolve_lead_company(account)
+        enquiry_url = build_lead_public_enquiry_url(
+            company=company,
+            whatsapp_wa_id=to,
+            contact_name=contact_name,
+        )
+        send_interactive_cta_url(
+            account=account,
+            to=to,
+            body_text=body,
+            url=enquiry_url,
+            display_text=cta_label,
             header_text=header,
             footer_text=footer,
         )
@@ -207,7 +238,11 @@ def handle_inbound_customer_message(
     should_welcome = new_convo or never_welcomed
     if should_welcome:
         try:
-            send_welcome_menu(account=account, to=wa_from)
+            send_welcome_menu(
+                account=account,
+                to=wa_from,
+                contact_name=contact_name,
+            )
             lead.last_welcome_sent_at = timezone.now()
             lead.save(update_fields=["last_welcome_sent_at", "updated_at"])
             result["welcome_sent"] = True

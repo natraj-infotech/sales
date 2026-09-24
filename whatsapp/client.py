@@ -261,3 +261,54 @@ def send_flow_message(
         event_type="welcome_flow",
         wa_to=to,
     )
+
+
+def send_interactive_cta_url(
+    *,
+    account: WhatsAppAccountLike,
+    to: str,
+    body_text: str,
+    url: str,
+    display_text: str,
+    header_text: str = "",
+    footer_text: str = "",
+) -> dict[str, Any]:
+    """
+    Send an interactive Call-to-Action URL button (opens in the device browser).
+
+    display_text: button label (max 20 chars).
+    url: HTTPS destination (required in production).
+    """
+    url = (url or "").strip()
+    if not url:
+        raise WhatsAppClientError("CTA URL is required")
+
+    interactive: dict[str, Any] = {
+        "type": "cta_url",
+        "body": {"text": body_text[:1024]},
+        "action": {
+            "name": "cta_url",
+            "parameters": {
+                "display_text": (display_text or "Open")[:20],
+                "url": url,
+            },
+        },
+    }
+    if header_text:
+        interactive["header"] = {"type": "text", "text": header_text[:60]}
+    if footer_text:
+        interactive["footer"] = {"text": footer_text[:60]}
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": interactive,
+    }
+    return _post_message(
+        account=account,
+        payload=payload,
+        event_type="welcome_cta_url",
+        wa_to=to,
+    )

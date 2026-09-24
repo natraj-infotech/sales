@@ -60,6 +60,11 @@ urlpatterns = [
         views.caselock_public_form,
         name="caselock_public_form",
     ),
+    path(
+        "leads/enquiry/<str:token>/",
+        views.lead_public_enquiry,
+        name="lead_public_enquiry",
+    ),
     path("caselock/inboxes/", views.caselock_inbox_list, name="caselock_inbox_list"),
     path(
         "caselock/inboxes/live/",

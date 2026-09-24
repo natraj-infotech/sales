@@ -333,6 +333,9 @@ WHATSAPP_WELCOME_FLOW_ID = os.environ.get("WHATSAPP_WELCOME_FLOW_ID", "").strip(
 WHATSAPP_WELCOME_FLOW_CTA = os.environ.get(
     "WHATSAPP_WELCOME_FLOW_CTA", "Open form"
 ).strip()
+WHATSAPP_WELCOME_CTA_DISPLAY_TEXT = os.environ.get(
+    "WHATSAPP_WELCOME_CTA_DISPLAY_TEXT", "Open enquiry form"
+).strip()
 
 # Combined backups (PostgreSQL + MEDIA_ROOT)
 BACKUP_ENABLED = os.environ.get("BACKUP_ENABLED", "true").lower() in (

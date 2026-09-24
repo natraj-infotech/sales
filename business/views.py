@@ -34,6 +34,7 @@ from .forms import (
     ClientForm,
     ClientSubscriptionForm,
     LeadForm,
+    LeadPublicForm,
     LeadStatusForm,
     RenewalConfirmLineFormSet,
     RenewalNewProductFormSet,
@@ -3479,6 +3480,78 @@ def caselock_public_form(request, invite_id):
         {
             "form": form,
             "invite": invite,
+            "company": company,
+            "public_page": True,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def lead_public_enquiry(request, token):
+    from business.lead_ingest import create_lead_from_whatsapp
+    from business.lead_public_tokens import unsign_lead_public_token
+
+    parsed = unsign_lead_public_token(token)
+    if parsed is None:
+        return render(
+            request,
+            "business/lead_public_invalid.html",
+            {"public_page": True},
+            status=400,
+        )
+
+    company = None
+    company_id = parsed.get("company_id")
+    if company_id is not None:
+        company = CompanyProfile.objects.filter(pk=company_id).first()
+        if company is None:
+            return render(
+                request,
+                "business/lead_public_invalid.html",
+                {"public_page": True},
+                status=404,
+            )
+
+    wa_id = parsed.get("whatsapp_wa_id") or ""
+    initial = {
+        "contact_name": parsed.get("contact_name") or "",
+        "phone": wa_id,
+    }
+
+    if request.method == "POST":
+        form = LeadPublicForm(request.POST, company=company)
+        if form.is_valid():
+            try:
+                create_lead_from_whatsapp(
+                    company=company,
+                    contact_name=form.cleaned_data["contact_name"],
+                    company_name=form.cleaned_data.get("company_name") or "",
+                    email=form.cleaned_data.get("email") or "",
+                    phone=form.cleaned_data.get("phone") or wa_id,
+                    requirement=form.cleaned_data.get("requirement") or "",
+                    product_ids=form.product_ids(),
+                    whatsapp_wa_id=wa_id,
+                    raw_payload={"public_form": True},
+                )
+            except ValueError as exc:
+                form.add_error(None, str(exc))
+            except Exception:
+                logger.exception("Public lead enquiry save failed company_id=%s", company_id)
+                form.add_error(None, "Could not save your enquiry. Please try again.")
+            else:
+                return render(
+                    request,
+                    "business/lead_public_thanks.html",
+                    {"company": company, "public_page": True},
+                )
+    else:
+        form = LeadPublicForm(initial=initial, company=company)
+
+    return render(
+        request,
+        "business/lead_public_form.html",
+        {
+            "form": form,
             "company": company,
             "public_page": True,
         },

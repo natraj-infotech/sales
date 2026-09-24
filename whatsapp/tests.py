@@ -138,6 +138,37 @@ class WhatsAppWebhookVerifyTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
+class WhatsAppWelcomeCtaUrlTests(TestCase):
+    def setUp(self):
+        user = User.objects.create_user(email="cta@example.com", password="x")
+        self.company = CompanyProfile.objects.create(user=user, company_name="CTA Co")
+        self.account = WhatsAppAccount.objects.create(
+            company=self.company,
+            phone_number_id="111222",
+            label="Main",
+            access_token="test-token",
+        )
+
+    @override_settings(
+        WHATSAPP_WELCOME_MODE="cta_url",
+        PUBLIC_BASE_URL="https://app.test",
+    )
+    @patch("whatsapp.conversation.send_interactive_cta_url")
+    def test_send_welcome_menu_uses_cta_url(self, mock_cta):
+        from whatsapp.conversation import send_welcome_menu
+
+        send_welcome_menu(
+            account=self.account,
+            to="919999999999",
+            contact_name="Raj",
+        )
+        mock_cta.assert_called_once()
+        kwargs = mock_cta.call_args.kwargs
+        self.assertIn("/leads/enquiry/", kwargs["url"])
+        self.assertTrue(kwargs["url"].startswith("https://app.test"))
+        self.assertEqual(kwargs["to"], "919999999999")
+
+
 class WhatsAppConversationWelcomeTests(TestCase):
     def setUp(self):
         user = User.objects.create_user(email="owner3@example.com", password="x")
