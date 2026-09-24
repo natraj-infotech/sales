@@ -312,9 +312,12 @@ class ProcurementFlowTests(TestCase):
         self.assertEqual(vendor_resp.status_code, 302)
 
     def test_create_view_and_email_failure_keeps_deal(self):
-        self.v1.catalog_products.set([self.p1, self.p2])
-        self.v2.catalog_products.set([self.p1, self.p2])
-        self.v3.catalog_products.set([self.p1, self.p2])
+        self.v1.catalog_companies = ["Dell", "Cisco"]
+        self.v1.save(update_fields=["catalog_companies"])
+        self.v2.catalog_companies = ["Dell", "Cisco"]
+        self.v2.save(update_fields=["catalog_companies"])
+        self.v3.catalog_companies = ["Dell", "Cisco"]
+        self.v3.save(update_fields=["catalog_companies"])
         with patch("business.procurement.send_outbound", return_value=(False, "boom")):
             response = self.client.post(
                 reverse("procurement_create"),
@@ -364,36 +367,73 @@ class ProcurementFlowTests(TestCase):
         self.assertNotContains(response, "Create Scrap Deal")
         self.assertNotContains(response, "All Branches")
 
-    def test_vendors_for_products_requires_all_selected(self):
-        self.v1.catalog_products.set([self.p1, self.p2])
-        self.v2.catalog_products.set([self.p1])
-        matching = list(vendors_for_products(self.company, [self.p1.pk, self.p2.pk]))
-        self.assertEqual([vendor.pk for vendor in matching], [self.v1.pk])
+    def test_other_vendor_is_saved_and_gets_quotation(self):
+        self.v1.catalog_companies = ["Dell", "Cisco"]
+        self.v1.save(update_fields=["catalog_companies"])
+        self.v2.catalog_companies = []
+        self.v2.save(update_fields=["catalog_companies"])
+        page = self.client.get(reverse("procurement_create"))
+        self.assertContains(page, "Other vendors")
+        self.assertContains(page, "other-list")
+        with patch("business.procurement.send_outbound", return_value=(True, None)) as mocked:
+            response = self.client.post(
+                reverse("procurement_create"),
+                {
+                    "products_json": (
+                        f'[{{"product_id": {self.p1.pk}, "quantity": 1}},'
+                        f'{{"product_id": {self.p2.pk}, "quantity": 2}}]'
+                    ),
+                    "vendor_ids": [self.v1.pk, self.v2.pk],
+                    "expiration_days": 1,
+                },
+                follow=True,
+            )
+        self.assertContains(response, "Deal created")
+        self.assertTrue(DealVendor.objects.filter(company=self.company, vendor=self.v2).exists())
+        self.assertTrue(
+            VendorPriceSubmission.objects.filter(company=self.company, vendor=self.v2).exists()
+        )
+        self.assertEqual(mocked.call_count, 2)
 
-    def test_vendor_add_and_edit_save_catalog_products(self):
+    def test_vendors_for_products_requires_all_selected_companies(self):
+        extra = Product.objects.create(
+            company=self.company,
+            name="Another Dell laptop",
+            category="Hardware",
+            company_name="Dell",
+        )
+        self.v1.catalog_companies = ["Dell", "Cisco"]
+        self.v1.save(update_fields=["catalog_companies"])
+        self.v2.catalog_companies = ["Dell"]
+        self.v2.save(update_fields=["catalog_companies"])
+        both = list(vendors_for_products(self.company, [self.p1.pk, self.p2.pk]))
+        self.assertEqual([vendor.pk for vendor in both], [self.v1.pk])
+        dell_only = list(
+            vendors_for_products(self.company, [self.p1.pk, extra.pk])
+        )
+        self.assertEqual(
+            [vendor.pk for vendor in dell_only],
+            [self.v1.pk, self.v2.pk],
+        )
+
+    def test_vendor_add_and_edit_save_catalog_companies(self):
         created = self.client.post(
             reverse("vendor_add"),
-            {"name": "Mapped Vendor", "catalog_products": [self.p1.pk, self.p2.pk]},
+            {"name": "Mapped Vendor", "catalog_companies": ["Dell", "Cisco"]},
         )
         self.assertEqual(created.status_code, 302)
         vendor = Vendor.objects.get(company=self.company, name="Mapped Vendor")
-        self.assertEqual(
-            set(vendor.catalog_products.values_list("pk", flat=True)),
-            {self.p1.pk, self.p2.pk},
-        )
+        self.assertEqual(set(vendor.catalog_companies), {"Dell", "Cisco"})
         add_page = self.client.get(reverse("vendor_add"))
-        self.assertContains(add_page, "Products")
-        self.assertContains(add_page, self.p1.name)
+        self.assertContains(add_page, "Product company")
+        self.assertContains(add_page, "Dell")
         edit_page = self.client.get(reverse("vendor_edit", args=[vendor.pk]))
-        self.assertContains(edit_page, "Products")
-        self.assertContains(edit_page, 'checked', html=False)
+        self.assertContains(edit_page, "Product company")
+        self.assertContains(edit_page, "checked")
         updated = self.client.post(
             reverse("vendor_edit", args=[vendor.pk]),
-            {"name": "Mapped Vendor", "catalog_products": [self.p1.pk]},
+            {"name": "Mapped Vendor", "catalog_companies": ["Dell"]},
         )
         self.assertEqual(updated.status_code, 302)
         vendor.refresh_from_db()
-        self.assertEqual(
-            set(vendor.catalog_products.values_list("pk", flat=True)),
-            {self.p1.pk},
-        )
+        self.assertEqual(vendor.catalog_companies, ["Dell"])

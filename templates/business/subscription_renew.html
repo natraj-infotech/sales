@@ -4,6 +4,107 @@
 {% block page_header %}{% endblock %}
 
 {% block content %}
+<style>
+  .renew-plan-span { grid-column: 1 / -1; }
+  .renew-plan-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .renew-product-wrap { max-width: 48rem; width: 100%; }
+  .renew-product-picker { position: relative; }
+  .renew-product-picker select {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .renew-product-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.48rem 0.65rem;
+    font-size: 0.9rem;
+    color: #0f172a;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+  }
+  .renew-product-trigger.is-empty { color: #94a3b8; }
+  .renew-product-caret { color: #64748b; margin-left: 0.5rem; }
+  .renew-product-panel {
+    position: absolute;
+    z-index: 8;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.3rem);
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    padding: 0.65rem;
+  }
+  .renew-product-panel[hidden] { display: none; }
+  .renew-product-search {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0 0 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  .renew-product-list {
+    overflow: auto;
+    max-height: 14rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .renew-product-item {
+    width: 100%;
+    text-align: left;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.86rem;
+    cursor: pointer;
+    color: #0f172a;
+  }
+  .renew-product-item:hover,
+  .renew-product-item.is-selected {
+    background: #eff6ff;
+    border-color: #93c5fd;
+  }
+  .renew-product-empty {
+    margin: 0.15rem 0 0;
+    color: #64748b;
+    font-size: 0.8rem;
+  }
+  .renew-duration-row input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.48rem 0.65rem;
+    font-size: 0.9rem;
+    background: #fff;
+  }
+  .renew-duration-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .renew-duration-row input { width: 5.5rem; }
+  .renew-duration-unit { font-weight: 600; color: #334155; }
+</style>
 <div class="tracker-mock-form-shell">
   <div class="tracker-mock-form-card">
     <header class="tracker-mock-form-card-header">
@@ -14,6 +115,15 @@
       </p>
     </header>
     <div class="tracker-mock-form-body">
+      <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% if require_submit %}
+        <input type="hidden" name="required" value="1">
+        {% endif %}
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
       <section class="tracker-mock-section" style="margin-bottom:1.25rem;">
         <h2 class="tracker-mock-section-title">Current subscription</h2>
         <div class="tracker-mock-grid">
@@ -25,12 +135,31 @@
             <span class="tracker-mock-label">Product</span>
             <div class="tracker-mock-readonly">{{ subscription.product.name }}</div>
           </div>
-          {% if draft_product %}
-          <div class="tracker-mock-field">
-            <span class="tracker-mock-label">New product</span>
-            <div class="tracker-mock-readonly">{{ draft_product.name }}</div>
+          <div class="tracker-mock-field renew-plan-span">
+            <div class="renew-plan-row">
+              <span class="tracker-mock-label" style="margin:0;">Renew other plan</span>
+              <label class="sla-switch" title="Renew other plan">
+                {{ form.renew_other_plan }}
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div id="renew-product-wrap" class="renew-product-wrap"{% if not form.renew_other_plan.value %} hidden{% endif %}>
+              <label class="tracker-mock-label" for="renew-product-trigger">New renewal product</label>
+              <div class="renew-product-picker">
+                {{ form.product }}
+                <button type="button" class="renew-product-trigger is-empty" id="renew-product-trigger">
+                  <span id="renew-product-label">Select a product</span>
+                  <span class="renew-product-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="renew-product-panel" id="renew-product-panel" hidden>
+                  <input type="search" class="renew-product-search" id="renew-product-search" placeholder="Search products" autocomplete="off">
+                  <div class="renew-product-list" id="renew-product-list"></div>
+                  <p class="renew-product-empty" id="renew-product-empty" hidden>No matching products.</p>
+                </div>
+              </div>
+              {{ form.product.errors }}
+            </div>
           </div>
-          {% endif %}
           <div class="tracker-mock-field">
             <span class="tracker-mock-label">Current period</span>
             <div class="tracker-mock-readonly">
@@ -55,26 +184,24 @@
           {% endif %}
         </div>
         <p class="muted" style="margin:0.75rem 0 0;font-size:0.875rem;">
-          Suggested renewal:
-          {{ suggested_start|date:"d M Y" }} to {{ suggested_end|date:"d M Y" }}
-          (one year after the new start date). You can edit either date.
+          Suggested start:
+          {{ suggested_start|date:"d M Y" }}.
+          End date follows the duration in years.
+          {% if require_submit %}Submit this form to complete Win.{% endif %}
         </p>
       </section>
-
-      <form method="post" enctype="multipart/form-data" novalidate>
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ next_url }}">
-        {% if draft_product %}
-        <input type="hidden" name="product" value="{{ draft_product.pk }}">
-        <input type="hidden" name="renew_other_plan" value="1">
-        {% endif %}
-        {% if form.non_field_errors %}
-        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
-        {% endif %}
 
         <section class="tracker-mock-section" aria-labelledby="renew-section-dates">
           <h2 id="renew-section-dates" class="tracker-mock-section-title">New dates</h2>
           <div class="tracker-mock-grid">
+            <div class="tracker-mock-field">
+              <label class="tracker-mock-label" for="{{ form.duration.id_for_label }}">Duration</label>
+              <div class="renew-duration-row">
+                {{ form.duration }}
+                <span class="renew-duration-unit">years</span>
+              </div>
+              {{ form.duration.errors }}
+            </div>
             {% include "includes/form_field_mock.html" with field=form.start_date %}
             {% include "includes/form_field_mock.html" with field=form.end_date %}
           </div>
@@ -114,7 +241,9 @@
 
         <div class="tracker-mock-form-actions">
           <button type="submit" class="btn-mock-save">Save renewal</button>
+          {% if not require_submit %}
           <a class="btn-mock-cancel" href="{{ next_url }}">Cancel</a>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -124,18 +253,16 @@
 (function () {
   var startInput = document.getElementById("id_start_date");
   var endInput = document.getElementById("id_end_date");
-  if (startInput && endInput) {
-    startInput.addEventListener("change", function () {
-      var next = addOneYear(startInput.value);
-      if (next) endInput.value = next;
-    });
-  }
+  var durationInput = document.getElementById("id_duration");
+  var otherPlan = document.getElementById("id_renew_other_plan");
+  var productWrap = document.getElementById("renew-product-wrap");
 
-  function addOneYear(value) {
-    if (!value) return "";
+  function addYears(value, years) {
+    var count = parseInt(years, 10);
+    if (!value || !count || count < 1) return "";
     var parts = value.split("-");
     if (parts.length !== 3) return "";
-    var year = parseInt(parts[0], 10) + 1;
+    var year = parseInt(parts[0], 10) + count;
     var month = parseInt(parts[1], 10);
     var day = parseInt(parts[2], 10);
     if (!year || !month || !day) return "";
@@ -146,6 +273,104 @@
     var m = String(dt.getMonth() + 1).padStart(2, "0");
     var d = String(dt.getDate()).padStart(2, "0");
     return dt.getFullYear() + "-" + m + "-" + d;
+  }
+
+  function syncEnd() {
+    if (!startInput || !endInput) return;
+    var years = durationInput ? durationInput.value : "1";
+    var next = addYears(startInput.value, years);
+    if (next) endInput.value = next;
+  }
+
+  function syncPlan() {
+    if (!productWrap) return;
+    productWrap.hidden = !(otherPlan && otherPlan.checked);
+  }
+
+  if (startInput && endInput) {
+    syncEnd();
+    startInput.addEventListener("change", syncEnd);
+    startInput.addEventListener("input", syncEnd);
+    if (durationInput) {
+      durationInput.addEventListener("change", syncEnd);
+      durationInput.addEventListener("input", syncEnd);
+    }
+  }
+  if (otherPlan) otherPlan.addEventListener("change", syncPlan);
+  syncPlan();
+
+  var productSelect = document.getElementById("id_product");
+  var productTrigger = document.getElementById("renew-product-trigger");
+  var productLabel = document.getElementById("renew-product-label");
+  var productPanel = document.getElementById("renew-product-panel");
+  var productSearch = document.getElementById("renew-product-search");
+  var productList = document.getElementById("renew-product-list");
+  var productEmpty = document.getElementById("renew-product-empty");
+
+  function productOptions() {
+    if (!productSelect) return [];
+    return Array.prototype.filter.call(productSelect.options, function (option) {
+      return option.value;
+    });
+  }
+
+  function showSelectedProduct() {
+    if (!productSelect || !productLabel || !productTrigger) return;
+    var selected = productSelect.options[productSelect.selectedIndex];
+    if (selected && selected.value) {
+      productLabel.textContent = selected.text;
+      productTrigger.classList.remove("is-empty");
+    } else {
+      productLabel.textContent = "Select a product";
+      productTrigger.classList.add("is-empty");
+    }
+  }
+
+  function renderProducts(query) {
+    if (!productList) return;
+    var q = String(query || "").trim().toLowerCase();
+    productList.innerHTML = "";
+    var matches = productOptions().filter(function (option) {
+      return !q || option.text.toLowerCase().indexOf(q) !== -1;
+    });
+    if (productEmpty) productEmpty.hidden = matches.length > 0;
+    matches.forEach(function (option) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "renew-product-item";
+      if (option.value === productSelect.value) btn.classList.add("is-selected");
+      btn.textContent = option.text;
+      btn.addEventListener("click", function () {
+        productSelect.value = option.value;
+        showSelectedProduct();
+        if (productPanel) productPanel.hidden = true;
+      });
+      productList.appendChild(btn);
+    });
+  }
+
+  if (productTrigger && productPanel) {
+    showSelectedProduct();
+    productTrigger.addEventListener("click", function () {
+      productPanel.hidden = !productPanel.hidden;
+      if (!productPanel.hidden) {
+        if (productSearch) {
+          productSearch.value = "";
+          productSearch.focus();
+        }
+        renderProducts("");
+      }
+    });
+    if (productSearch) {
+      productSearch.addEventListener("input", function () {
+        renderProducts(productSearch.value);
+      });
+    }
+    document.addEventListener("click", function (event) {
+      if (!productWrap || productWrap.hidden || productPanel.hidden) return;
+      if (event.target.closest && event.target.closest(".renew-product-picker")) return;
+      productPanel.hidden = true;
+    });
   }
 
   var select = document.getElementById("id_vendor");

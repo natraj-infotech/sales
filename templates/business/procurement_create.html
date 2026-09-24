@@ -92,7 +92,7 @@
     <section class="proc-section">
       <h3><svg aria-hidden="true"><use href="#i-users"/></svg> Vendor Selection</h3>
       <div class="proc-dual">
-        <div class="proc-listbox">
+        <div class="proc-listbox proc-box-avail">
           <h4>
             <svg aria-hidden="true"><use href="#i-menu"/></svg>
             Available Vendors
@@ -112,13 +112,25 @@
             <svg aria-hidden="true"><use href="#i-arrow-left"/></svg>
           </button>
         </div>
-        <div class="proc-listbox">
+        <div class="proc-listbox proc-box-selected">
           <h4>
             <svg aria-hidden="true"><use href="#i-check-circle"/></svg>
             Selected Vendors
           </h4>
           <input type="search" class="proc-search" id="sel-search" placeholder="Search selected..." aria-label="Search selected vendors">
           <div class="proc-list" id="sel-list"><div class="proc-empty">No vendors selected</div></div>
+        </div>
+        <div class="proc-listbox proc-box-other">
+          <h4>
+            <svg aria-hidden="true"><use href="#i-users"/></svg>
+            Other vendors
+          </h4>
+          <input type="search" class="proc-search" id="other-search" placeholder="Search other vendors…" aria-label="Search other vendors">
+          <div class="proc-list" id="other-list"><div class="proc-empty">Add products to see other vendors</div></div>
+          <button type="button" class="proc-select-all" id="select-all-other">
+            <svg aria-hidden="true"><use href="#i-arrow-right"/></svg>
+            Select All
+          </button>
         </div>
       </div>
     </section>
@@ -151,10 +163,13 @@
   var vendors = JSON.parse(document.getElementById("proc-vendors-data").textContent);
   var selectedProducts = [];
   var available = [];
+  var other = [];
   var selected = [];
   var availFocus = [];
+  var otherFocus = [];
   var selFocus = [];
   var availAnchor = null;
+  var otherAnchor = null;
   var selAnchor = null;
 
   var categoryEl = document.getElementById("category");
@@ -250,19 +265,36 @@
 
   function vendorOffersAll(v) {
     if (!selectedProducts.length) return false;
-    var ids = v.product_ids || [];
+    var names = (v.company_names || []).map(function (name) {
+      return String(name || "").trim().toLowerCase();
+    });
     return selectedProducts.every(function (p) {
-      return ids.indexOf(p.id) >= 0;
+      var company = String(p.company_name || "").trim().toLowerCase();
+      return company && names.indexOf(company) >= 0;
     });
   }
   function syncVendorPools() {
-    var matching = vendors.filter(vendorOffersAll);
-    var matchingIds = matching.map(function (v) { return v.id; });
-    selected = selected.filter(function (v) { return matchingIds.indexOf(v.id) >= 0; });
-    var selectedIds = selected.map(function (v) { return v.id; });
-    available = matching.filter(function (v) { return selectedIds.indexOf(v.id) < 0; });
+    if (!selectedProducts.length) {
+      available = [];
+      other = [];
+      selected = [];
+    } else {
+      var matching = vendors.filter(vendorOffersAll);
+      var matchingIds = matching.map(function (v) { return v.id; });
+      selected = selected.filter(function (v) {
+        return vendors.some(function (row) { return row.id === v.id; });
+      });
+      var selectedIds = selected.map(function (v) { return v.id; });
+      available = matching.filter(function (v) { return selectedIds.indexOf(v.id) < 0; });
+      other = vendors.filter(function (v) {
+        return matchingIds.indexOf(v.id) < 0 && selectedIds.indexOf(v.id) < 0;
+      });
+    }
     availFocus = availFocus.filter(function (id) {
       return available.some(function (v) { return v.id === id; });
+    });
+    otherFocus = otherFocus.filter(function (id) {
+      return other.some(function (v) { return v.id === id; });
     });
     selFocus = selFocus.filter(function (id) {
       return selected.some(function (v) { return v.id === id; });
@@ -271,8 +303,21 @@
   }
   function emptyAvailText() {
     if (!selectedProducts.length) return "Add products to see matching vendors";
-    if (!available.length && !selected.length) return "No vendors available for the selected products";
+    if (!available.length && !selected.length && !other.length) return "No vendors available for the selected product companies";
     return "No vendors available";
+  }
+  function emptyOtherText() {
+    if (!selectedProducts.length) return "Add products to see other vendors";
+    return "No other vendors";
+  }
+  function releaseSelected(ids) {
+    ids.slice().forEach(function (id) {
+      var idx = selected.findIndex(function (v) { return v.id === id; });
+      if (idx < 0) return;
+      var vendor = selected.splice(idx, 1)[0];
+      if (vendorOffersAll(vendor)) available.push(vendor);
+      else other.push(vendor);
+    });
   }
   function filtered(list, q) {
     q = (q || "").toLowerCase();
@@ -291,7 +336,13 @@
     if (a > b) { var t = a; a = b; b = t; }
     return ids.slice(a, b + 1);
   }
-  function renderList(el, list, focusIds, emptyText) {
+  function clearLeftFocus() {
+    availFocus = [];
+    availAnchor = null;
+    otherFocus = [];
+    otherAnchor = null;
+  }
+  function renderList(el, list, focusIds, emptyText, role) {
     el.innerHTML = "";
     if (!list.length) {
       el.innerHTML = '<div class="proc-empty">' + emptyText + '</div>';
@@ -303,18 +354,30 @@
       btn.textContent = v.name;
       if (focusIds.indexOf(v.id) >= 0) btn.className = "is-selected";
       btn.addEventListener("click", function (e) {
-        if (el.id === "avail-list") {
+        if (role === "avail") {
           selFocus = [];
           selAnchor = null;
+          otherFocus = [];
+          otherAnchor = null;
           if (e.shiftKey && availAnchor != null) {
             availFocus = rangeIds(list, availAnchor, v.id);
           } else {
             toggleId(availFocus, v.id);
             availAnchor = v.id;
           }
-        } else {
+        } else if (role === "other") {
+          selFocus = [];
+          selAnchor = null;
           availFocus = [];
           availAnchor = null;
+          if (e.shiftKey && otherAnchor != null) {
+            otherFocus = rangeIds(list, otherAnchor, v.id);
+          } else {
+            toggleId(otherFocus, v.id);
+            otherAnchor = v.id;
+          }
+        } else {
+          clearLeftFocus();
           if (e.shiftKey && selAnchor != null) {
             selFocus = rangeIds(list, selAnchor, v.id);
           } else {
@@ -325,12 +388,16 @@
         renderVendors();
       });
       btn.addEventListener("dblclick", function () {
-        if (el.id === "avail-list") {
+        if (role === "avail") {
           moveMany(available, selected, [v.id]);
           availFocus = [];
           availAnchor = null;
+        } else if (role === "other") {
+          moveMany(other, selected, [v.id]);
+          otherFocus = [];
+          otherAnchor = null;
         } else {
-          moveMany(selected, available, [v.id]);
+          releaseSelected([v.id]);
           selFocus = [];
           selAnchor = null;
         }
@@ -341,12 +408,15 @@
   }
   function renderVendors() {
     var availQ = document.getElementById("avail-search").value;
+    var otherQ = document.getElementById("other-search").value;
     var selQ = document.getElementById("sel-search").value;
-    renderList(document.getElementById("avail-list"), filtered(available, availQ), availFocus, emptyAvailText());
-    renderList(document.getElementById("sel-list"), filtered(selected, selQ), selFocus, "No vendors selected");
-    document.getElementById("move-right").disabled = !availFocus.length;
+    renderList(document.getElementById("avail-list"), filtered(available, availQ), availFocus, emptyAvailText(), "avail");
+    renderList(document.getElementById("other-list"), filtered(other, otherQ), otherFocus, emptyOtherText(), "other");
+    renderList(document.getElementById("sel-list"), filtered(selected, selQ), selFocus, "No vendors selected", "sel");
+    document.getElementById("move-right").disabled = !availFocus.length && !otherFocus.length;
     document.getElementById("move-left").disabled = !selFocus.length;
     document.getElementById("select-all-vendors").hidden = available.length === 0;
+    document.getElementById("select-all-other").hidden = other.length === 0;
   }
   function move(from, to, id) {
     var idx = from.findIndex(function (v) { return v.id === id; });
@@ -357,15 +427,22 @@
     ids.slice().forEach(function (id) { move(from, to, id); });
   }
   document.getElementById("move-right").addEventListener("click", function () {
-    if (!availFocus.length) return;
-    moveMany(available, selected, availFocus);
-    availFocus = [];
-    availAnchor = null;
+    if (availFocus.length) {
+      moveMany(available, selected, availFocus);
+      availFocus = [];
+      availAnchor = null;
+    } else if (otherFocus.length) {
+      moveMany(other, selected, otherFocus);
+      otherFocus = [];
+      otherAnchor = null;
+    } else {
+      return;
+    }
     renderVendors();
   });
   document.getElementById("move-left").addEventListener("click", function () {
     if (!selFocus.length) return;
-    moveMany(selected, available, selFocus);
+    releaseSelected(selFocus);
     selFocus = [];
     selAnchor = null;
     renderVendors();
@@ -377,7 +454,15 @@
     availAnchor = null;
     renderVendors();
   });
+  document.getElementById("select-all-other").addEventListener("click", function () {
+    selected = selected.concat(other);
+    other = [];
+    otherFocus = [];
+    otherAnchor = null;
+    renderVendors();
+  });
   document.getElementById("avail-search").addEventListener("input", renderVendors);
+  document.getElementById("other-search").addEventListener("input", renderVendors);
   document.getElementById("sel-search").addEventListener("input", renderVendors);
 
   form.addEventListener("submit", function (e) {

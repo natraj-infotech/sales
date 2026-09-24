@@ -396,7 +396,7 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, 'id="cr-sla-modal"')
         self.assertNotContains(response, 'class="cr-th-email"')
         self.assertContains(response, "Connect Zoho")
-        self.assertContains(response, ">Win</button>")
+        self.assertContains(response, ">Win</a>")
         self.assertContains(response, ">Lost</button>")
         self.assertNotContains(response, "cr-deal-pill cr-status--pending")
         self.assertContains(response, "Acme")
@@ -1372,7 +1372,7 @@ class ClientRenewalDealStatusTests(TestCase):
             "client_renewal_set_deal_status", kwargs={"pk": self.invite.pk}
         )
 
-    def test_win_marks_status_without_changing_subscription(self):
+    def test_win_click_opens_form_without_marking_win(self):
         response = self.client.post(
             self.url,
             {
@@ -1384,13 +1384,12 @@ class ClientRenewalDealStatusTests(TestCase):
         data = response.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["open_win_form"], self.subscription.pk)
-        self.assertTrue(data["deal_form_empty"])
-        self.assertEqual(data["deal_form_empty_count"], 1)
+        self.assertFalse(data["deal_form_empty"])
         item = data["items"][0]
-        self.assertEqual(item["deal_status"], "win")
-        self.assertTrue(item["form_empty"])
+        self.assertEqual(item["deal_status"], "")
+        self.assertFalse(item["form_empty"])
         self.subscription.refresh_from_db()
-        self.assertEqual(self.subscription.deal_status, "win")
+        self.assertEqual(self.subscription.deal_status, "")
         self.assertFalse(self.subscription.win_form_completed)
         self.assertEqual(self.subscription.quantity, 1)
         self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
@@ -1435,7 +1434,7 @@ class ClientRenewalDealStatusTests(TestCase):
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.deal_status, "")
 
-    def test_win_form_saves_draft_only(self):
+    def test_win_form_applies_yearly_renewal(self):
         self.client.post(
             self.url,
             {
@@ -1465,21 +1464,24 @@ class ClientRenewalDealStatusTests(TestCase):
         data = response.json()
         self.assertFalse(data["deal_form_empty"])
         self.assertFalse(data["items"][0]["form_empty"])
+        self.assertEqual(data["items"][0]["deal_status"], "win")
         self.assertEqual(data["items"][0]["draft"]["invoice_number"], "INV-778")
         self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "win")
         self.assertTrue(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.start_date, date(2026, 9, 11))
+        self.assertEqual(self.subscription.end_date, date(2027, 9, 11))
+        self.assertEqual(self.subscription.quantity, 3)
+        self.assertEqual(self.subscription.billing_amount, Decimal("22589.40"))
+        self.assertEqual(self.subscription.invoice_number, "INV-778")
         self.assertEqual(self.subscription.renewal_draft_start_date, date(2026, 9, 11))
-        self.assertEqual(self.subscription.renewal_draft_end_date, date(2028, 9, 9))
+        self.assertEqual(self.subscription.renewal_draft_end_date, date(2027, 9, 11))
         self.assertEqual(self.subscription.renewal_draft_quantity, 3)
         self.assertEqual(
             self.subscription.renewal_draft_billing_amount, Decimal("22589.40")
         )
         self.assertEqual(self.subscription.renewal_draft_invoice_number, "INV-778")
         self.assertTrue(self.subscription.renewal_draft_invoice_pdf)
-        self.assertEqual(self.subscription.quantity, 1)
-        self.assertEqual(self.subscription.start_date, date(2024, 9, 11))
-        self.assertEqual(self.subscription.billing_amount, Decimal("7529.80"))
-        self.assertEqual(self.subscription.invoice_number, "")
 
         renew = self.client.get(
             reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
@@ -1487,7 +1489,7 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(renew.status_code, 200)
         form = renew.context["form"]
         self.assertEqual(form.initial["start_date"], date(2026, 9, 11))
-        self.assertEqual(form.initial["end_date"], date(2028, 9, 9))
+        self.assertEqual(form.initial["end_date"], date(2027, 9, 11))
         self.assertEqual(form.initial["quantity"], 3)
         self.assertEqual(form.initial["billing_amount"], Decimal("22589.40"))
         self.assertEqual(form.initial["vendor"], str(self.vendor.pk))
@@ -1495,6 +1497,25 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertContains(renew, "New invoice number")
         self.assertContains(renew, "New invoice PDF")
         self.assertContains(renew, "New vendor")
+
+    def test_win_form_duration_of_two_years(self):
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_win_form",
+                "subscription_id": self.subscription.pk,
+                "start_date": "2026-08-30",
+                "end_date": "2027-08-30",
+                "duration": "2",
+                "quantity": "1",
+                "billing_amount": "100.00",
+                "vendor": str(self.vendor.pk),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.start_date, date(2026, 8, 30))
+        self.assertEqual(self.subscription.end_date, date(2028, 8, 30))
 
     def test_win_form_can_draft_other_plan_without_changing_live_product(self):
         cheap = Product.objects.create(
@@ -1545,14 +1566,18 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(draft["product"], str(cheap.pk))
         self.assertEqual(draft["product_name"], cheap.name)
         self.subscription.refresh_from_db()
-        self.assertEqual(self.subscription.product_id, self.product.pk)
+        self.assertEqual(self.subscription.product_id, cheap.pk)
+        self.assertEqual(self.subscription.deal_status, "win")
         self.assertEqual(self.subscription.renewal_draft_product_id, cheap.pk)
+        self.assertEqual(self.subscription.quantity, 2)
+        self.assertEqual(self.subscription.start_date, date(2026, 9, 11))
+        self.assertEqual(self.subscription.end_date, date(2027, 9, 11))
         change = SubscriptionProductRenewal.objects.get(
             subscription=self.subscription
         )
         self.assertEqual(change.old_product_name, self.product.name)
         self.assertEqual(change.new_product_name, cheap.name)
-        self.assertFalse(change.applied)
+        self.assertTrue(change.applied)
 
         list_page = self.client.get(reverse("client_renewal_list"))
         self.assertContains(list_page, "New product renewal")
@@ -1565,15 +1590,14 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(len(history_data["items"]), 1)
         self.assertEqual(history_data["items"][0]["old_product_name"], self.product.name)
         self.assertEqual(history_data["items"][0]["new_product_name"], cheap.name)
-        self.assertFalse(history_data["items"][0]["applied"])
+        self.assertTrue(history_data["items"][0]["applied"])
 
         renew = self.client.get(
             reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
         )
         self.assertEqual(renew.status_code, 200)
-        self.assertContains(renew, "New product")
+        self.assertContains(renew, "New renewal product")
         self.assertContains(renew, cheap.name)
-        self.assertContains(renew, self.product.name)
 
         saved = self.client.post(
             reverse("subscription_renew", kwargs={"pk": self.subscription.pk}),
@@ -1654,6 +1678,131 @@ class ClientRenewalDealStatusTests(TestCase):
         state = self.invite.deal_table_state()
         self.assertFalse(state["form_empty"])
         self.assertFalse(state["pending"])
+
+    def test_lost_remark_is_optional_and_schedules_next_year_reminders(self):
+        response = self.client.post(
+            self.url,
+            {
+                "deal_status": "lost",
+                "subscription_id": self.subscription.pk,
+                "lost_remark": "  Price too high  ",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"][0]["deal_status"], "lost")
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "lost")
+        self.assertEqual(self.subscription.lost_remark, "Price too high")
+        self.assertEqual(self.subscription.lost_reminder_resume_on, date(2027, 8, 26))
+        self.assertIsNone(self.subscription.reminder_target_end(date(2026, 9, 24)))
+        self.assertEqual(
+            self.subscription.reminder_target_end(date(2027, 8, 26)),
+            date(2027, 9, 10),
+        )
+        self.assertIsNone(self.subscription.reminder_target_end(date(2027, 8, 25)))
+
+    def test_lost_without_remark_still_marks_lost(self):
+        response = self.client.post(
+            self.url,
+            {
+                "deal_status": "lost",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "lost")
+        self.assertEqual(self.subscription.lost_remark, "")
+        self.assertEqual(self.subscription.lost_reminder_resume_on, date(2027, 8, 26))
+
+    def test_october_end_resumes_reminders_fifteen_days_before_next_year(self):
+        self.subscription.end_date = date(2026, 10, 30)
+        self.subscription.save(update_fields=["end_date"])
+        self.client.post(
+            self.url,
+            {
+                "deal_status": "lost",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.lost_reminder_resume_on, date(2027, 10, 15))
+        self.assertIsNone(self.subscription.reminder_target_end(date(2027, 10, 14)))
+        self.assertEqual(
+            self.subscription.reminder_target_end(date(2027, 10, 15)),
+            date(2027, 10, 30),
+        )
+
+    def test_lost_subscription_returns_to_reminder_query_on_resume_date(self):
+        from business.expiry_notifications import _active_expiring_for_client_reminders
+
+        self.subscription.end_date = date(2026, 10, 30)
+        self.subscription.save(update_fields=["end_date"])
+        self.client.post(
+            self.url,
+            {
+                "deal_status": "lost",
+                "subscription_id": self.subscription.pk,
+            },
+        )
+        before = _active_expiring_for_client_reminders(
+            self.company, 90, date(2026, 10, 1), min_days=-31
+        )
+        during = _active_expiring_for_client_reminders(
+            self.company, 90, date(2027, 10, 15), min_days=-31
+        )
+        self.assertNotIn(self.subscription.pk, [sub.pk for sub in before])
+        self.assertIn(self.subscription.pk, [sub.pk for sub in during])
+
+    def test_required_renew_page_removes_row_after_submit(self):
+        renew_url = reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        listing = self.client.get(reverse("client_renewal_list"))
+        self.assertContains(listing, renew_url)
+        self.assertContains(listing, "required=1")
+
+        form_page = self.client.get(
+            renew_url,
+            {"required": "1", "next": reverse("client_renewal_list")},
+        )
+        self.assertEqual(form_page.status_code, 200)
+        self.assertContains(form_page, "Renew other plan")
+        self.assertContains(form_page, "Duration")
+        self.assertContains(form_page, "years")
+        self.assertContains(form_page, "Renewal quantity")
+        self.assertNotContains(form_page, ">Cancel</a>")
+
+        saved = self.client.post(
+            renew_url,
+            {
+                "required": "1",
+                "next": reverse("client_renewal_list"),
+                "start_date": "2026-10-07",
+                "duration": "2",
+                "quantity": "2",
+                "billing_amount": "10.00",
+                "vendor": str(self.vendor.pk),
+            },
+        )
+        self.assertEqual(saved.status_code, 302)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, "win")
+        self.assertTrue(self.subscription.win_form_completed)
+        self.assertEqual(self.subscription.start_date, date(2026, 10, 7))
+        self.assertEqual(self.subscription.end_date, date(2028, 10, 7))
+        again = self.client.get(reverse("client_renewal_list"))
+        self.assertNotContains(again, f"/subscriptions/{self.subscription.pk}/renew/")
+
+    def test_renewal_list_uses_same_choice_colour_and_lost_remark_modal(self):
+        page = self.client.get(reverse("client_renewal_list"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "cr-deal-choice")
+        self.assertContains(page, 'id="cr-lost-modal"')
+        self.assertContains(page, "Add remark")
+        self.assertContains(page, 'name="duration"')
+        self.assertContains(page, "years")
+        self.assertNotContains(page, ">Yearly<")
+        self.assertContains(page, "Renewal quantity")
+        self.assertNotContains(page, "cr-win-back")
 
 
 class DashboardChartTests(TestCase):

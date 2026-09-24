@@ -26,6 +26,7 @@ from business.models import (
     DealVendor,
     DealVendorPrice,
     ProcurementDeal,
+    Product,
     Vendor,
     VendorPriceSubmission,
     VendorProductPrice,
@@ -118,14 +119,37 @@ def invited_vendors(company, deal_no):
     )
 
 
+def _company_key(name) -> str:
+    return (name or "").strip().lower()
+
+
+def vendor_covers_companies(vendor_companies, required_companies) -> bool:
+    """True when the vendor is tagged with every required product company."""
+    required = {_company_key(name) for name in required_companies}
+    required.discard("")
+    if not required:
+        return False
+    covered = {_company_key(name) for name in vendor_companies or []}
+    covered.discard("")
+    return required <= covered
+
+
 def vendors_for_products(company, product_ids):
     ids = [int(pk) for pk in product_ids]
     if not ids:
         return company.vendors.none()
-    qs = company.vendors.all()
-    for pk in ids:
-        qs = qs.filter(catalog_products__pk=pk)
-    return qs.distinct().order_by("name")
+    products = list(Product.objects.filter(company=company, pk__in=ids))
+    if len(products) != len(set(ids)):
+        return company.vendors.none()
+    required = [product_company_label(product) for product in products]
+    if any(not name for name in required):
+        return company.vendors.none()
+    matched = [
+        vendor.pk
+        for vendor in company.vendors.all()
+        if vendor_covers_companies(vendor.catalog_companies, required)
+    ]
+    return company.vendors.filter(pk__in=matched).order_by("name")
 
 
 def deal_rounds(company, deal_no):

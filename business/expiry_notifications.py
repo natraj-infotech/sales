@@ -270,26 +270,53 @@ def _active_expiring_within(
     )
 
 
-def _active_expiring_for_client_reminders(
-    company: CompanyProfile, max_days: int, today, *, min_days: int = 0
-):
-    """Expiring active subscriptions that are still open for client reminder emails."""
-    return _active_expiring_within(
-        company, max_days, today, min_days=min_days
-    ).exclude(
-        deal_status__in=[
-            ClientSubscription.DealStatus.WIN,
-            ClientSubscription.DealStatus.LOST,
-            ClientSubscription.DealStatus.CANCEL,
-        ]
-    )
-
-
 _BLOCKING_DEAL_STATUSES = {
     ClientSubscription.DealStatus.WIN,
     ClientSubscription.DealStatus.LOST,
     ClientSubscription.DealStatus.CANCEL,
 }
+
+
+def _reminder_days_remaining(sub: ClientSubscription, today) -> int | None:
+    target = sub.reminder_target_end(today)
+    if target is None:
+        return None
+    return (target - today).days
+
+
+def _active_expiring_for_client_reminders(
+    company: CompanyProfile, max_days: int, today, *, min_days: int = 0
+):
+    """Expiring active subscriptions that are still open for client reminder emails.
+
+    Lost deals are quiet until 15 days before next year's anniversary of the end date.
+    """
+    open_subs = list(
+        _active_expiring_within(
+            company, max_days, today, min_days=min_days
+        ).exclude(deal_status__in=_BLOCKING_DEAL_STATUSES)
+    )
+    seen = {sub.pk for sub in open_subs}
+    lost_due = (
+        company.subscriptions.filter(
+            status=ClientSubscription.Status.ACTIVE,
+            deal_status=ClientSubscription.DealStatus.LOST,
+            end_date__isnull=False,
+            lost_reminder_resume_on__isnull=False,
+            lost_reminder_resume_on__lte=today,
+        )
+        .select_related("client", "product", "vendor")
+        .order_by("end_date", "client__name", "product__name")
+    )
+    for sub in lost_due:
+        if sub.pk in seen:
+            continue
+        days = _reminder_days_remaining(sub, today)
+        if days is None or days < min_days or days > max_days:
+            continue
+        open_subs.append(sub)
+        seen.add(sub.pk)
+    return open_subs
 
 
 def _days_remaining_label(days_remaining: int | None) -> str:
@@ -324,9 +351,7 @@ def _manual_skip_reason(client, subs, phases, today) -> str | None:
             f"({high} to {low} days remaining)"
         )
     open_subs = [
-        sub
-        for sub in subs
-        if (sub.deal_status or "") not in _BLOCKING_DEAL_STATUSES
+        sub for sub in subs if _reminder_days_remaining(sub, today) is not None
     ]
     if not open_subs:
         statuses = sorted(
@@ -341,7 +366,7 @@ def _manual_skip_reason(client, subs, phases, today) -> str | None:
     in_window = []
     outside = []
     for sub in open_subs:
-        days = (sub.end_date - today).days if sub.end_date else None
+        days = _reminder_days_remaining(sub, today)
         if days is None:
             continue
         if in_schedule_window(phases, days):
@@ -1797,28 +1822,24 @@ def send_client_expiry_emails(
         for client in on_clients:
             phases = resolve_schedule(company, client)
             window_low, window_high = schedule_bounds(phases)
-            subs = [
-                sub
-                for sub in client.subscriptions.all()
-                if sub.status == ClientSubscription.Status.ACTIVE
-                and sub.end_date is not None
-                and window_low <= (sub.end_date - today).days <= window_high
-            ]
-            # Include out-of-window / blocked subs so skip reasons are accurate.
             related_subs = [
                 sub
                 for sub in client.subscriptions.all()
                 if sub.status == ClientSubscription.Status.ACTIVE
                 and sub.end_date is not None
             ]
+            subs = []
+            for sub in related_subs:
+                days = _reminder_days_remaining(sub, today)
+                if days is not None and window_low <= days <= window_high:
+                    subs.append(sub)
+            # Include out-of-window / blocked subs so skip reasons are accurate.
             skip = _manual_skip_reason(client, related_subs, phases, today)
             if skip:
                 logs.append(f"{company.company_name}: skipped {client.name} — {skip}.")
                 continue
             for sub in subs:
-                if (sub.deal_status or "") in _BLOCKING_DEAL_STATUSES:
-                    continue
-                days_remaining = (sub.end_date - today).days
+                days_remaining = _reminder_days_remaining(sub, today)
                 if not client.contact_emails():
                     if client.pk not in skipped_no_email:
                         skipped_no_email.add(client.pk)
@@ -1853,7 +1874,7 @@ def send_client_expiry_emails(
             client = sub.client
             if not getattr(client, "renewal_emails_enabled", True):
                 continue
-            days_remaining = (sub.end_date - today).days if sub.end_date else None
+            days_remaining = _reminder_days_remaining(sub, today)
             if days_remaining is None:
                 continue
             if not client.contact_emails():

@@ -500,6 +500,12 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
         )
         for line in invite.lines.all():
             sub = getattr(line, "subscription", None)
+            if (
+                sub
+                and sub.deal_status == ClientSubscription.DealStatus.WIN
+                and sub.win_form_completed
+            ):
+                continue
             key = (
                 "line",
                 sub.pk if sub else f"{invite.pk}-{line.pk}",
@@ -508,6 +514,17 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             row = buckets.get(key)
             if row is None:
                 status = (getattr(sub, "deal_status", "") or "") if sub else ""
+                renew_url = ""
+                if sub:
+                    renew_url = "{}?{}".format(
+                        reverse("subscription_renew", kwargs={"pk": sub.pk}),
+                        urlencode(
+                            {
+                                "next": reverse("client_renewal_list"),
+                                "required": "1",
+                            }
+                        ),
+                    )
                 buckets[key] = {
                     "id": f"line-{sub.pk if sub else line.pk}",
                     "kind": "line",
@@ -520,10 +537,12 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                     "renewal_quantity": line.renewal_count,
                     "deal_status": status,
                     "deal_status_url": deal_url,
+                    "renew_url": renew_url,
                     "subscription_id": sub.pk if sub else None,
                     "form_empty": bool(getattr(sub, "win_form_empty", False))
                     if sub
                     else False,
+                    "lost_remark": (getattr(sub, "lost_remark", "") or "") if sub else "",
                     "zoho_invite": invite,
                     "zoho_quote_url": invite.zoho_quote_url or "",
                     "zoho_quote_id": invite.zoho_quote_id or "",
@@ -580,8 +599,10 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                     "renewal_quantity": item.quantity,
                     "deal_status": "",
                     "deal_status_url": "",
+                    "renew_url": "",
                     "subscription_id": None,
                     "form_empty": False,
+                    "lost_remark": "",
                     "zoho_invite": invite,
                     "zoho_quote_url": invite.zoho_quote_url or "",
                     "zoho_quote_id": invite.zoho_quote_id or "",
@@ -615,8 +636,10 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             "renewal_quantity": row["renewal_quantity"],
             "deal_status": row["deal_status"],
             "deal_status_url": row["deal_status_url"],
+            "renew_url": row.get("renew_url") or "",
             "subscription_id": row.get("subscription_id"),
             "form_empty": row.get("form_empty", False),
+            "lost_remark": row.get("lost_remark") or "",
             "start_date": row.get("start_date") or "",
             "end_date": row.get("end_date") or "",
             "subscription_list_id": row.get("subscription_list_id") or "",
@@ -841,33 +864,47 @@ def client_renewal_set_deal_status(request, pk):
                     {"ok": False, "error": _form_first_error(form)},
                     status=400,
                 )
-            invite.save_line_renewal_draft(
+            raw_years = (request.POST.get("duration") or "1").strip()
+            try:
+                duration_years = int(raw_years)
+            except (TypeError, ValueError):
+                duration_years = 0
+            if duration_years < 1 or duration_years > 30:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "error": "Enter duration in years, from 1 to 30.",
+                    },
+                    status=400,
+                )
+            invite.apply_line_renewal(
                 subscription_id,
                 start_date=form.cleaned_data["start_date"],
-                end_date=form.cleaned_data.get("end_date"),
                 quantity=form.cleaned_data["quantity"],
                 billing_amount=form.cleaned_data["billing_amount"],
                 vendor=form.cleaned_data.get("resolved_vendor"),
                 invoice_number=form.cleaned_data.get("invoice_number") or "",
                 invoice_pdf=form.cleaned_data.get("invoice_pdf"),
                 product=form.cleaned_data.get("resolved_product"),
+                duration_years=duration_years,
             )
             extra["deal_status"] = ClientSubscription.DealStatus.WIN
         else:
-            valid = {
-                ClientSubscription.DealStatus.WIN,
-                ClientSubscription.DealStatus.LOST,
-            }
             status = (request.POST.get("deal_status") or "").strip().lower()
-            if status not in valid:
+            if status == ClientSubscription.DealStatus.WIN:
+                extra["open_win_form"] = subscription_id
+            elif status == ClientSubscription.DealStatus.LOST:
+                invite.apply_line_deal_status(
+                    subscription_id,
+                    status,
+                    remark=request.POST.get("lost_remark") or "",
+                )
+                extra["deal_status"] = status
+            else:
                 return JsonResponse(
                     {"ok": False, "error": "Choose Win or Lost."},
                     status=400,
                 )
-            invite.apply_line_deal_status(subscription_id, status)
-            extra["deal_status"] = status
-            if status == ClientSubscription.DealStatus.WIN:
-                extra["open_win_form"] = subscription_id
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     except Exception:
@@ -2266,6 +2303,9 @@ def subscription_renew(request, pk):
         request.POST.get("next") or request.GET.get("next"),
         default_next,
     )
+    require_submit = (
+        request.POST.get("required") or request.GET.get("required") or ""
+    ).strip() == "1"
     suggested_start, suggested_end = obj.renewal_dates()
     initial = obj.renewal_form_initial()
 
@@ -2273,8 +2313,13 @@ def subscription_renew(request, pk):
         if request.POST.get("vendor") == SubscriptionRenewForm.NEW_VENDOR:
             renew_return = reverse("subscription_renew", kwargs={"pk": pk})
             posted_next = (request.POST.get("next") or "").strip()
+            extra = {}
             if posted_next:
-                renew_return = _url_with_query(renew_return, next=posted_next)
+                extra["next"] = posted_next
+            if require_submit:
+                extra["required"] = "1"
+            if extra:
+                renew_return = _url_with_query(renew_return, **extra)
             return redirect(
                 f"{reverse('vendor_add')}?{urlencode({'next': renew_return})}"
             )
@@ -2285,6 +2330,10 @@ def subscription_renew(request, pk):
             new_qty = form.cleaned_data["quantity"]
             new_price = form.cleaned_data["billing_amount"]
             new_vendor = form.cleaned_data["resolved_vendor"]
+            new_product = form.cleaned_data.get("resolved_product")
+            if not form.cleaned_data.get("renew_other_plan"):
+                obj.renewal_draft_product = None
+                new_product = None
             try:
                 obj.apply_saved_renewal(
                     start_date=new_start,
@@ -2294,7 +2343,7 @@ def subscription_renew(request, pk):
                     vendor=new_vendor,
                     invoice_number=form.cleaned_data.get("invoice_number") or "",
                     invoice_pdf=form.cleaned_data.get("invoice_pdf"),
-                    product=form.cleaned_data.get("resolved_product"),
+                    product=new_product,
                 )
             except (OSError, SuspiciousFileOperation):
                 logger.exception(
@@ -2335,8 +2384,12 @@ def subscription_renew(request, pk):
                 "invoice_number": initial.get("invoice_number") or "",
                 "product": initial.get("product") or "",
                 "renew_other_plan": initial.get("renew_other_plan") or False,
+                "duration": 1,
             },
         )
+
+    form.fields["quantity"].label = "Renewal quantity"
+    form.fields["end_date"].widget.attrs["readonly"] = "readonly"
 
     return render(
         request,
@@ -2348,6 +2401,7 @@ def subscription_renew(request, pk):
             "next_url": next_url,
             "suggested_start": suggested_start,
             "suggested_end": suggested_end,
+            "require_submit": require_submit,
             "draft_product": (
                 obj.renewal_draft_product if obj.win_form_completed else None
             ),

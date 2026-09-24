@@ -19,11 +19,26 @@ def subscription_draft_invoice_upload_to(instance, filename):
     return f"subscription_invoice_drafts/{company_id}/{filename}"
 
 
-def _add_one_year(day):
+def _add_years(day, years):
+    years = int(years)
     try:
-        return day.replace(year=day.year + 1)
+        return day.replace(year=day.year + years)
     except ValueError:
-        return day.replace(year=day.year + 1, day=28)
+        return day.replace(year=day.year + years, day=28)
+
+
+def _add_one_year(day):
+    return _add_years(day, 1)
+
+
+LOST_REMINDER_LEAD_DAYS = 15
+
+
+def lost_reminder_resume_on(end_date):
+    """Date client reminders start again after a Lost deal: 15 days before next year's end."""
+    if not end_date:
+        return None
+    return _add_one_year(end_date) - timedelta(days=LOST_REMINDER_LEAD_DAYS)
 
 
 def _field_file_meta(field_file) -> tuple[str, str]:
@@ -58,6 +73,11 @@ class Vendor(models.Model):
         blank=True,
         related_name="offering_vendors",
         help_text="Products this vendor can quote in procurement.",
+    )
+    catalog_companies = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Product companies this vendor can quote in procurement.",
     )
 
     class Meta:
@@ -217,6 +237,12 @@ class ClientSubscription(models.Model):
         default="",
     )
     deal_status_set_at = models.DateTimeField(null=True, blank=True)
+    lost_remark = models.TextField(blank=True)
+    lost_reminder_resume_on = models.DateField(
+        null=True,
+        blank=True,
+        help_text="After Lost, client renewal reminders start again on this date.",
+    )
     win_form_completed = models.BooleanField(default=False)
     renewal_draft_start_date = models.DateField(null=True, blank=True)
     renewal_draft_end_date = models.DateField(null=True, blank=True)
@@ -304,6 +330,20 @@ class ClientSubscription(models.Model):
         else:
             new_start = today
         return new_start, _add_one_year(new_start)
+
+    def reminder_target_end(self, today=None):
+        """End date used for client reminders. None means do not send."""
+        if not self.end_date:
+            return None
+        today = today or timezone.localdate()
+        if self.deal_status == self.DealStatus.LOST:
+            resume = self.lost_reminder_resume_on
+            if resume is None or today < resume:
+                return None
+            return _add_one_year(self.end_date)
+        if self.deal_status in (self.DealStatus.WIN, self.DealStatus.CANCEL):
+            return None
+        return self.end_date
 
     def client_renewal_quantity(self):
         """Quantity the client submitted on a renewal email, if any."""
@@ -775,24 +815,68 @@ class SubscriptionRenewalInvite(models.Model):
             )
         return items
 
-    def apply_line_deal_status(self, subscription_id: int, status: str) -> None:
-        """Set Win or Lost on one linked subscription only."""
+    def apply_line_deal_status(
+        self, subscription_id: int, status: str, remark: str = ""
+    ) -> None:
+        """Set Lost on one linked subscription. Win is saved only with the renewal form."""
         sub = self._line_subscription(subscription_id)
-        if sub.deal_status:
+        if sub.deal_status and sub.deal_status != ClientSubscription.DealStatus.CANCEL:
             raise ValueError("Deal status is already set.")
+        if status != ClientSubscription.DealStatus.LOST:
+            raise ValueError("Choose Lost, or submit the Win renewal form.")
         sub.deal_status = status
         if not sub.deal_status_set_at:
             sub.deal_status_set_at = timezone.now()
+        sub.lost_remark = (remark or "").strip()
+        sub.lost_reminder_resume_on = lost_reminder_resume_on(sub.end_date)
         if not self.deal_status_set_at:
             self.deal_status_set_at = sub.deal_status_set_at
             self.save(update_fields=["deal_status_set_at"])
-        if status == ClientSubscription.DealStatus.WIN:
-            sub.win_form_completed = False
-            sub.save(
-                update_fields=["deal_status", "deal_status_set_at", "win_form_completed"]
-            )
-            return
-        sub.save(update_fields=["deal_status", "deal_status_set_at"])
+        sub.save(
+            update_fields=[
+                "deal_status",
+                "deal_status_set_at",
+                "lost_remark",
+                "lost_reminder_resume_on",
+            ]
+        )
+
+    def apply_line_renewal(
+        self,
+        subscription_id: int,
+        *,
+        start_date,
+        quantity,
+        billing_amount,
+        vendor,
+        invoice_number="",
+        invoice_pdf=None,
+        product=None,
+        duration_years=1,
+    ) -> None:
+        """Apply the Win renewal. Duration is a number of years from the start date."""
+        sub = self._line_subscription(subscription_id)
+        if sub.deal_status == ClientSubscription.DealStatus.LOST:
+            raise ValueError("Deal is already marked Lost.")
+        try:
+            years = int(duration_years)
+        except (TypeError, ValueError):
+            years = 0
+        if years < 1 or years > 30:
+            raise ValueError("Enter duration in years, from 1 to 30.")
+        sub.apply_saved_renewal(
+            start_date=start_date,
+            end_date=_add_years(start_date, years),
+            quantity=quantity,
+            billing_amount=billing_amount,
+            vendor=vendor,
+            invoice_number=invoice_number,
+            invoice_pdf=invoice_pdf,
+            product=product,
+        )
+        if not self.deal_status_set_at:
+            self.deal_status_set_at = sub.deal_status_set_at
+            self.save(update_fields=["deal_status_set_at"])
 
     def save_line_renewal_draft(
         self,

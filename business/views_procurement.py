@@ -44,7 +44,6 @@ from business.procurement import (
     send_purchase_department_email,
     submit_vendor_prices,
     timeline_rows,
-    vendors_for_products,
 )
 from business.procurement_pdf import build_compare_pdf
 from business.views import _company
@@ -71,9 +70,13 @@ def _catalog_payload(company):
         {
             "id": vendor.pk,
             "name": vendor.name,
-            "product_ids": [p.pk for p in vendor.catalog_products.all()],
+            "company_names": [
+                (name or "").strip()
+                for name in (vendor.catalog_companies or [])
+                if (name or "").strip()
+            ],
         }
-        for vendor in company.vendors.prefetch_related("catalog_products").order_by("name")
+        for vendor in company.vendors.all().order_by("name")
     ]
     product_rows = []
     for product in products:
@@ -170,14 +173,6 @@ def procurement_create(request):
                     error = "One of the selected products was not found."
                     break
                 built.append({"product": product, "quantity": quantity})
-            if error is None:
-                allowed_ids = set(
-                    vendors_for_products(
-                        company, [row["product"].pk for row in built]
-                    ).values_list("pk", flat=True)
-                )
-                if any(vid not in allowed_ids for vid in vendor_ids):
-                    error = "One of the selected vendors does not supply all selected products."
             vendors_ok = company.vendors.filter(pk__in=vendor_ids).count()
             if error is None and vendors_ok != len(set(vendor_ids)):
                 error = "One of the selected vendors was not found."

@@ -260,28 +260,28 @@
               {{ form.gst_number.errors }}
             </div>
             <div class="vendor-field vendor-field--products">
-              <label>Products</label>
+              <label>Product company</label>
               <div class="vendor-ms" data-vendor-ms>
                 <button type="button" class="vendor-ms-toggle" aria-expanded="false">
-                  Select products
+                  Select companies
                 </button>
                 <div class="vendor-ms-chips" data-vendor-ms-chips></div>
                 <div class="vendor-ms-panel" hidden>
-                  <input type="search" class="vendor-ms-search" placeholder="Search products…" aria-label="Search products">
+                  <input type="search" class="vendor-ms-search" placeholder="Search companies…" aria-label="Search companies">
                   <div class="vendor-ms-list">
-                    {% for item in form.catalog_products %}
+                    {% for item in form.catalog_companies %}
                     <label class="vendor-ms-item" data-label="{{ item.choice_label|lower }}">
                       {{ item.tag }}
                       <span>{{ item.choice_label }}</span>
                     </label>
                     {% empty %}
-                    <div class="vendor-ms-empty">No products in Product list yet</div>
+                    <div class="vendor-ms-empty">No product companies in Product list yet</div>
                     {% endfor %}
                   </div>
                 </div>
               </div>
-              <div class="vendor-help">Select one or more products this vendor can quote</div>
-              {{ form.catalog_products.errors }}
+              <div class="vendor-help">Select one or more product companies this vendor can quote</div>
+              {{ form.catalog_companies.errors }}
             </div>
           </div>
         </section>
@@ -371,7 +371,7 @@
   }
   function refreshToggle() {
     var chosen = selectedItems();
-    toggle.textContent = chosen.length ? "Add more products" : "Select products";
+    toggle.textContent = chosen.length ? "Add more companies" : "Select companies";
     if (!chips) return;
     chips.innerHTML = "";
     chosen.forEach(function (item) {

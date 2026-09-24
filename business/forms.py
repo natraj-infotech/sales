@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.db.models.functions import Trim
 
 from .models import (
+    _add_years,
     Vendor,
     Client,
     CaseLockInbox,
@@ -189,12 +190,11 @@ class RenewalSLASettingsForm(forms.ModelForm):
 
 
 class VendorForm(forms.ModelForm):
-    catalog_products = forms.ModelMultipleChoiceField(
-        queryset=Product.objects.none(),
+    catalog_companies = forms.MultipleChoiceField(
         required=False,
         widget=forms.CheckboxSelectMultiple,
-        label="Products",
-        help_text="Select one or more products this vendor can quote.",
+        label="Product company",
+        help_text="Select one or more product companies this vendor can quote.",
     )
 
     class Meta:
@@ -210,19 +210,41 @@ class VendorForm(forms.ModelForm):
             "phone_3",
             "website",
             "notes",
-            "catalog_products",
+            "catalog_companies",
         )
 
     def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
         if company is None and getattr(self.instance, "company_id", None):
             company = self.instance.company
+        choices = []
+        seen = set()
+        products = Product.objects.none()
         if company is not None:
-            self.fields["catalog_products"].queryset = Product.objects.filter(
-                company=company
-            ).order_by("name")
-        else:
-            self.fields["catalog_products"].queryset = Product.objects.none()
+            products = Product.objects.filter(company=company)
+        for raw in products.order_by("company_name").values_list(
+            "company_name", flat=True
+        ):
+            label = (raw or "").strip()
+            key = label.lower()
+            if label and key not in seen:
+                seen.add(key)
+                choices.append((label, label))
+        if self.instance.pk:
+            for raw in self.instance.catalog_companies or []:
+                label = (raw or "").strip()
+                key = label.lower()
+                if label and key not in seen:
+                    seen.add(key)
+                    choices.append((label, label))
+        choices.sort(key=lambda item: item[0].lower())
+        self.fields["catalog_companies"].choices = choices
+        if self.instance.pk and not self.is_bound:
+            self.initial["catalog_companies"] = [
+                (name or "").strip()
+                for name in (self.instance.catalog_companies or [])
+                if (name or "").strip()
+            ]
 
 
 class ClientForm(forms.ModelForm):
@@ -825,6 +847,14 @@ class SubscriptionRenewForm(forms.Form):
         validators=[FileExtensionValidator(allowed_extensions=["pdf"])],
         widget=forms.FileInput(attrs={"accept": "application/pdf,.pdf"}),
     )
+    duration = forms.IntegerField(
+        label="Duration",
+        min_value=1,
+        max_value=30,
+        initial=1,
+        required=False,
+        widget=forms.NumberInput(attrs={"min": 1, "max": 30, "step": 1}),
+    )
     renew_other_plan = forms.BooleanField(required=False)
     product = forms.ChoiceField(
         label="New renewal product",
@@ -857,6 +887,16 @@ class SubscriptionRenewForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         start = cleaned.get("start_date")
+        years = cleaned.get("duration") or 1
+        try:
+            years = int(years)
+        except (TypeError, ValueError):
+            years = 0
+        if years < 1 or years > 30:
+            self.add_error("duration", "Enter duration in years, from 1 to 30.")
+        elif start:
+            cleaned["duration"] = years
+            cleaned["end_date"] = _add_years(start, years)
         end = cleaned.get("end_date")
         if start and end and end < start:
             raise forms.ValidationError("End date must be on or after the start date.")
@@ -895,19 +935,6 @@ class SubscriptionRenewForm(forms.Form):
                         self.add_error("product", "Select a valid product.")
                     else:
                         cleaned["resolved_product"] = product
-        elif product_choice:
-            try:
-                pk = int(product_choice)
-            except (TypeError, ValueError):
-                self.add_error("product", "Select a valid product.")
-            else:
-                product = None
-                if self.company is not None:
-                    product = self.company.products.filter(pk=pk).first()
-                if product is None:
-                    self.add_error("product", "Select a valid product.")
-                else:
-                    cleaned["resolved_product"] = product
         return cleaned
 
 

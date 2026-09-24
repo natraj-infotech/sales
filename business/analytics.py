@@ -242,7 +242,6 @@ def _deal_label(status: str) -> str:
     return {
         ClientSubscription.DealStatus.WIN: "Win",
         ClientSubscription.DealStatus.LOST: "Lost",
-        ClientSubscription.DealStatus.CANCEL: "Cancel",
     }.get(status or "", "Pending")
 
 

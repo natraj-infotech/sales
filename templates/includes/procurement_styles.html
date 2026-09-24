@@ -74,9 +74,15 @@
   .proc-dual {
     display: grid;
     grid-template-columns: 1fr 52px 1fr;
+    grid-template-areas:
+      "avail arrows selected"
+      "other arrows selected";
     gap: 1rem;
     align-items: stretch;
   }
+  .proc-box-avail { grid-area: avail; }
+  .proc-box-selected { grid-area: selected; }
+  .proc-box-other { grid-area: other; }
   .proc-listbox {
     border: 1px solid #e6edf5;
     border-radius: 16px;
@@ -177,6 +183,7 @@
   .proc-select-all svg { width: 16px; height: 16px; }
   .proc-select-all:hover { background: var(--header-blue-deep); }
   .proc-arrows {
+    grid-area: arrows;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -369,7 +376,14 @@
   .proc-public { max-width: 920px; margin: 0 auto; }
   @media (max-width: 900px) {
     .proc-grid-4, .proc-dual, .proc-product-form, .proc-meta-grid, .proc-meta-grid--3 { grid-template-columns: 1fr 1fr; }
-    .proc-dual { grid-template-columns: 1fr; }
+    .proc-dual {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "avail"
+        "other"
+        "arrows"
+        "selected";
+    }
     .proc-arrows { flex-direction: row; justify-content: center; }
   }
   @media (max-width: 640px) {
