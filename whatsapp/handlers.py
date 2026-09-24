@@ -63,6 +63,18 @@ def dispatch_webhook(account: AccountLike, event: dict[str, Any]) -> None:
 
 
 @register_webhook_handler("*")
+def inbound_menu_button_handler(account: AccountLike, event: dict[str, Any]) -> None:
+    """Follow up on welcome reply-button taps (lead → enquiry form link)."""
+    if (event.get("type") or "") == "status":
+        return
+    if not event.get("message"):
+        return
+    from .conversation import handle_menu_button_reply
+
+    handle_menu_button_reply(account, event)
+
+
+@register_webhook_handler("*")
 def inbound_welcome_handler(account: AccountLike, event: dict[str, Any]) -> None:
     """Auto welcome/menu on new WhatsApp conversations (any inbound message type)."""
     if (event.get("type") or "") == "status":

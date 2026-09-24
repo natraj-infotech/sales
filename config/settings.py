@@ -316,7 +316,7 @@ WHATSAPP_WELCOME_INACTIVITY_HOURS = float(
     os.environ.get("WHATSAPP_WELCOME_INACTIVITY_HOURS", "24") or 24
 )
 WHATSAPP_WELCOME_MODE = (
-    os.environ.get("WHATSAPP_WELCOME_MODE", "auto") or "auto"
+    os.environ.get("WHATSAPP_WELCOME_MODE", "buttons") or "buttons"
 ).strip().lower()
 WHATSAPP_WELCOME_BODY = os.environ.get(
     "WHATSAPP_WELCOME_BODY",
@@ -335,6 +335,14 @@ WHATSAPP_WELCOME_FLOW_CTA = os.environ.get(
 ).strip()
 WHATSAPP_WELCOME_CTA_DISPLAY_TEXT = os.environ.get(
     "WHATSAPP_WELCOME_CTA_DISPLAY_TEXT", "Open enquiry form"
+).strip()
+WHATSAPP_BUTTON_LEAD_REPLY_BODY = os.environ.get(
+    "WHATSAPP_BUTTON_LEAD_REPLY_BODY",
+    "Tap the button below to open our enquiry form.",
+).strip()
+WHATSAPP_BUTTON_SUPPORT_REPLY_BODY = os.environ.get(
+    "WHATSAPP_BUTTON_SUPPORT_REPLY_BODY",
+    "Tell us what you need help with in a message here. Our team will reply shortly.",
 ).strip()
 
 # Combined backups (PostgreSQL + MEDIA_ROOT)

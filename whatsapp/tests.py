@@ -138,7 +138,7 @@ class WhatsAppWebhookVerifyTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
-class WhatsAppWelcomeCtaUrlTests(TestCase):
+class WhatsAppWelcomeButtonsTests(TestCase):
     def setUp(self):
         user = User.objects.create_user(email="cta@example.com", password="x")
         self.company = CompanyProfile.objects.create(user=user, company_name="CTA Co")
@@ -149,12 +149,9 @@ class WhatsAppWelcomeCtaUrlTests(TestCase):
             access_token="test-token",
         )
 
-    @override_settings(
-        WHATSAPP_WELCOME_MODE="cta_url",
-        PUBLIC_BASE_URL="https://app.test",
-    )
-    @patch("whatsapp.conversation.send_interactive_cta_url")
-    def test_send_welcome_menu_uses_cta_url(self, mock_cta):
+    @override_settings(WHATSAPP_WELCOME_MODE="buttons")
+    @patch("whatsapp.conversation.send_interactive_reply_buttons")
+    def test_send_welcome_menu_uses_reply_buttons(self, mock_buttons):
         from whatsapp.conversation import send_welcome_menu
 
         send_welcome_menu(
@@ -162,11 +159,30 @@ class WhatsAppWelcomeCtaUrlTests(TestCase):
             to="919999999999",
             contact_name="Raj",
         )
+        mock_buttons.assert_called_once()
+        self.assertEqual(mock_buttons.call_args.kwargs["to"], "919999999999")
+
+    @override_settings(PUBLIC_BASE_URL="https://app.test")
+    @patch("whatsapp.conversation.send_interactive_cta_url")
+    def test_menu_lead_button_sends_enquiry_cta(self, mock_cta):
+        from whatsapp.conversation import handle_menu_button_reply
+
+        event = {
+            "contacts": [{"profile": {"name": "Raj"}, "wa_id": "919999999999"}],
+            "message": {
+                "from": "919999999999",
+                "id": "wamid.btn1",
+                "type": "interactive",
+                "interactive": {
+                    "type": "button_reply",
+                    "button_reply": {"id": "lead", "title": "New enquiry"},
+                },
+            },
+        }
+        handled = handle_menu_button_reply(self.account, event)
+        self.assertTrue(handled)
         mock_cta.assert_called_once()
-        kwargs = mock_cta.call_args.kwargs
-        self.assertIn("/leads/enquiry/", kwargs["url"])
-        self.assertTrue(kwargs["url"].startswith("https://app.test"))
-        self.assertEqual(kwargs["to"], "919999999999")
+        self.assertIn("/leads/enquiry/", mock_cta.call_args.kwargs["url"])
 
 
 class WhatsAppConversationWelcomeTests(TestCase):

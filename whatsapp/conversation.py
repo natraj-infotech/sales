@@ -127,21 +127,12 @@ def send_welcome_menu(
         )
         return
 
-    use_cta = mode == "cta_url" or (mode == "auto" and not flow_id)
-    if use_cta:
-        from business.lead_public_urls import build_lead_public_enquiry_url
-
-        company = resolve_lead_company(account)
-        enquiry_url = build_lead_public_enquiry_url(
-            company=company,
-            whatsapp_wa_id=to,
-            contact_name=contact_name,
-        )
-        send_interactive_cta_url(
+    if mode == "cta_url":
+        send_lead_enquiry_cta(
             account=account,
             to=to,
+            contact_name=contact_name,
             body_text=body,
-            url=enquiry_url,
             display_text=cta_label,
             header_text=header,
             footer_text=footer,
@@ -162,6 +153,100 @@ def send_welcome_menu(
             return
 
     send_text_message(account=account, to=to, body=body)
+
+
+def send_lead_enquiry_cta(
+    *,
+    account: WhatsAppAccountLike,
+    to: str,
+    contact_name: str = "",
+    body_text: str | None = None,
+    display_text: str | None = None,
+    header_text: str = "",
+    footer_text: str = "",
+) -> None:
+    from business.lead_public_urls import build_lead_public_enquiry_url
+
+    body = (
+        body_text
+        or getattr(settings, "WHATSAPP_BUTTON_LEAD_REPLY_BODY", "")
+        or "Tap the button below to open our enquiry form."
+    ).strip()
+    label = (
+        display_text
+        or getattr(settings, "WHATSAPP_WELCOME_CTA_DISPLAY_TEXT", "")
+        or "Open enquiry form"
+    ).strip()
+    company = resolve_lead_company(account)
+    enquiry_url = build_lead_public_enquiry_url(
+        company=company,
+        whatsapp_wa_id=to,
+        contact_name=contact_name,
+    )
+    send_interactive_cta_url(
+        account=account,
+        to=to,
+        body_text=body,
+        url=enquiry_url,
+        display_text=label,
+        header_text=header_text,
+        footer_text=footer_text,
+    )
+
+
+_LEAD_BUTTON_IDS = frozenset({"lead", "enquiry", "new_enquiry"})
+
+
+def handle_menu_button_reply(
+    account: WhatsAppAccountLike | None,
+    event: dict[str, Any],
+) -> bool:
+    """
+    Reply to welcome menu button taps (e.g. lead → public enquiry CTA URL).
+
+    Returns True when the inbound message was a handled menu button.
+    """
+    if account is None:
+        return False
+    message = event.get("message") or {}
+    if (message.get("type") or "") != "interactive":
+        return False
+    interactive = message.get("interactive") or {}
+    if (interactive.get("type") or "") != "button_reply":
+        return False
+    reply = interactive.get("button_reply") or {}
+    button_id = (reply.get("id") or "").strip().lower()
+    if not button_id:
+        return False
+
+    wa_from = (message.get("from") or "").strip()
+    if not wa_from:
+        return False
+
+    contact_name = _contact_name_from_event(event, wa_from)
+
+    try:
+        if button_id in _LEAD_BUTTON_IDS:
+            send_lead_enquiry_cta(
+                account=account,
+                to=wa_from,
+                contact_name=contact_name,
+            )
+            return True
+        if button_id == "support":
+            body = (
+                getattr(settings, "WHATSAPP_BUTTON_SUPPORT_REPLY_BODY", "")
+                or "Tell us what you need help with in a message here. Our team will reply shortly."
+            ).strip()
+            send_text_message(account=account, to=wa_from, body=body)
+            return True
+    except WhatsAppClientError:
+        logger.exception(
+            "WhatsApp menu button reply failed button_id=%s wa_from=%s",
+            button_id,
+            wa_from,
+        )
+    return False
 
 
 @transaction.atomic
@@ -191,6 +276,11 @@ def handle_inbound_customer_message(
 
     message = event.get("message") or {}
     msg_type = (message.get("type") or event.get("type") or "").strip()
+    interactive = message.get("interactive") or {}
+    is_menu_button = (
+        msg_type == "interactive"
+        and (interactive.get("type") or "") == "button_reply"
+    )
     # Ignore delivery statuses (handled separately) and empty payloads.
     if not message or msg_type in ("", "status"):
         result["skipped"] = "not_a_message"
@@ -235,7 +325,7 @@ def handle_inbound_customer_message(
     lead.save(update_fields=update_fields)
 
     never_welcomed = lead.last_welcome_sent_at is None
-    should_welcome = new_convo or never_welcomed
+    should_welcome = (new_convo or never_welcomed) and not is_menu_button
     if should_welcome:
         try:
             send_welcome_menu(
