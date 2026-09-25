@@ -58,9 +58,9 @@ class InboundChatWelcomeTests(TestCase):
         handle_inbound_customer_message(self.account, self._text_event("wamid.2", body="Again"))
         self.assertEqual(mock_welcome.call_count, 2)
 
-    @patch("whatsapp.chat_flows.send_text_message")
+    @patch("whatsapp.chat_flows.send_flow_prompt")
     @patch("whatsapp.inbound_chat.send_main_welcome")
-    def test_procure_button_starts_flow(self, mock_welcome, mock_text):
+    def test_procure_button_starts_flow(self, mock_welcome, mock_prompt):
         event = {
             "type": "interactive",
             "message": {
@@ -68,15 +68,15 @@ class InboundChatWelcomeTests(TestCase):
                 "id": "wamid.btn",
                 "type": "interactive",
                 "interactive": {
-                    "type": "button_reply",
-                    "button_reply": {"id": "procure", "title": "Procure products"},
+                    "type": "list_reply",
+                    "list_reply": {"id": "procure", "title": "Procure products"},
                 },
             },
             "contacts": [{"profile": {"name": "Sam"}, "wa_id": "919900000001"}],
         }
         handle_inbound_customer_message(self.account, event)
         mock_welcome.assert_not_called()
-        mock_text.assert_called()
+        mock_prompt.assert_called()
         lead = Lead.objects.get(whatsapp_wa_id="919900000001")
         session = get_or_create_session(lead)
         self.assertEqual(session.flow, "procure")
@@ -106,9 +106,9 @@ class ProcureFlowSubmitTests(TestCase):
         )
         self.session = get_or_create_session(self.lead)
 
-    @patch("whatsapp.chat_flows.send_interactive_reply_buttons")
+    @patch("whatsapp.chat_flows._send_end_menu")
     @patch("whatsapp.chat_flows.send_text_message")
-    def test_submit_creates_lead_with_lines(self, mock_text, mock_buttons):
+    def test_submit_creates_lead_with_lines(self, mock_text, mock_end):
         from whatsapp.chat_flows import _handle_procure
 
         start_flow(
@@ -246,28 +246,65 @@ class EndMenuTests(TestCase):
         self.session = get_or_create_session(self.lead)
         start_flow(self.session, flow="procure", step="await_end_choice", draft={})
 
-    @patch("whatsapp.chat_flows.send_text_message")
-    def test_bye_resets_idle(self, mock_text):
-        from whatsapp.chat_flows import handle_end_menu
+    @patch("whatsapp.chat_messaging.send_text_message")
+    def test_bye_resets_idle_and_thanks(self, mock_text):
+        from whatsapp.chat_messaging import BYE_THANK_YOU
+        from whatsapp.chat_flows import handle_await_end_choice
 
-        handle_end_menu(
+        handle_await_end_choice(
             account=self.account,
             session=self.session,
-            reply_id="bye_now",
             to="919944455566",
+            text="",
+            reply_id="bye_now",
         )
         self.session.refresh_from_db()
         self.assertEqual(self.session.phase, WhatsAppConversation.Phase.IDLE)
+        mock_text.assert_called_once()
+        self.assertEqual(mock_text.call_args.kwargs["body"], BYE_THANK_YOU)
 
+    @patch("whatsapp.chat_flows.send_flow_prompt")
     @patch("whatsapp.chat_flows.send_main_welcome")
-    @patch("whatsapp.chat_flows.send_text_message")
-    def test_something_else_shows_welcome(self, mock_text, mock_welcome):
-        from whatsapp.chat_flows import handle_end_menu
+    def test_something_else_does_not_show_welcome(self, mock_welcome, mock_prompt):
+        from whatsapp.chat_flows import handle_await_end_choice
 
-        handle_end_menu(
+        handle_await_end_choice(
             account=self.account,
             session=self.session,
-            reply_id="something_else",
             to="919944455566",
+            text="",
+            reply_id="something_else",
         )
+        mock_welcome.assert_not_called()
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.phase, WhatsAppConversation.Phase.IDLE)
+
+    @patch("whatsapp.inbound_chat.send_main_welcome")
+    @patch("whatsapp.chat_messaging.send_text_message")
+    def test_after_bye_next_message_shows_welcome(self, mock_text, mock_welcome):
+        from whatsapp.chat_flows import handle_await_end_choice
+        from whatsapp.inbound_chat import handle_inbound_customer_message
+
+        handle_await_end_choice(
+            account=self.account,
+            session=self.session,
+            to="919944455566",
+            text="",
+            reply_id="bye_now",
+        )
+        mock_welcome.reset_mock()
+        result = handle_inbound_customer_message(
+            self.account,
+            {
+                "type": "text",
+                "message": {
+                    "from": "919944455566",
+                    "id": "wamid.after.bye",
+                    "type": "text",
+                    "text": {"body": "Hello again"},
+                },
+                "contacts": [{"profile": {"name": "X"}, "wa_id": "919944455566"}],
+            },
+        )
+        self.assertTrue(result["welcome_sent"])
         mock_welcome.assert_called_once()

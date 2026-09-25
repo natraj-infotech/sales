@@ -12,17 +12,19 @@ from business.models import Lead
 
 from .account_resolve import WhatsAppAccountLike, resolve_lead_company
 from .chat_flows import (
+    _is_bye_intent,
     route_active_flow,
     send_main_welcome,
     start_flow_from_welcome,
 )
+from .chat_messaging import end_session, is_stop_intent
 from .client import WhatsAppClientError
 from .conversation_state import get_or_create_session
 from .models import WhatsAppConversation
 
 logger = logging.getLogger(__name__)
 
-WELCOME_BUTTON_IDS = frozenset(
+WELCOME_FLOW_IDS = frozenset(
     {"procure", "lead", "support", "caselock", "enquiry", "new_enquiry"}
 )
 
@@ -121,7 +123,11 @@ def handle_inbound_customer_message(
 
     try:
         if session.phase == WhatsAppConversation.Phase.IDLE:
-            if reply_id in WELCOME_BUTTON_IDS:
+            if is_stop_intent(reply_id=reply_id, text=text) or _is_bye_intent(
+                reply_id=reply_id, text=text
+            ):
+                end_session(account=account, session=session, to=wa_from)
+            elif reply_id in WELCOME_FLOW_IDS:
                 start_flow_from_welcome(
                     account=account,
                     lead=lead,

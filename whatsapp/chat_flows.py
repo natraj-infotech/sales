@@ -20,12 +20,16 @@ from business.models import (
 )
 
 from .account_resolve import WhatsAppAccountLike, resolve_lead_company
-from .client import (
-    WhatsAppClientError,
-    send_interactive_list,
-    send_interactive_reply_buttons,
-    send_text_message,
+from .chat_messaging import (
+    BYE_THANK_YOU,
+    STOP_ID,
+    end_session,
+    is_stop_intent,
+    send_flow_buttons,
+    send_flow_list,
+    send_flow_prompt,
 )
+from .client import WhatsAppClientError, send_text_message
 from .conversation_state import advance_step, reset_session, start_flow
 from .models import WhatsAppConversation
 
@@ -40,6 +44,33 @@ WELCOME_BUTTONS = [
 END_BUTTONS = [
     {"id": "something_else", "title": "Something else"},
     {"id": "bye_now", "title": "Bye for now"},
+]
+
+END_STEP = "await_end_choice"
+TEXT_BYE_ALIASES = frozenset({"bye", "bye for now", "goodbye", "thanks", "thank you"})
+
+WELCOME_LIST_ROWS = [
+    {"id": "procure", "title": "Procure products", "description": "Request a quote"},
+    {"id": "support", "title": "Support", "description": "Open a support ticket"},
+    {"id": "caselock", "title": "Case lock", "description": "Submit case lock"},
+]
+
+CATEGORY_LIST_ROWS = [
+    {"id": "cat_hardware", "title": "Hardware", "description": ""},
+    {"id": "cat_software", "title": "Software", "description": ""},
+    {"id": "cat_others", "title": "Others", "description": ""},
+]
+
+DEPT_LIST_ROWS = [
+    {"id": "dept_general", "title": "General", "description": ""},
+    {"id": "dept_billing", "title": "Billing", "description": ""},
+    {"id": "dept_technical", "title": "Technical", "description": ""},
+]
+
+PRIORITY_LIST_ROWS = [
+    {"id": "pri_low", "title": "Low", "description": ""},
+    {"id": "pri_medium", "title": "Medium", "description": ""},
+    {"id": "pri_high", "title": "High", "description": ""},
 ]
 
 ADD_SUBMIT_BUTTONS = [
@@ -74,11 +105,12 @@ def send_main_welcome(*, account: WhatsAppAccountLike, to: str, body: str | None
         or getattr(settings, "WHATSAPP_WELCOME_BODY", "")
         or "Welcome to Tracker365. How can we help you today?"
     ).strip()
-    send_interactive_reply_buttons(
+    send_flow_list(
         account=account,
         to=to,
         body_text=text,
-        buttons=WELCOME_BUTTONS,
+        button_label="Choose option",
+        rows=WELCOME_LIST_ROWS,
     )
 
 
@@ -112,30 +144,65 @@ def _products_queryset(company: CompanyProfile | None, category_key: str):
     )
 
 
-def handle_end_menu(
+def _is_bye_intent(*, reply_id: str, text: str) -> bool:
+    if reply_id in ("bye_now", STOP_ID):
+        return True
+    if is_stop_intent(reply_id=reply_id, text=text):
+        return True
+    normalized = (text or "").strip().lower()
+    return normalized in TEXT_BYE_ALIASES
+
+
+def handle_await_end_choice(
     *,
     account: WhatsAppAccountLike,
     session: WhatsAppConversation,
-    reply_id: str,
     to: str,
+    text: str,
+    reply_id: str,
 ) -> bool:
-    if reply_id == "bye_now":
-        reset_session(session)
-        send_text_message(
-            account=account,
-            to=to,
-            body="Thank you for contacting Tracker365. Have a great day!",
-        )
+    """
+    End-of-flow menu: Bye resets to idle with thanks; next user message starts welcome again.
+    Something else only ends the flow (no welcome until a later message).
+    Plain text after the flow restarts with the welcome menu on that message.
+    """
+    if _is_bye_intent(reply_id=reply_id, text=text):
+        end_session(account=account, session=session, to=to)
         return True
     if reply_id == "something_else":
         reset_session(session)
+        send_flow_prompt(
+            account=account,
+            to=to,
+            body_text="We're here when you need us. Send a message anytime to open the menu again.",
+        )
+        return True
+    if text and not reply_id:
+        reset_session(session)
         send_main_welcome(account=account, to=to)
+        return True
+    if reply_id:
+        send_flow_prompt(
+            account=account,
+            to=to,
+            body_text="Please choose Bye for now or Something else, or send a new message.",
+        )
         return True
     return False
 
 
+def _send_category_menu(account: WhatsAppAccountLike, to: str, body: str) -> None:
+    send_flow_list(
+        account=account,
+        to=to,
+        body_text=body,
+        button_label="Categories",
+        rows=CATEGORY_LIST_ROWS,
+    )
+
+
 def _send_end_menu(account: WhatsAppAccountLike, to: str) -> None:
-    send_interactive_reply_buttons(
+    send_flow_buttons(
         account=account,
         to=to,
         body_text="Do you need something else?",
@@ -180,7 +247,7 @@ def _finalize_procure(
         body="Your requirement has been submitted. Our team will contact you soon.",
     )
     _send_end_menu(account, to)
-    advance_step(session, step="await_end_choice")
+    advance_step(session, step=END_STEP)
 
 
 def _handle_procure(
@@ -197,19 +264,10 @@ def _handle_procure(
     draft = dict(session.draft or {})
     company = _company(account)
 
-    if step == "await_end_choice" and reply_id:
-        if handle_end_menu(account=account, session=session, reply_id=reply_id, to=to):
-            return
-
     if reply_id in ("add_more", "submit_req"):
         if reply_id == "add_more":
             advance_step(session, step="procure_category")
-            send_interactive_reply_buttons(
-                account=account,
-                to=to,
-                body_text="Choose a product category:",
-                buttons=CATEGORY_BUTTONS,
-            )
+            _send_category_menu(account, to, "Choose a product category:")
             return
         _finalize_procure(
             account=account,
@@ -224,17 +282,12 @@ def _handle_procure(
         key = reply_id.replace("cat_", "")
         products = list(_products_queryset(company, key)[:10])
         if not products:
-            send_text_message(
+            send_flow_prompt(
                 account=account,
                 to=to,
-                body="No products found in that category. Please pick another category.",
+                body_text="No products found in that category. Please pick another category.",
             )
-            send_interactive_reply_buttons(
-                account=account,
-                to=to,
-                body_text="Choose a product category:",
-                buttons=CATEGORY_BUTTONS,
-            )
+            _send_category_menu(account, to, "Choose a product category:")
             return
         advance_step(
             session,
@@ -252,7 +305,7 @@ def _handle_procure(
             }
             for p in products
         ]
-        send_interactive_list(
+        send_flow_list(
             account=account,
             to=to,
             body_text="Select a product from the list:",
@@ -265,11 +318,11 @@ def _handle_procure(
         try:
             product_id = int(reply_id.split("_", 1)[1])
         except (IndexError, ValueError):
-            send_text_message(account=account, to=to, body="Invalid product. Please try again.")
+            send_flow_prompt(account=account, to=to, body_text="Invalid product. Please try again.")
             return
         product = Product.objects.filter(pk=product_id, company=company).first()
         if product is None:
-            send_text_message(account=account, to=to, body="Product not found. Please choose again.")
+            send_flow_prompt(account=account, to=to, body_text="Product not found. Please choose again.")
             return
         advance_step(
             session,
@@ -279,17 +332,12 @@ def _handle_procure(
                 "pending_product_name": product.name,
             },
         )
-        send_text_message(account=account, to=to, body="Enter quantity (number):")
+        send_flow_prompt(account=account, to=to, body_text="Enter quantity (number):")
         return
 
     if step == "procure_company_name" and text:
         advance_step(session, step="procure_category", draft_updates={"company_name": text.strip()})
-        send_interactive_reply_buttons(
-            account=account,
-            to=to,
-            body_text="Choose a product category:",
-            buttons=CATEGORY_BUTTONS,
-        )
+        _send_category_menu(account, to, "Choose a product category:")
         return
 
     if step == "procure_quantity" and text:
@@ -298,7 +346,11 @@ def _handle_procure(
             if qty < 1:
                 raise ValueError
         except ValueError:
-            send_text_message(account=account, to=to, body="Please enter a valid quantity (whole number ≥ 1).")
+            send_flow_prompt(
+                account=account,
+                to=to,
+                body_text="Please enter a valid quantity (whole number ≥ 1).",
+            )
             return
         lines = list(draft.get("lines") or [])
         lines.append(
@@ -318,7 +370,7 @@ def _handle_procure(
                 "pending_product_name": None,
             },
         )
-        send_interactive_reply_buttons(
+        send_flow_buttons(
             account=account,
             to=to,
             body_text="Add another product or submit your requirement?",
@@ -326,10 +378,10 @@ def _handle_procure(
         )
         return
 
-    send_text_message(
+    send_flow_prompt(
         account=account,
         to=to,
-        body="Please use the buttons or reply as prompted.",
+        body_text="Please use the buttons or reply as prompted.",
     )
 
 
@@ -343,10 +395,10 @@ def _create_support_ticket(
     company = _company(account)
     owner = _owner_user(company)
     if company is None or owner is None:
-        send_text_message(
+        send_flow_prompt(
             account=account,
             to=to,
-            body="Support is not configured for this line. Please try again later.",
+            body_text="Support is not configured for this line. Please try again later.",
         )
         reset_session(session)
         return
@@ -367,7 +419,7 @@ def _create_support_ticket(
         to=to,
         body=f"Support ticket created ({draft.get('subject', 'WhatsApp')}). We will follow up soon.",
     )
-    advance_step(session, step="await_end_choice")
+    advance_step(session, step=END_STEP)
     _send_end_menu(account, to)
 
 
@@ -380,10 +432,6 @@ def _handle_support(
     text: str,
     reply_id: str,
 ) -> None:
-    if session.step == "await_end_choice" and reply_id:
-        if handle_end_menu(account=account, session=session, reply_id=reply_id, to=to):
-            return
-
     if reply_id.startswith("dept_"):
         dept_map = {
             "dept_general": SupportTicket.Department.GENERAL,
@@ -395,11 +443,12 @@ def _handle_support(
             step="support_priority",
             draft_updates={"department": dept_map.get(reply_id, SupportTicket.Department.GENERAL)},
         )
-        send_interactive_reply_buttons(
+        send_flow_list(
             account=account,
             to=to,
             body_text="Choose priority:",
-            buttons=PRIORITY_BUTTONS,
+            button_label="Priority",
+            rows=PRIORITY_LIST_ROWS,
         )
         return
 
@@ -419,20 +468,25 @@ def _handle_support(
 
     if session.step == "support_subject" and text:
         advance_step(session, step="support_description", draft_updates={"subject": text.strip()[:255]})
-        send_text_message(account=account, to=to, body="Please describe the issue in detail:")
+        send_flow_prompt(account=account, to=to, body_text="Please describe the issue in detail:")
         return
 
     if session.step == "support_description" and text:
         advance_step(session, step="support_department", draft_updates={"description": text.strip()})
-        send_interactive_reply_buttons(
+        send_flow_list(
             account=account,
             to=to,
             body_text="Choose department:",
-            buttons=DEPT_BUTTONS,
+            button_label="Department",
+            rows=DEPT_LIST_ROWS,
         )
         return
 
-    send_text_message(account=account, to=to, body="Please use the buttons or reply as prompted.")
+    send_flow_prompt(
+        account=account,
+        to=to,
+        body_text="Please use the buttons or reply as prompted.",
+    )
 
 
 def _create_caselock_submission(
@@ -443,7 +497,11 @@ def _create_caselock_submission(
 ) -> None:
     company = _company(account)
     if company is None:
-        send_text_message(account=account, to=to, body="Case lock is not available on this line.")
+        send_flow_prompt(
+            account=account,
+            to=to,
+            body_text="Case lock is not available on this line.",
+        )
         reset_session(session)
         return
     draft = session.draft or {}
@@ -451,7 +509,11 @@ def _create_caselock_submission(
         pk=draft.get("caselock_product_id"), company=company
     ).first()
     if product is None:
-        send_text_message(account=account, to=to, body="Product not found. Please start Case lock again.")
+        send_flow_prompt(
+            account=account,
+            to=to,
+            body_text="Product not found. Please start Case lock again.",
+        )
         reset_session(session)
         return
     msg_key = f"wa:{to}:{uuid.uuid4()}"
@@ -475,7 +537,7 @@ def _create_caselock_submission(
         to=to,
         body="Your case lock request has been submitted.",
     )
-    advance_step(session, step="await_end_choice")
+    advance_step(session, step=END_STEP)
     _send_end_menu(account, to)
 
 
@@ -484,14 +546,14 @@ def _caselock_product_list(account: WhatsAppAccountLike, to: str, company: Compa
         CaseLockProduct.objects.filter(company=company).order_by("name")[:10]
     )
     if not products:
-        send_text_message(
+        send_flow_prompt(
             account=account,
             to=to,
-            body="No case lock products are configured. Please contact support.",
+            body_text="No case lock products are configured. Please contact support.",
         )
         return
     rows = [{"id": f"clprod_{p.pk}", "title": p.name[:24], "description": ""} for p in products]
-    send_interactive_list(
+    send_flow_list(
         account=account,
         to=to,
         body_text="Select the product for case lock:",
@@ -511,27 +573,23 @@ def _handle_caselock(
 ) -> None:
     company = _company(account)
 
-    if session.step == "await_end_choice" and reply_id:
-        if handle_end_menu(account=account, session=session, reply_id=reply_id, to=to):
-            return
-
     if reply_id.startswith("clprod_"):
         try:
             pk = int(reply_id.split("_", 1)[1])
         except (IndexError, ValueError):
-            send_text_message(account=account, to=to, body="Invalid product.")
+            send_flow_prompt(account=account, to=to, body_text="Invalid product.")
             return
         advance_step(
             session,
             step="caselock_quantity",
             draft_updates={"caselock_product_id": pk},
         )
-        send_text_message(account=account, to=to, body="Enter quantity (number):")
+        send_flow_prompt(account=account, to=to, body_text="Enter quantity (number):")
         return
 
     if session.step == "caselock_client_name" and text:
         advance_step(session, step="caselock_client_gst", draft_updates={"client_name": text.strip()})
-        send_text_message(account=account, to=to, body="Enter GST number:")
+        send_flow_prompt(account=account, to=to, body_text="Enter GST number:")
         return
 
     if session.step == "caselock_client_gst" and text:
@@ -545,13 +603,17 @@ def _handle_caselock(
             if qty < 1:
                 raise ValueError
         except ValueError:
-            send_text_message(account=account, to=to, body="Please enter a valid quantity (≥ 1).")
+            send_flow_prompt(account=account, to=to, body_text="Please enter a valid quantity (≥ 1).")
             return
         advance_step(session, step="caselock_submit", draft_updates={"quantity": qty})
         _create_caselock_submission(account=account, session=session, to=to)
         return
 
-    send_text_message(account=account, to=to, body="Please use the buttons or reply as prompted.")
+    send_flow_prompt(
+        account=account,
+        to=to,
+        body_text="Please use the buttons or reply as prompted.",
+    )
 
 
 def start_flow_from_welcome(
@@ -562,21 +624,28 @@ def start_flow_from_welcome(
     to: str,
     reply_id: str,
 ) -> None:
+    if is_stop_intent(reply_id=reply_id, text=""):
+        end_session(account=account, session=session, to=to)
+        return
     flow_id = reply_id
     if flow_id in ("lead", "procure"):
         start_flow(session, flow="procure", step="procure_company_name", draft={"lines": []})
-        send_text_message(account=account, to=to, body="Please enter your company name:")
+        send_flow_prompt(account=account, to=to, body_text="Please enter your company name:")
         return
     if flow_id == "support":
         start_flow(session, flow="support", step="support_subject", draft={})
-        send_text_message(account=account, to=to, body="What is the subject of your support request?")
+        send_flow_prompt(
+            account=account,
+            to=to,
+            body_text="What is the subject of your support request?",
+        )
         return
     if flow_id == "caselock":
         start_flow(session, flow="caselock", step="caselock_client_name", draft={})
-        send_text_message(
+        send_flow_prompt(
             account=account,
             to=to,
-            body="Case lock — enter your company name (customer name):",
+            body_text="Case lock — enter your company name (customer name):",
         )
         return
 
@@ -591,6 +660,20 @@ def route_active_flow(
     text: str,
     reply_id: str,
 ) -> None:
+    if is_stop_intent(reply_id=reply_id, text=text):
+        end_session(account=account, session=session, to=to)
+        return
+
+    if session.step == END_STEP:
+        if handle_await_end_choice(
+            account=account,
+            session=session,
+            to=to,
+            text=text,
+            reply_id=reply_id,
+        ):
+            return
+
     flow = session.flow
     if flow == "procure":
         _handle_procure(
