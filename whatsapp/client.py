@@ -217,6 +217,58 @@ def send_interactive_reply_buttons(
     )
 
 
+def send_interactive_list(
+    *,
+    account: WhatsAppAccountLike,
+    to: str,
+    body_text: str,
+    button_label: str,
+    rows: list[dict[str, str]],
+    header_text: str = "",
+    footer_text: str = "",
+) -> dict[str, Any]:
+    """
+    Send an interactive list message (max 10 rows).
+
+    rows: [{"id": "...", "title": "...", "description": "..."}]
+    """
+    list_rows = []
+    for row in rows[:10]:
+        list_rows.append(
+            {
+                "id": str(row["id"])[:200],
+                "title": str(row["title"])[:24],
+                "description": (row.get("description") or "")[:72],
+            }
+        )
+    interactive: dict[str, Any] = {
+        "type": "list",
+        "body": {"text": body_text[:1024]},
+        "action": {
+            "button": (button_label or "Choose")[:20],
+            "sections": [{"title": "Options", "rows": list_rows}],
+        },
+    }
+    if header_text:
+        interactive["header"] = {"type": "text", "text": header_text[:60]}
+    if footer_text:
+        interactive["footer"] = {"text": footer_text[:60]}
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": interactive,
+    }
+    return _post_message(
+        account=account,
+        payload=payload,
+        event_type="interactive_list",
+        wa_to=to,
+    )
+
+
 def send_flow_message(
     *,
     account: WhatsAppAccountLike,

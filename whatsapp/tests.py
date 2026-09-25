@@ -138,53 +138,6 @@ class WhatsAppWebhookVerifyTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
-class WhatsAppWelcomeButtonsTests(TestCase):
-    def setUp(self):
-        user = User.objects.create_user(email="cta@example.com", password="x")
-        self.company = CompanyProfile.objects.create(user=user, company_name="CTA Co")
-        self.account = WhatsAppAccount.objects.create(
-            company=self.company,
-            phone_number_id="111222",
-            label="Main",
-            access_token="test-token",
-        )
-
-    @override_settings(WHATSAPP_WELCOME_MODE="buttons")
-    @patch("whatsapp.conversation.send_interactive_reply_buttons")
-    def test_send_welcome_menu_uses_reply_buttons(self, mock_buttons):
-        from whatsapp.conversation import send_welcome_menu
-
-        send_welcome_menu(
-            account=self.account,
-            to="919999999999",
-            contact_name="Raj",
-        )
-        mock_buttons.assert_called_once()
-        self.assertEqual(mock_buttons.call_args.kwargs["to"], "919999999999")
-
-    @override_settings(PUBLIC_BASE_URL="https://app.test")
-    @patch("whatsapp.conversation.send_interactive_cta_url")
-    def test_menu_lead_button_sends_enquiry_cta(self, mock_cta):
-        from whatsapp.conversation import handle_menu_button_reply
-
-        event = {
-            "contacts": [{"profile": {"name": "Raj"}, "wa_id": "919999999999"}],
-            "message": {
-                "from": "919999999999",
-                "id": "wamid.btn1",
-                "type": "interactive",
-                "interactive": {
-                    "type": "button_reply",
-                    "button_reply": {"id": "lead", "title": "New enquiry"},
-                },
-            },
-        }
-        handled = handle_menu_button_reply(self.account, event)
-        self.assertTrue(handled)
-        mock_cta.assert_called_once()
-        self.assertIn("/leads/enquiry/", mock_cta.call_args.kwargs["url"])
-
-
 class WhatsAppConversationWelcomeTests(TestCase):
     def setUp(self):
         user = User.objects.create_user(email="owner3@example.com", password="x")
@@ -210,54 +163,32 @@ class WhatsAppConversationWelcomeTests(TestCase):
             "metadata": {"phone_number_id": self.account.phone_number_id},
         }
 
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
+    @patch("whatsapp.inbound_chat.send_main_welcome")
     def test_first_message_sends_welcome(self, mock_welcome):
-        from whatsapp.conversation import handle_inbound_customer_message
+        from whatsapp.inbound_chat import handle_inbound_customer_message
 
         result = handle_inbound_customer_message(self.account, self._event())
-        self.assertTrue(result["is_new_conversation"])
         self.assertTrue(result["welcome_sent"])
         mock_welcome.assert_called_once()
         lead = Lead.objects.get(whatsapp_wa_id="919876543210")
         self.assertIsNotNone(lead.last_inbound_at)
         self.assertIsNotNone(lead.last_welcome_sent_at)
 
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
-    def test_second_message_within_window_no_welcome(self, mock_welcome):
-        from whatsapp.conversation import handle_inbound_customer_message
+    @patch("whatsapp.inbound_chat.send_main_welcome")
+    def test_second_message_while_idle_sends_welcome_again(self, mock_welcome):
+        from whatsapp.inbound_chat import handle_inbound_customer_message
 
         handle_inbound_customer_message(self.account, self._event("wamid.1"))
         mock_welcome.reset_mock()
         result = handle_inbound_customer_message(
             self.account, self._event("wamid.2", text="Still here")
         )
-        self.assertFalse(result["is_new_conversation"])
-        self.assertFalse(result["welcome_sent"])
-        mock_welcome.assert_not_called()
-
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
-    def test_after_inactivity_sends_welcome_again(self, mock_welcome):
-        from whatsapp.conversation import handle_inbound_customer_message
-
-        handle_inbound_customer_message(self.account, self._event("wamid.1"))
-        lead = Lead.objects.get(whatsapp_wa_id="919876543210")
-        lead.last_inbound_at = timezone.now() - timedelta(hours=25)
-        lead.save(update_fields=["last_inbound_at"])
-        mock_welcome.reset_mock()
-        result = handle_inbound_customer_message(
-            self.account, self._event("wamid.3", text="Hello again")
-        )
-        self.assertTrue(result["is_new_conversation"])
         self.assertTrue(result["welcome_sent"])
         mock_welcome.assert_called_once()
 
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
+    @patch("whatsapp.inbound_chat.send_main_welcome")
     def test_duplicate_message_id_skipped(self, mock_welcome):
-        from whatsapp.conversation import handle_inbound_customer_message
+        from whatsapp.inbound_chat import handle_inbound_customer_message
 
         handle_inbound_customer_message(self.account, self._event("wamid.dup"))
         mock_welcome.reset_mock()
@@ -289,11 +220,10 @@ class EnvWhatsAppAccountInboundTests(TestCase):
             "metadata": {"phone_number_id": "555444"},
         }
 
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
+    @patch("whatsapp.inbound_chat.send_main_welcome")
     def test_env_account_creates_lead_and_welcome(self, mock_welcome):
         from whatsapp.account_resolve import EnvWhatsAppAccount
-        from whatsapp.conversation import handle_inbound_customer_message
+        from whatsapp.inbound_chat import handle_inbound_customer_message
 
         account = EnvWhatsAppAccount(phone_number_id="555444", company=self.company)
         result = handle_inbound_customer_message(account, self._event())
@@ -304,11 +234,10 @@ class EnvWhatsAppAccountInboundTests(TestCase):
         self.assertEqual(lead.contact_name, "Ravi")
         self.assertEqual(lead.source, Lead.Source.WHATSAPP)
 
-    @override_settings(WHATSAPP_WELCOME_INACTIVITY_HOURS=24)
-    @patch("whatsapp.conversation.send_welcome_menu")
+    @patch("whatsapp.inbound_chat.send_main_welcome")
     def test_welcome_and_lead_when_no_company_in_database(self, mock_welcome):
         from whatsapp.account_resolve import EnvWhatsAppAccount
-        from whatsapp.conversation import handle_inbound_customer_message
+        from whatsapp.inbound_chat import handle_inbound_customer_message
 
         CompanyProfile.objects.all().delete()
         account = EnvWhatsAppAccount(phone_number_id="555444", company=None)

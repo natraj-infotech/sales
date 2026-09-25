@@ -327,7 +327,7 @@ WHATSAPP_WELCOME_FOOTER = os.environ.get("WHATSAPP_WELCOME_FOOTER", "").strip()
 # JSON array or "id:Title,id2:Title2"
 WHATSAPP_WELCOME_BUTTONS = os.environ.get(
     "WHATSAPP_WELCOME_BUTTONS",
-    "lead:New enquiry,support:Support",
+    "procure:Procure products,support:Support,caselock:Case lock",
 ).strip()
 WHATSAPP_WELCOME_FLOW_ID = os.environ.get("WHATSAPP_WELCOME_FLOW_ID", "").strip()
 WHATSAPP_WELCOME_FLOW_CTA = os.environ.get(

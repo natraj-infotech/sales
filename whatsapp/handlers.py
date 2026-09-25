@@ -63,29 +63,17 @@ def dispatch_webhook(account: AccountLike, event: dict[str, Any]) -> None:
 
 
 @register_webhook_handler("*")
-def inbound_menu_button_handler(account: AccountLike, event: dict[str, Any]) -> None:
-    """Follow up on welcome reply-button taps (lead → enquiry form link)."""
+def inbound_chat_handler(account: AccountLike, event: dict[str, Any]) -> None:
+    """Welcome menu + multi-step procure / support / case lock flows."""
     if (event.get("type") or "") == "status":
         return
     if not event.get("message"):
         return
-    from .conversation import handle_menu_button_reply
-
-    handle_menu_button_reply(account, event)
-
-
-@register_webhook_handler("*")
-def inbound_welcome_handler(account: AccountLike, event: dict[str, Any]) -> None:
-    """Auto welcome/menu on new WhatsApp conversations (any inbound message type)."""
-    if (event.get("type") or "") == "status":
-        return
-    if not event.get("message"):
-        return
-    from .conversation import handle_inbound_customer_message
+    from .inbound_chat import handle_inbound_customer_message
 
     result = handle_inbound_customer_message(account, event)
     if result.get("skipped") in ("no_account", "send_failed"):
-        logger.info("WhatsApp inbound welcome result=%s", result)
+        logger.info("WhatsApp inbound chat result=%s", result)
 
 
 def _product_options(account: AccountLike) -> list[dict[str, str]]:

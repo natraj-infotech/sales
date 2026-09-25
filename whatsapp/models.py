@@ -68,3 +68,32 @@ class WhatsAppMessageLog(models.Model):
 
     def __str__(self):
         return f"{self.direction} {self.event_type or self.wa_message_id or self.pk}"
+
+
+class WhatsAppConversation(models.Model):
+    """In-chat state for multi-step WhatsApp flows (procure, support, case lock)."""
+
+    class Phase(models.TextChoices):
+        IDLE = "idle", "Idle"
+        ACTIVE = "active", "Active"
+
+    lead = models.OneToOneField(
+        "business.Lead",
+        on_delete=models.CASCADE,
+        related_name="whatsapp_conversation",
+    )
+    phase = models.CharField(
+        max_length=16,
+        choices=Phase.choices,
+        default=Phase.IDLE,
+    )
+    flow = models.CharField(max_length=32, blank=True)
+    step = models.CharField(max_length=64, blank=True)
+    draft = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "whatsapp_conversation"
+
+    def __str__(self):
+        return f"wa-chat lead={self.lead_id} {self.phase}/{self.flow}/{self.step}"
