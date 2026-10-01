@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import views_catalog
 from . import views_procurement
 
 urlpatterns = [
@@ -264,5 +265,66 @@ urlpatterns = [
         "support/tickets/<int:pk>/update/",
         views.support_ticket_update,
         name="support_ticket_update",
+    ),
+    path("catalog/", views_catalog.catalog_hub, name="catalog_hub"),
+    path(
+        "catalog/<str:master_key>/",
+        views_catalog.catalog_category_list,
+        name="catalog_category_list",
+    ),
+    path(
+        "catalog/category/new/",
+        views_catalog.catalog_category_add,
+        name="catalog_category_add",
+    ),
+    path(
+        "catalog/category/<int:pk>/edit/",
+        views_catalog.catalog_category_edit,
+        name="catalog_category_edit",
+    ),
+    path(
+        "catalog/category/<int:pk>/delete/",
+        views_catalog.catalog_category_delete,
+        name="catalog_category_delete",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/",
+        views_catalog.catalog_subcategory_list,
+        name="catalog_subcategory_list",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/new/",
+        views_catalog.catalog_subcategory_add,
+        name="catalog_subcategory_add",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/<int:pk>/edit/",
+        views_catalog.catalog_subcategory_edit,
+        name="catalog_subcategory_edit",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/<int:pk>/delete/",
+        views_catalog.catalog_subcategory_delete,
+        name="catalog_subcategory_delete",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/",
+        views_catalog.catalog_product_list,
+        name="catalog_product_list",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/new/",
+        views_catalog.catalog_product_add,
+        name="catalog_product_add",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/<int:pk>/edit/",
+        views_catalog.catalog_product_edit,
+        name="catalog_product_edit",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/<int:pk>/delete/",
+        views_catalog.catalog_product_delete,
+        name="catalog_product_delete",
     ),
 ]

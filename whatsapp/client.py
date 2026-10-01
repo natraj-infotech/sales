@@ -73,6 +73,35 @@ def send_text_message(
     return data
 
 
+def send_document_message(
+    *,
+    account: WhatsAppAccountLike,
+    to: str,
+    link: str,
+    filename: str,
+    caption: str = "",
+) -> dict[str, Any]:
+    """Send a document by public HTTPS URL (e.g. quotation PDF on MEDIA)."""
+    if not (link or "").strip():
+        raise WhatsAppClientError("Document link is required")
+    document: dict[str, Any] = {"link": link.strip(), "filename": filename[:240] or "document.pdf"}
+    if caption:
+        document["caption"] = caption[:1024]
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "document",
+        "document": document,
+    }
+    return _post_message(
+        account=account,
+        payload=payload,
+        event_type="document",
+        wa_to=to,
+    )
+
+
 def send_template_message(
     *,
     account: WhatsAppAccountLike,

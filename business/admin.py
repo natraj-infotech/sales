@@ -356,6 +356,54 @@ class OemDiaryCompanyAdmin(admin.ModelAdmin):
     inlines = [OemDiaryEmailInline]
 
 
+from business.catalog import (  # noqa: E402
+    CatalogCategory,
+    CatalogProduct,
+    CatalogSubcategory,
+    CustomerQuotation,
+    CustomerQuotationLine,
+)
+
+
+@admin.register(CatalogCategory)
+class CatalogCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "master_category", "company", "sort_order", "is_active")
+    list_filter = ("master_category", "company", "is_active")
+    search_fields = ("name",)
+
+
+@admin.register(CatalogSubcategory)
+class CatalogSubcategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "sort_order", "is_active")
+    list_filter = ("category__company", "is_active")
+    search_fields = ("name", "category__name")
+
+
+@admin.register(CatalogProduct)
+class CatalogProductAdmin(admin.ModelAdmin):
+    list_display = (
+        "display_label",
+        "subcategory",
+        "unit_price",
+        "is_whatsapp_visible",
+        "is_active",
+    )
+    list_filter = ("is_active", "is_whatsapp_visible", "subcategory__category__company")
+    search_fields = ("brand", "product_name", "model_number")
+
+
+class CustomerQuotationLineInline(admin.TabularInline):
+    model = CustomerQuotationLine
+    extra = 0
+
+
+@admin.register(CustomerQuotation)
+class CustomerQuotationAdmin(admin.ModelAdmin):
+    list_display = ("pk", "company", "status", "subtotal", "has_unpriced_lines", "created_at")
+    list_filter = ("status", "company")
+    inlines = [CustomerQuotationLineInline]
+
+
 @admin.register(ProcurementDeal)
 class ProcurementDealAdmin(admin.ModelAdmin):
     list_display = ("deal_no", "product", "quantity", "company", "created_at")

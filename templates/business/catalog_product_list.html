@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Catalog products{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <h1 class="sw-config-head-title">{{ subcategory.name }}</h1>
+      <p class="sw-config-head-sub">{{ subcategory.category.get_master_category_display }} → {{ subcategory.category.name }}</p>
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-toolbar">
+        <p class="sw-breadcrumb">
+          <a href="{% url 'catalog_hub' %}">Catalog</a> →
+          <a href="{% url 'catalog_subcategory_list' subcategory.category_id %}">{{ subcategory.category.name }}</a> →
+          {{ subcategory.name }}
+        </p>
+        <a class="btn-tracker-header" href="{% url 'catalog_product_add' subcategory.pk %}">Add product</a>
+      </div>
+      <div class="sw-config-content-fill">
+        <div class="sw-config-panel sw-config-panel--fill">
+          <div class="sw-config-table-wrap sw-config-table-wrap--fill">
+            <table class="sw-config-table">
+              <thead>
+                <tr>
+                  <th>Brand &amp; model</th>
+                  <th style="width:10rem;">Price</th>
+                  <th style="width:8rem;">WhatsApp</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in products %}
+                <tr>
+                  <td>
+                    <strong>{{ p.brand }} {{ p.product_name }}</strong>
+                    {% if p.model_number %}<br><code style="font-size:0.8125rem;">{{ p.model_number }}</code>{% endif %}
+                  </td>
+                  <td>{% if p.unit_price %}₹{{ p.unit_price }}{% else %}<span class="sw-badge sw-badge--off">On request</span>{% endif %}</td>
+                  <td>{% if p.is_whatsapp_visible %}<span class="sw-badge sw-badge--ok">Listed</span>{% else %}Hidden{% endif %}</td>
+                  <td><a href="{% url 'catalog_product_edit' subcategory.pk p.pk %}">Edit</a></td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="4" style="padding:0;">
+                    <div class="sw-config-empty sw-config-empty--fill">
+                      <strong>No products</strong>
+                      Add brand, product name, and model number.
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

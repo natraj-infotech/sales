@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Confirm delete{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <h1 class="sw-config-head-title">Confirm delete</h1>
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-panel sw-config-form-panel--wide" style="max-width:36rem;">
+        <h2 class="sw-config-panel-title">Remove this item?</h2>
+        <p style="margin:0 0 1.25rem; font-size:0.9375rem;">{{ object_label }}</p>
+        <form method="post" class="sw-config-form-actions" style="border:none; padding:0; margin:0;">
+          {% csrf_token %}
+          <button type="submit" class="btn-tracker-header" style="background:#b91c1c; border-color:#b91c1c;">Delete</button>
+          <a href="{{ cancel_url }}" class="btn-tracker-header btn-tracker-ghost">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,11 +1,17 @@
 from django.urls import path
 
 from . import views
+from . import views_integrations
 
 urlpatterns = [
     path("", views.root_redirect, name="root"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
     path("company/setup/", views.company_setup, name="company_setup"),
+    path(
+        "company/integrations/",
+        views_integrations.company_integrations,
+        name="company_integrations",
+    ),
     path(
         "company/reminder-template/",
         views.reminder_template,

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from accounts.models import CompanyProfile
-from business.models import CaseLockProduct, Lead, Product, SupportTicket
+from business.models import CaseLockProduct, Lead, SupportTicket
 from whatsapp.conversation_state import get_or_create_session, reset_session, start_flow
 from whatsapp.inbound_chat import handle_inbound_customer_message, parse_inbound_message
 from whatsapp.models import WhatsAppAccount, WhatsAppConversation
@@ -85,6 +85,8 @@ class InboundChatWelcomeTests(TestCase):
 
 class ProcureFlowSubmitTests(TestCase):
     def setUp(self):
+        from business.catalog import CatalogCategory, CatalogMasterCategory, CatalogProduct, CatalogSubcategory
+
         user = User.objects.create_user(email="proc@example.com", password="x")
         self.company = CompanyProfile.objects.create(user=user, company_name="Proc Co")
         self.account = WhatsAppAccount.objects.create(
@@ -92,10 +94,18 @@ class ProcureFlowSubmitTests(TestCase):
             phone_number_id="555666",
             access_token="tok",
         )
-        self.product = Product.objects.create(
+        cat = CatalogCategory.objects.create(
             company=self.company,
-            name="Laptop Pro",
-            category="hardware",
+            master_category=CatalogMasterCategory.HARDWARE,
+            name="Laptop",
+        )
+        sub = CatalogSubcategory.objects.create(category=cat, name="Intel i5")
+        self.catalog_product = CatalogProduct.objects.create(
+            subcategory=sub,
+            brand="Dell",
+            product_name="Latitude",
+            model_number="5540",
+            unit_price="85000.00",
         )
         self.lead = Lead.objects.create(
             company=self.company,
@@ -119,10 +129,13 @@ class ProcureFlowSubmitTests(TestCase):
                 "company_name": "Acme Ltd",
                 "lines": [
                     {
-                        "product_id": self.product.pk,
-                        "product_name": self.product.name,
+                        "catalog_product_id": self.catalog_product.pk,
+                        "display_name": self.catalog_product.display_label(),
                         "quantity": 2,
-                        "category": "hardware",
+                        "master_category": "hardware",
+                        "category_name": "Laptop",
+                        "subcategory_name": "Intel i5",
+                        "unit_price": "85000.00",
                     }
                 ],
             },
@@ -137,7 +150,7 @@ class ProcureFlowSubmitTests(TestCase):
             reply_id="submit_req",
         )
         lead = Lead.objects.filter(company=self.company, company_name="Acme Ltd").latest("id")
-        self.assertIn("Laptop Pro", lead.requirement)
+        self.assertIn("Latitude", lead.requirement)
 
 
 class SupportFlowTests(TestCase):

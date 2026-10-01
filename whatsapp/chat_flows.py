@@ -6,16 +6,30 @@ import logging
 import uuid
 from typing import Any
 
-from django.db.models import Q
-
 from accounts.models import CompanyProfile
-from business.lead_ingest import create_lead_from_whatsapp
+from business.catalog import CatalogProduct
+from business.catalog_whatsapp import (
+    categories_for_master,
+    category_list_rows,
+    master_list_rows,
+    parse_category_reply_id,
+    parse_master_reply_id,
+    parse_product_reply_id,
+    parse_subcategory_reply_id,
+    product_list_rows,
+    products_for_subcategory,
+    subcategories_for_category,
+    subcategory_list_rows,
+)
+from business.customer_quotation import (
+    create_quotation_from_procure,
+    quotation_whatsapp_messages,
+)
 from business.models import (
     CaseLockInvite,
     CaseLockProduct,
     CaseLockSubmission,
     Lead,
-    Product,
     SupportTicket,
 )
 
@@ -55,12 +69,6 @@ WELCOME_LIST_ROWS = [
     {"id": "caselock", "title": "Case lock", "description": "Submit case lock"},
 ]
 
-CATEGORY_LIST_ROWS = [
-    {"id": "cat_hardware", "title": "Hardware", "description": ""},
-    {"id": "cat_software", "title": "Software", "description": ""},
-    {"id": "cat_others", "title": "Others", "description": ""},
-]
-
 DEPT_LIST_ROWS = [
     {"id": "dept_general", "title": "General", "description": ""},
     {"id": "dept_billing", "title": "Billing", "description": ""},
@@ -76,12 +84,6 @@ PRIORITY_LIST_ROWS = [
 ADD_SUBMIT_BUTTONS = [
     {"id": "add_more", "title": "Add more products"},
     {"id": "submit_req", "title": "Submit requirement"},
-]
-
-CATEGORY_BUTTONS = [
-    {"id": "cat_hardware", "title": "Hardware"},
-    {"id": "cat_software", "title": "Software"},
-    {"id": "cat_others", "title": "Others"},
 ]
 
 DEPT_BUTTONS = [
@@ -122,26 +124,6 @@ def _owner_user(company: CompanyProfile | None):
     if company is None:
         return None
     return company.user
-
-
-def _products_queryset(company: CompanyProfile | None, category_key: str):
-    if company is None:
-        return Product.objects.none()
-    qs = Product.objects.filter(company=company).order_by("name")
-    if category_key == "hardware":
-        return qs.filter(
-            Q(category__icontains="hardware") | Q(asset_type__icontains="hardware")
-        )
-    if category_key == "software":
-        return qs.filter(
-            Q(category__icontains="software") | Q(asset_type__icontains="software")
-        )
-    return qs.exclude(
-        Q(category__icontains="hardware")
-        | Q(category__icontains="software")
-        | Q(asset_type__icontains="hardware")
-        | Q(asset_type__icontains="software")
-    )
 
 
 def _is_bye_intent(*, reply_id: str, text: str) -> bool:
@@ -191,14 +173,47 @@ def handle_await_end_choice(
     return False
 
 
-def _send_category_menu(account: WhatsAppAccountLike, to: str, body: str) -> None:
+def _send_master_menu(account: WhatsAppAccountLike, to: str, body: str) -> None:
     send_flow_list(
         account=account,
         to=to,
         body_text=body,
-        button_label="Categories",
-        rows=CATEGORY_LIST_ROWS,
+        button_label="Type",
+        rows=master_list_rows(),
     )
+
+
+def _maybe_send_subcategory_brochure(
+    account: WhatsAppAccountLike,
+    to: str,
+    subcategory_id: int,
+) -> None:
+    from whatsapp.public_urls import public_media_url
+
+    from business.catalog import CatalogSubcategory
+
+    from .client import send_document_message
+
+    sub = (
+        CatalogSubcategory.objects.filter(pk=subcategory_id)
+        .select_related("category")
+        .first()
+    )
+    if sub is None or not sub.brochure_pdf:
+        return
+    url = public_media_url(sub.brochure_pdf.url)
+    if not url:
+        return
+    try:
+        send_document_message(
+            account=account,
+            to=to,
+            link=url,
+            filename=sub.brochure_pdf.name.split("/")[-1] or "brochure.pdf",
+            caption=f"{sub.name} — brochure",
+        )
+    except WhatsAppClientError:
+        logger.exception("Failed to send subcategory brochure subcategory_id=%s", subcategory_id)
 
 
 def _send_end_menu(account: WhatsAppAccountLike, to: str) -> None:
@@ -221,31 +236,35 @@ def _finalize_procure(
     draft = session.draft or {}
     lines = draft.get("lines") or []
     company = _company(account)
-    requirement_parts = []
-    product_ids: list[int] = []
-    for line in lines:
-        requirement_parts.append(
-            f"- {line.get('product_name')} x {line.get('quantity')} ({line.get('category')})"
-        )
-        if line.get("product_id"):
-            product_ids.append(int(line["product_id"]))
-    requirement = "\n".join(requirement_parts)
-    create_lead_from_whatsapp(
+    _, quotation = create_quotation_from_procure(
         company=company,
+        lead=lead,
         contact_name=contact_name or lead.contact_name,
         company_name=(draft.get("company_name") or "").strip(),
         phone=to,
-        requirement=requirement,
-        product_ids=product_ids,
+        draft_lines=lines,
         whatsapp_wa_id=to,
-        raw_payload={"whatsapp_flow": "procure", "lines": lines},
     )
     advance_step(session, step="procure_done", draft_updates={})
-    send_text_message(
-        account=account,
-        to=to,
-        body="Your requirement has been submitted. Our team will contact you soon.",
-    )
+    for body in quotation_whatsapp_messages(quotation):
+        send_text_message(account=account, to=to, body=body)
+    if quotation and quotation.pdf:
+        from whatsapp.public_urls import public_media_url
+
+        from .client import send_document_message
+
+        doc_url = public_media_url(quotation.pdf.url)
+        if doc_url:
+            try:
+                send_document_message(
+                    account=account,
+                    to=to,
+                    link=doc_url,
+                    filename=f"quotation_{quotation.pk}.pdf",
+                    caption="Your quotation",
+                )
+            except WhatsAppClientError:
+                logger.exception("Failed to send quotation PDF quote_id=%s", quotation.pk)
     _send_end_menu(account, to)
     advance_step(session, step=END_STEP)
 
@@ -266,8 +285,8 @@ def _handle_procure(
 
     if reply_id in ("add_more", "submit_req"):
         if reply_id == "add_more":
-            advance_step(session, step="procure_category")
-            _send_category_menu(account, to, "Choose a product category:")
+            advance_step(session, step="procure_master")
+            _send_master_menu(account, to, "Choose Hardware, Software, or Others:")
             return
         _finalize_procure(
             account=account,
@@ -278,66 +297,142 @@ def _handle_procure(
         )
         return
 
-    if reply_id in ("cat_hardware", "cat_software", "cat_others"):
-        key = reply_id.replace("cat_", "")
-        products = list(_products_queryset(company, key)[:10])
+    master_key = parse_master_reply_id(reply_id)
+    if master_key:
+        categories = categories_for_master(company, master_key)
+        if not categories:
+            send_flow_prompt(
+                account=account,
+                to=to,
+                body_text="No categories configured yet for this type. Please try another option.",
+            )
+            _send_master_menu(account, to, "Choose Hardware, Software, or Others:")
+            return
+        advance_step(
+            session,
+            step="procure_catalog_category",
+            draft_updates={"master_category": master_key},
+        )
+        send_flow_list(
+            account=account,
+            to=to,
+            body_text="Choose a category (e.g. Laptop, Desktop):",
+            button_label="Categories",
+            rows=category_list_rows(categories),
+        )
+        return
+
+    category_id = parse_category_reply_id(reply_id)
+    if category_id:
+        from business.catalog import CatalogCategory
+
+        cat = CatalogCategory.objects.filter(
+            pk=category_id, company=company, is_active=True
+        ).first()
+        if cat is None:
+            send_flow_prompt(account=account, to=to, body_text="Invalid category.")
+            return
+        subs = subcategories_for_category(category_id)
+        if not subs:
+            send_flow_prompt(
+                account=account,
+                to=to,
+                body_text="No subcategories configured. Ask your supplier to add specs (e.g. i5).",
+            )
+            return
+        advance_step(
+            session,
+            step="procure_subcategory",
+            draft_updates={"catalog_category_id": category_id},
+        )
+        send_flow_list(
+            account=account,
+            to=to,
+            body_text="Choose specification (e.g. processor):",
+            button_label="Specs",
+            rows=subcategory_list_rows(subs),
+        )
+        return
+
+    subcategory_id = parse_subcategory_reply_id(reply_id)
+    if subcategory_id:
+        from business.catalog import CatalogSubcategory
+
+        sub = (
+            CatalogSubcategory.objects.filter(
+                pk=subcategory_id,
+                category__company=company,
+                is_active=True,
+            )
+            .select_related("category")
+            .first()
+        )
+        if sub is None:
+            send_flow_prompt(account=account, to=to, body_text="Invalid subcategory.")
+            return
+        products = products_for_subcategory(subcategory_id)
         if not products:
             send_flow_prompt(
                 account=account,
                 to=to,
-                body_text="No products found in that category. Please pick another category.",
+                body_text="No products listed yet for this specification.",
             )
-            _send_category_menu(account, to, "Choose a product category:")
             return
+        _maybe_send_subcategory_brochure(account, to, subcategory_id)
         advance_step(
             session,
-            step="procure_product",
+            step="procure_catalog_product",
             draft_updates={
-                "category": key,
-                "product_choices": [p.pk for p in products],
+                "catalog_subcategory_id": subcategory_id,
+                "master_category": sub.category.master_category,
+                "category_name": sub.category.name,
+                "subcategory_name": sub.name,
             },
         )
-        rows = [
-            {
-                "id": f"prod_{p.pk}",
-                "title": p.name[:24],
-                "description": (p.category or p.asset_type or "")[:72],
-            }
-            for p in products
-        ]
         send_flow_list(
             account=account,
             to=to,
-            body_text="Select a product from the list:",
-            button_label="View products",
-            rows=rows,
+            body_text="Select a product:",
+            button_label="Products",
+            rows=product_list_rows(products),
         )
         return
 
-    if reply_id.startswith("prod_"):
-        try:
-            product_id = int(reply_id.split("_", 1)[1])
-        except (IndexError, ValueError):
-            send_flow_prompt(account=account, to=to, body_text="Invalid product. Please try again.")
-            return
-        product = Product.objects.filter(pk=product_id, company=company).first()
+    catalog_product_id = parse_product_reply_id(reply_id)
+    if catalog_product_id:
+        product = (
+            CatalogProduct.objects.filter(
+                pk=catalog_product_id,
+                subcategory__category__company=company,
+                is_active=True,
+            )
+            .select_related("subcategory__category")
+            .first()
+        )
         if product is None:
-            send_flow_prompt(account=account, to=to, body_text="Product not found. Please choose again.")
+            send_flow_prompt(account=account, to=to, body_text="Product not found.")
             return
+        unit_price = None
+        if product.priced():
+            unit_price = str(product.unit_price)
         advance_step(
             session,
             step="procure_quantity",
             draft_updates={
-                "pending_product_id": product.pk,
-                "pending_product_name": product.name,
+                "pending_catalog_product_id": product.pk,
+                "pending_display_name": product.display_label(),
+                "pending_unit_price": unit_price,
+                "master_category": product.master_category,
+                "category_name": product.category_name,
+                "subcategory_name": product.subcategory_name,
             },
         )
         send_flow_prompt(account=account, to=to, body_text="Enter quantity (number):")
         return
 
     if step == "procure_company_name" and text:
-        advance_step(session, step="procure_category", draft_updates={"company_name": text.strip()})
-        _send_category_menu(account, to, "Choose a product category:")
+        advance_step(session, step="procure_master", draft_updates={"company_name": text.strip()})
+        _send_master_menu(account, to, "Choose Hardware, Software, or Others:")
         return
 
     if step == "procure_quantity" and text:
@@ -355,10 +450,13 @@ def _handle_procure(
         lines = list(draft.get("lines") or [])
         lines.append(
             {
-                "product_id": draft.get("pending_product_id"),
-                "product_name": draft.get("pending_product_name"),
+                "catalog_product_id": draft.get("pending_catalog_product_id"),
+                "display_name": draft.get("pending_display_name"),
                 "quantity": qty,
-                "category": draft.get("category"),
+                "master_category": draft.get("master_category") or draft.get("pending_master"),
+                "category_name": draft.get("category_name"),
+                "subcategory_name": draft.get("subcategory_name"),
+                "unit_price": draft.get("pending_unit_price"),
             }
         )
         advance_step(
@@ -366,14 +464,15 @@ def _handle_procure(
             step="procure_add_submit",
             draft_updates={
                 "lines": lines,
-                "pending_product_id": None,
-                "pending_product_name": None,
+                "pending_catalog_product_id": None,
+                "pending_display_name": None,
+                "pending_unit_price": None,
             },
         )
         send_flow_buttons(
             account=account,
             to=to,
-            body_text="Add another product or submit your requirement?",
+            body_text="Add another product or submit for quotation?",
             buttons=ADD_SUBMIT_BUTTONS,
         )
         return
