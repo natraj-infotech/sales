@@ -305,6 +305,43 @@ class ClientForm(forms.ModelForm):
         )
 
 
+class ClientBulkEmailForm(forms.Form):
+    subject = forms.CharField(
+        label="Subject",
+        max_length=998,
+        widget=forms.TextInput(
+            attrs={
+                "class": "input-inline",
+                "style": "width:100%;max-width:42rem;",
+                "placeholder": "Email subject",
+            }
+        ),
+    )
+    body = forms.CharField(
+        label="Message",
+        widget=forms.Textarea(
+            attrs={
+                "class": "input-inline",
+                "rows": 12,
+                "style": "width:100%;max-width:42rem;",
+                "placeholder": "Write your message…",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        tag_hint = ", ".join(f"{{{{{key}}}}}" for key, _ in self._merge_tag_choices())
+        self.fields["subject"].help_text = f"Optional merge tags: {tag_hint}"
+        self.fields["body"].help_text = f"Optional merge tags: {tag_hint}"
+
+    @staticmethod
+    def _merge_tag_choices():
+        from business.client_bulk_email import BULK_EMAIL_MERGE_TAGS
+
+        return BULK_EMAIL_MERGE_TAGS
+
+
 class ProductForm(forms.ModelForm):
     category = forms.ChoiceField(
         required=False,

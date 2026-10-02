@@ -2589,6 +2589,116 @@ class SubscriptionListExportTests(TestCase):
         self.assertEqual(rows[1], ("Microsoft 365", "Microsoft"))
 
 
+class ClientBulkEmailTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass12345"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user,
+            company_name="Acme Sales",
+            outgoing_email="sales@example.com",
+            outgoing_email_app_password="secret",
+        )
+        self.client_a = Client.objects.create(
+            company=self.company,
+            name="Alpha Co",
+            email="alpha@example.com",
+        )
+        self.client_b = Client.objects.create(
+            company=self.company,
+            name="Beta Co",
+        )
+        self.client.login(email="owner@example.com", password="pass12345")
+
+    def test_page_loads(self):
+        response = self.client.get(reverse("client_email"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Email clients")
+        self.assertContains(response, "Alpha Co")
+
+    def test_send_requires_selection(self):
+        response = self.client.post(
+            reverse("client_email"),
+            {"subject": "Hi", "body": "Hello"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select at least one client")
+
+    def test_filter_by_product_company_and_product(self):
+        product_hp = Product.objects.create(
+            company=self.company,
+            name="EliteBook",
+            company_name="HP",
+        )
+        product_ms = Product.objects.create(
+            company=self.company,
+            name="Microsoft 365",
+            company_name="Microsoft",
+        )
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_a,
+            product=product_hp,
+            start_date=date(2026, 1, 1),
+        )
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_b,
+            product=product_ms,
+            start_date=date(2026, 1, 1),
+        )
+        by_company = self.client.get(
+            reverse("client_email"),
+            {"company_name": "HP"},
+        )
+        self.assertContains(by_company, "Alpha Co")
+        self.assertNotContains(by_company, "Beta Co")
+
+        by_product = self.client.get(
+            reverse("client_email"),
+            {"product": str(product_ms.pk)},
+        )
+        self.assertContains(by_product, "Beta Co")
+        self.assertNotContains(by_product, "Alpha Co")
+
+    def test_preview_merge_tags(self):
+        response = self.client.post(
+            reverse("client_email_preview"),
+            {
+                "client_id": str(self.client_a.pk),
+                "subject": "Hi {{client_name}}",
+                "body": "GST {{gst_number}}",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["subject"], "Hi Alpha Co")
+        self.assertIn("alpha@example.com", data["to_emails"])
+
+    @patch("business.client_bulk_email.send_company_outbound", return_value=(True, None))
+    def test_send_personalizes_and_attaches(self, send_mock):
+        response = self.client.post(
+            reverse("client_email"),
+            {
+                "client_ids": [str(self.client_a.pk)],
+                "subject": "Hello {{client_name}}",
+                "body": "Dear {{client_name}}, from {{company_name}}.",
+            },
+        )
+        self.assertRedirects(response, reverse("client_email"))
+        send_mock.assert_called_once()
+        _company, to_addrs, subject, body, *_rest = send_mock.call_args[0]
+        kwargs = send_mock.call_args.kwargs
+        self.assertEqual(to_addrs, ["alpha@example.com"])
+        self.assertEqual(subject, "Hello Alpha Co")
+        self.assertIn("Dear Alpha Co", body)
+        self.assertIn("Acme Sales", body)
+        self.assertIn("html_body", kwargs)
+        self.assertIsNone(kwargs.get("attachments"))
+
+
 class ProductPriceFieldsTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(

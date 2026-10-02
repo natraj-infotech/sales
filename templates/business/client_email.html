@@ -1,0 +1,1187 @@
+{% extends "base.html" %}
+{% block title %}Email clients{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .client-email-page {
+    margin: -0.5rem -0.25rem 0;
+  }
+  .client-email-hero {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
+    border-radius: 14px;
+    padding: 1.35rem 1.5rem;
+    color: #fff;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    box-shadow: 0 10px 28px rgba(37, 99, 235, 0.22);
+  }
+  .client-email-hero-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    opacity: 0.95;
+  }
+  .client-email-hero h1 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .client-email-hero p {
+    margin: 0.35rem 0 0;
+    font-size: 0.92rem;
+    opacity: 0.92;
+    font-weight: 500;
+  }
+  .client-email-filters {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.15rem 1.35rem 1.2rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .client-email-filters__head {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #0f172a;
+    margin-bottom: 1rem;
+  }
+  .client-email-filters__head svg {
+    width: 17px;
+    height: 17px;
+    color: #2563eb;
+  }
+  .client-email-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    gap: 0.85rem 1rem;
+    align-items: end;
+  }
+  @media (max-width: 900px) {
+    .client-email-filter-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .client-email-filter-actions {
+      grid-column: 1 / -1;
+    }
+  }
+  .client-email-filter-field label {
+    display: block;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.35rem;
+  }
+  .client-email-filter-field select,
+  .client-email-filter-field input[type="search"] {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.88rem;
+    background: #fff;
+  }
+  .client-email-filter-search-wrap {
+    position: relative;
+  }
+  .client-email-filter-search-wrap svg {
+    position: absolute;
+    left: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: #94a3b8;
+    pointer-events: none;
+  }
+  .client-email-filter-search-wrap input {
+    padding-left: 2rem !important;
+  }
+  .client-email-btn-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+    background: #fff;
+    color: #2563eb;
+    font-weight: 700;
+    font-size: 0.84rem;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .client-email-btn-outline:hover {
+    background: #eff6ff;
+    text-decoration: none;
+  }
+  .client-email-btn-outline svg {
+    width: 15px;
+    height: 15px;
+  }
+  .client-email-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.85rem;
+  }
+  .client-email-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.55rem 0.28rem 0.65rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .client-email-layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 42%) minmax(340px, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 960px) {
+    .client-email-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  .client-email-panel {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.1rem 1.2rem 1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .client-email-panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .client-email-panel__title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+  }
+  .client-email-panel__title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .client-email-panel__title-row svg {
+    width: 18px;
+    height: 18px;
+    color: #2563eb;
+  }
+  .client-email-stats {
+    font-size: 0.76rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .client-email-stats strong {
+    color: #334155;
+  }
+  .client-email-recip-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+  }
+  .client-email-recip-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  .client-email-chip-btn {
+    padding: 0.38rem 0.75rem;
+    border: 1px solid #93c5fd;
+    border-radius: 8px;
+    background: #fff;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .client-email-chip-btn:hover {
+    background: #eff6ff;
+  }
+  .client-email-local-search {
+    position: relative;
+    min-width: 11rem;
+    flex: 1;
+    max-width: 14rem;
+  }
+  .client-email-local-search svg {
+    position: absolute;
+    left: 0.55rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 15px;
+    height: 15px;
+    color: #94a3b8;
+  }
+  .client-email-local-search input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.42rem 0.55rem 0.42rem 2rem;
+    font-size: 0.82rem;
+  }
+  .client-email-panel--recipients {
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  @media (min-width: 961px) {
+    .client-email-panel--recipients {
+      min-height: 0;
+    }
+  }
+  .client-email-panel--recipients .client-email-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .client-email-panel--recipients .client-email-pagination {
+    flex-shrink: 0;
+    margin-top: auto;
+  }
+  .client-email-panel--recipients table.tracker-table-pro {
+    table-layout: fixed;
+    width: 100%;
+  }
+  .client-email-panel--recipients .tracker-table-pro .col-check {
+    width: 2.35rem;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+  .client-email-panel--recipients .tracker-table-pro .col-name {
+    width: 46%;
+  }
+  .client-email-panel--recipients .tracker-table-pro .col-email {
+    width: auto;
+  }
+  .client-email-panel--recipients .tracker-table-pro thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0.38rem 0.4rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+  .client-email-panel--recipients .tracker-table-pro tbody td {
+    padding: 0.32rem 0.4rem;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .client-email-panel--recipients .tracker-table-pro input[type="checkbox"] {
+    transform: scale(0.88);
+    transform-origin: center;
+  }
+  .client-email-panel--recipients .tracker-table-pro tbody td.col-name {
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .client-email-email-link {
+    color: #2563eb;
+    font-weight: 600;
+    font-size: 0.78rem;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .client-email-th-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .client-email-no-email {
+    display: inline-block;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #c2410c;
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+  .client-email-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+  .client-email-page-nums {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .client-email-page-nums a,
+  .client-email-page-nums span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.65rem;
+    height: 1.65rem;
+    padding: 0 0.35rem;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #475569;
+    font-weight: 700;
+  }
+  .client-email-page-nums a:hover {
+    background: #f1f5f9;
+  }
+  .client-email-page-nums .is-current {
+    background: #2563eb;
+    color: #fff;
+  }
+  .client-email-panel--compose {
+    padding-bottom: 0.85rem;
+  }
+  .client-email-field {
+    margin-bottom: 0.55rem;
+  }
+  .client-email-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 0.4rem;
+  }
+  .client-email-field label svg {
+    width: 16px;
+    height: 16px;
+    color: #64748b;
+  }
+  .client-email-field .req {
+    color: #ef4444;
+  }
+  .client-email-field input[type="text"],
+  .client-email-field textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+  .client-email-field textarea {
+    min-height: 5.25rem;
+    max-height: 12rem;
+    resize: vertical;
+  }
+  .client-email-field .errorlist {
+    color: #dc2626;
+    font-size: 0.8rem;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .client-email-merge-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #475569;
+    margin: 0.15rem 0 0.45rem;
+  }
+  .client-email-merge-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .client-email-merge-chip {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-radius: 999px;
+    padding: 0.28rem 0.7rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .client-email-merge-chip:hover {
+    background: #dbeafe;
+  }
+  .client-email-field-hint {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.25rem;
+    margin-bottom: 0;
+  }
+  .client-email-drop {
+    flex: 0 0 auto;
+    min-height: 0;
+    margin-top: 0;
+    padding: 0.75rem 0.85rem;
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #fafbfc;
+    text-align: center;
+  }
+  .client-email-drop.is-over {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  .client-email-drop-icon {
+    width: 18px;
+    height: 18px;
+    color: #64748b;
+    margin-bottom: 0.25rem;
+    vertical-align: middle;
+  }
+  .client-email-drop p {
+    margin: 0;
+    font-weight: 650;
+    color: #334155;
+    font-size: 0.88rem;
+  }
+  .client-email-drop .browse-link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: #2563eb;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .client-email-drop .muted-line {
+    margin-top: 0.35rem;
+    font-size: 0.76rem;
+    color: #64748b;
+  }
+  .client-email-file-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: center;
+    margin-top: 0.45rem;
+  }
+  .client-email-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .client-email-compose-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-top: 0.65rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid #e2e8f0;
+  }
+  .client-email-compose-footer-left {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .client-email-btn-send {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.25rem;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  }
+  .client-email-btn-send:hover {
+    background: #1d4ed8;
+  }
+  .client-email-btn-send svg {
+    width: 18px;
+    height: 18px;
+  }
+  .client-email-smtp-hint {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.35rem;
+    text-align: right;
+  }
+  .client-email-preview-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .client-email-preview-backdrop[hidden] { display: none; }
+  .client-email-preview-card {
+    width: min(32rem, 100%);
+    max-height: min(36rem, calc(100vh - 2rem));
+    overflow: auto;
+    background: #fff;
+    border-radius: 14px;
+    padding: 1.25rem 1.35rem;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  }
+  .client-email-preview-body {
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    background: #f8fafc;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="client-email-page">
+  <header class="client-email-hero">
+    <svg class="client-email-hero-icon" aria-hidden="true"><use href="#i-mail"/></svg>
+    <div>
+      <h1>Email clients</h1>
+      <p>Draft once — personalized send to each client</p>
+    </div>
+  </header>
+
+  <div class="client-email-filters">
+    <div class="client-email-filters__head">
+      <svg aria-hidden="true"><use href="#i-funnel"/></svg>
+      Filter recipients
+    </div>
+    <form method="get" action="{% url 'client_email' %}">
+      {% if per_page != per_page_default %}
+      <input type="hidden" name="per_page" value="{{ per_page }}">
+      {% endif %}
+      <div class="client-email-filter-grid">
+        <div class="client-email-filter-field">
+          <label for="f-email-company">Product / company</label>
+          <select id="f-email-company" name="company_name">
+            <option value="">All</option>
+            {% for name in company_names %}
+            <option value="{{ name }}" {% if filters.company_name == name %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+            {% if has_blank_company %}
+            <option value="{{ no_company_value }}" {% if filters.company_name == no_company_value %}selected{% endif %}>{{ no_company_label }}</option>
+            {% endif %}
+          </select>
+        </div>
+        <div class="client-email-filter-field">
+          <label for="f-email-product">Product</label>
+          <select id="f-email-product" name="product">
+            <option value="">All</option>
+            {% for p in products %}
+            <option value="{{ p.pk }}" {% if filters.product == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="client-email-filter-field">
+          <label for="f-email-q">Search recipient</label>
+          <div class="client-email-filter-search-wrap">
+            <svg aria-hidden="true"><use href="#i-search"/></svg>
+            <input type="search" id="f-email-q" name="q" value="{{ filters.q }}" placeholder="Name, email, GST…">
+          </div>
+        </div>
+        <div class="client-email-filter-actions">
+          <button type="submit" class="client-email-btn-outline">
+            <svg aria-hidden="true"><use href="#i-funnel"/></svg>
+            Apply filters
+          </button>
+        </div>
+      </div>
+    </form>
+    {% if filter_pills %}
+    <div class="client-email-pills" aria-label="Active filters">
+      {% for pill in filter_pills %}
+      <a class="client-email-pill" href="{{ pill.url }}">{{ pill.label }} &times;</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if has_active_filters and not filter_pills %}
+    <p style="margin:0.75rem 0 0;"><a class="btn btn-ghost" href="{% url 'client_email' %}">Clear all filters</a></p>
+    {% endif %}
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="client-email-form">
+    {% csrf_token %}
+    <input type="hidden" name="q" value="{{ filters.q }}">
+    <input type="hidden" name="company_name" value="{{ filters.company_name }}">
+    <input type="hidden" name="product" value="{{ filters.product }}">
+    <input type="hidden" name="page" value="{{ page_obj.number }}">
+    {% if per_page != per_page_default %}
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+    {% endif %}
+    <div id="client-email-hidden-ids"></div>
+
+    <div class="client-email-layout">
+      <section class="client-email-panel client-email-panel--recipients" aria-labelledby="client-email-recip-title">
+        <div class="client-email-panel__head">
+          <h2 class="client-email-panel__title" id="client-email-recip-title">Recipients</h2>
+          <p class="client-email-stats">
+            <strong>{{ shown_count }}</strong> shown ·
+            <strong id="stat-selected">{{ selected_ids|length }}</strong> selected ·
+            <strong>{{ emailable_count }}</strong> available
+          </p>
+        </div>
+        <div class="client-email-recip-toolbar">
+          <div class="client-email-recip-btns">
+            <button type="button" class="client-email-chip-btn" id="client-email-select-all-btn">Select all</button>
+            <button type="button" class="client-email-chip-btn" id="client-email-select-emailable-btn">Select with email only</button>
+            <button type="button" class="client-email-chip-btn" id="client-email-clear-btn">Clear selection</button>
+          </div>
+          <div class="client-email-local-search">
+            <svg aria-hidden="true"><use href="#i-search"/></svg>
+            <input type="search" id="client-email-local-q" placeholder="Search recipients…" autocomplete="off">
+          </div>
+        </div>
+        <div class="client-email-table-wrap">
+          <table class="tracker-table-pro" id="client-email-table">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" id="client-email-select-all" aria-label="Select all on this page">
+                </th>
+                <th class="col-name">
+                  <span class="client-email-th-sort">Name
+                    <svg width="12" height="12" aria-hidden="true" style="opacity:0.7"><use href="#i-funnel"/></svg>
+                  </span>
+                </th>
+                <th class="col-email">Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in object_list %}
+              <tr data-client-id="{{ c.pk }}" data-has-email="{% if c.contact_emails %}1{% else %}0{% endif %}" data-search="{{ c.name|lower }} {{ c.email|lower }} {{ c.email_2|lower }} {{ c.email_3|lower }}">
+                <td class="col-check">
+                  <input type="checkbox"
+                    class="client-email-row-check"
+                    value="{{ c.pk }}"
+                    {% if c.pk in selected_ids %}checked{% endif %}
+                    aria-label="Select {{ c.name }}">
+                </td>
+                <td class="col-name" title="{{ c.name }}">{{ c.name }}</td>
+                <td class="col-email" title="{% with emails=c.contact_emails %}{{ emails|join:', ' }}{% endwith %}">
+                  {% with emails=c.contact_emails %}
+                  {% if emails %}
+                    <span class="client-email-email-link">{{ emails|join:", " }}</span>
+                  {% else %}
+                    <span class="client-email-no-email">No email</span>
+                  {% endif %}
+                  {% endwith %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr class="client-email-empty-row">
+                <td colspan="3" class="muted">No clients match the current filters.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page_obj.paginator.num_pages > 1 %}
+        <nav class="client-email-pagination" aria-label="Recipients pages">
+          <span>Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ shown_count }} recipients</span>
+          <div class="client-email-page-nums">
+            {% if page_obj.has_previous %}
+            <a href="{{ prev_page_url }}" aria-label="Previous page">&lsaquo;</a>
+            {% endif %}
+            {% for pg in pagination_pages %}
+              {% if pg.current %}
+              <span class="is-current">{{ pg.num }}</span>
+              {% else %}
+              <a href="{{ pg.url }}">{{ pg.num }}</a>
+              {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <a href="{{ next_page_url }}" aria-label="Next page">&rsaquo;</a>
+            {% endif %}
+          </div>
+        </nav>
+        {% elif shown_count %}
+        <div class="client-email-pagination">
+          <span>Showing 1–{{ shown_count }} of {{ shown_count }} recipients</span>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="client-email-panel client-email-panel--compose" aria-labelledby="client-email-msg-title">
+        <div class="client-email-panel__title-row">
+          <svg aria-hidden="true"><use href="#i-mail"/></svg>
+          <h2 class="client-email-panel__title" id="client-email-msg-title">Message</h2>
+        </div>
+
+        <div class="client-email-field">
+          <label for="id_subject">
+            <svg aria-hidden="true"><use href="#i-mail"/></svg>
+            Subject <span class="req">*</span>
+          </label>
+          {{ form.subject }}
+          {{ form.subject.errors }}
+        </div>
+
+        <p class="client-email-merge-label">Insert merge tag:</p>
+        <div class="client-email-merge-chips">
+          {% for key, label in merge_tags %}
+          <button type="button" class="client-email-merge-chip" data-insert="{% templatetag openvariable %} {{ key }} {% templatetag closevariable %}" title="{{ label }}">
+            {% templatetag openvariable %} {{ key }} {% templatetag closevariable %}
+          </button>
+          {% endfor %}
+        </div>
+
+        <div class="client-email-field">
+          <label for="id_body">
+            <svg aria-hidden="true"><use href="#i-pencil"/></svg>
+            Message <span class="req">*</span>
+          </label>
+          {{ form.body }}
+          {{ form.body.errors }}
+          <p class="client-email-field-hint">Optional merge tags: {% templatetag openvariable %}client_name{% templatetag closevariable %}, {% templatetag openvariable %}company_name{% templatetag closevariable %}, {% templatetag openvariable %}gst_number{% templatetag closevariable %}</p>
+        </div>
+
+        <div class="client-email-drop" id="client-email-drop">
+          <input type="file" name="attachments" id="bulk-email-attachments" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" hidden>
+          <svg class="client-email-drop-icon" aria-hidden="true"><use href="#i-upload"/></svg>
+          <p>Drop files here or <button type="button" class="browse-link" id="client-email-file-btn">browse</button></p>
+          <p class="muted-line">Up to 8 files · 10 MB each · attached to every send</p>
+          <div class="client-email-file-chips" id="client-email-file-list"></div>
+        </div>
+
+        <div class="client-email-compose-footer">
+          <div class="client-email-compose-footer-left">
+            <button type="button" class="client-email-btn-outline" id="client-email-preview-btn">
+              <svg aria-hidden="true"><use href="#i-search"/></svg>
+              Preview sample
+            </button>
+            {% if user_is_company_owner %}
+            <a class="client-email-btn-outline" href="{% url 'company_setup' %}">
+              <svg aria-hidden="true"><use href="#i-building"/></svg>
+              Company SMTP settings
+            </a>
+            {% endif %}
+          </div>
+          <div style="text-align:right;">
+            <button type="submit" class="client-email-btn-send" id="client-email-send-btn">
+              <svg aria-hidden="true"><use href="#i-mail"/></svg>
+              <span id="client-email-send-label">Send emails</span>
+            </button>
+            {% if smtp_ready %}
+            <p class="client-email-smtp-hint">SMTP ready · {{ outgoing_email }}</p>
+            {% else %}
+            <p class="client-email-smtp-hint">Configure SMTP in Company profile before sending</p>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+    </div>
+  </form>
+</div>
+
+{{ selected_ids_json|json_script:"client-email-selected-bootstrap" }}
+{{ all_client_ids_json|json_script:"client-email-all-ids-bootstrap" }}
+{{ emailable_client_ids_json|json_script:"client-email-emailable-ids-bootstrap" }}
+
+<div class="client-email-preview-backdrop" id="client-email-preview-modal" hidden>
+  <div class="client-email-preview-card" role="dialog" aria-labelledby="client-email-preview-title">
+    <h3 id="client-email-preview-title">Preview</h3>
+    <p id="client-email-preview-meta" style="font-size:0.82rem;color:#64748b;"></p>
+    <p style="margin:0 0 0.35rem;font-size:0.78rem;font-weight:700;color:#64748b;text-transform:uppercase;">Subject</p>
+    <p id="client-email-preview-subject" style="margin:0 0 0.85rem;font-weight:650;"></p>
+    <div class="client-email-preview-body" id="client-email-preview-body"></div>
+    <div style="margin-top:1rem;text-align:right;">
+      <button type="button" class="btn btn-primary" id="client-email-preview-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var PREVIEW_URL = "{% url 'client_email_preview' %}";
+  var STORAGE_KEY = "client-email-selected-ids";
+  var csrfVal = document.querySelector("#client-email-form [name=csrfmiddlewaretoken]").value;
+  var bootstrap = document.getElementById("client-email-selected-bootstrap");
+  var selectedIds = new Set();
+  if (bootstrap) {
+    try {
+      JSON.parse(bootstrap.textContent).forEach(function (id) { selectedIds.add(String(id)); });
+    } catch (e) { /* ignore */ }
+  }
+  try {
+    var stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      JSON.parse(stored).forEach(function (id) { selectedIds.add(String(id)); });
+    }
+  } catch (e2) { /* ignore */ }
+
+  var recipPanel = document.querySelector(".client-email-panel--recipients");
+  var composePanel = document.querySelector(".client-email-panel--compose");
+
+  var PER_PAGE_DEFAULT = {{ per_page_default }};
+  var PER_PAGE_CURRENT = {{ per_page }};
+  var PER_PAGE_TUNE_KEY = "client-email-per-page-tune";
+
+  function syncRecipientPanelHeight() {
+    if (!recipPanel || !composePanel) return;
+    if (window.matchMedia("(max-width: 960px)").matches) {
+      recipPanel.style.height = "";
+      recipPanel.style.maxHeight = "";
+      recipPanel.style.minHeight = "";
+      return;
+    }
+    var h = composePanel.offsetHeight;
+    recipPanel.style.height = h + "px";
+    recipPanel.style.maxHeight = h + "px";
+    recipPanel.style.minHeight = h + "px";
+  }
+
+  function tableWrapAvailableHeight() {
+    var wrap = document.querySelector(".client-email-table-wrap");
+    if (!wrap || !recipPanel) return 0;
+    if (wrap.clientHeight > 0) return wrap.clientHeight;
+    var head = recipPanel.querySelector(".client-email-panel__head");
+    var toolbar = recipPanel.querySelector(".client-email-recip-toolbar");
+    var pagination = recipPanel.querySelector(".client-email-pagination");
+    var used = 0;
+    [head, toolbar, pagination].forEach(function (el) {
+      if (el) used += el.offsetHeight;
+    });
+    var style = window.getComputedStyle(recipPanel);
+    used += parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    return Math.max(0, recipPanel.clientHeight - used);
+  }
+
+  function tuneRecipientsPerPage() {
+    if (window.matchMedia("(max-width: 960px)").matches) return;
+    var wrap = document.querySelector(".client-email-table-wrap");
+    if (!wrap) return;
+    var sampleRow = wrap.querySelector("tbody tr[data-client-id]");
+    if (!sampleRow) return;
+
+    var thead = wrap.querySelector("thead");
+    var headerH = thead ? thead.offsetHeight : 0;
+    var rowH = sampleRow.offsetHeight;
+    var available = tableWrapAvailableHeight();
+    if (!rowH || available <= headerH) return;
+
+    var fit = Math.max(3, Math.min(100, Math.floor((available - headerH) / rowH)));
+    var params = new URLSearchParams(window.location.search);
+    var current = parseInt(params.get("per_page") || String(PER_PAGE_CURRENT), 10);
+    if (isNaN(current)) current = PER_PAGE_DEFAULT;
+
+    var target = fit;
+    var overflow = wrap.scrollHeight > available + 2;
+    if (overflow) {
+      target = Math.max(3, Math.min(current - 1, fit));
+      if (target === current) {
+        target = Math.max(3, Math.floor((current * available) / wrap.scrollHeight));
+      }
+    }
+
+    if (target === current && !overflow) return;
+
+    var sig = [window.innerWidth, window.innerHeight, fit].join("x");
+    var attemptKey = PER_PAGE_TUNE_KEY + ":" + sig + ":" + current + "->" + target;
+    try {
+      if (sessionStorage.getItem(attemptKey)) return;
+      sessionStorage.setItem(attemptKey, "1");
+    } catch (e) { /* ignore */ }
+
+    params.set("per_page", String(target));
+    params.set("page", "1");
+    var qs = params.toString();
+    window.location.replace(window.location.pathname + (qs ? "?" + qs : ""));
+  }
+
+  function layoutRecipientsPanel() {
+    syncRecipientPanelHeight();
+    requestAnimationFrame(function () {
+      requestAnimationFrame(tuneRecipientsPerPage);
+    });
+  }
+
+  var layoutTimer;
+  function scheduleLayoutRecipientsPanel() {
+    clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(layoutRecipientsPanel, 80);
+  }
+
+  function syncHiddenIds() {
+    var container = document.getElementById("client-email-hidden-ids");
+    container.innerHTML = "";
+    selectedIds.forEach(function (id) {
+      var inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = "client_ids";
+      inp.value = id;
+      container.appendChild(inp);
+    });
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(selectedIds)));
+    } catch (e) { /* ignore */ }
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function subjectInput() { return document.getElementById("id_subject"); }
+  function bodyInput() { return document.getElementById("id_body"); }
+  function rowChecks() { return document.querySelectorAll(".client-email-row-check"); }
+
+  function applyCheckboxState() {
+    rowChecks().forEach(function (b) {
+      b.checked = selectedIds.has(String(b.value));
+    });
+  }
+
+  function updateSelectedStats() {
+    var stat = document.getElementById("stat-selected");
+    var label = document.getElementById("client-email-send-label");
+    var n = selectedIds.size;
+    if (stat) stat.textContent = String(n);
+    if (label) {
+      label.textContent = n ? ("Send to " + n + " client" + (n === 1 ? "" : "s")) : "Send emails";
+    }
+  }
+
+  function syncMasterCheckbox() {
+    var master = document.getElementById("client-email-select-all");
+    var boxes = rowChecks();
+    if (!master || !boxes.length) return;
+    var all = true, any = false;
+    boxes.forEach(function (b) {
+      if (b.checked) any = true; else all = false;
+    });
+    master.checked = any && all;
+  }
+
+  function onCheckboxChange(box) {
+    var id = String(box.value);
+    if (box.checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    syncHiddenIds();
+    updateSelectedStats();
+    syncMasterCheckbox();
+  }
+
+  function parseIdBootstrap(elementId) {
+    var el = document.getElementById(elementId);
+    if (!el) return [];
+    try {
+      return JSON.parse(el.textContent) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function setSelectedClientIds(ids) {
+    selectedIds.clear();
+    ids.forEach(function (id) {
+      selectedIds.add(String(id));
+    });
+    applyCheckboxState();
+    syncHiddenIds();
+    updateSelectedStats();
+    syncMasterCheckbox();
+  }
+
+  applyCheckboxState();
+  syncHiddenIds();
+  updateSelectedStats();
+  syncMasterCheckbox();
+
+  var master = document.getElementById("client-email-select-all");
+  if (master) {
+    master.addEventListener("change", function () {
+      rowChecks().forEach(function (b) {
+        b.checked = master.checked;
+        onCheckboxChange(b);
+      });
+    });
+  }
+  rowChecks().forEach(function (b) {
+    b.addEventListener("change", function () { onCheckboxChange(b); });
+  });
+
+  document.getElementById("client-email-select-all-btn").addEventListener("click", function () {
+    setSelectedClientIds(parseIdBootstrap("client-email-all-ids-bootstrap"));
+  });
+  document.getElementById("client-email-select-emailable-btn").addEventListener("click", function () {
+    setSelectedClientIds(parseIdBootstrap("client-email-emailable-ids-bootstrap"));
+  });
+  document.getElementById("client-email-clear-btn").addEventListener("click", function () {
+    selectedIds.clear();
+    rowChecks().forEach(function (b) { b.checked = false; });
+    syncHiddenIds();
+    updateSelectedStats();
+    if (master) master.checked = false;
+  });
+
+  var localQ = document.getElementById("client-email-local-q");
+  if (localQ) {
+    localQ.addEventListener("input", function () {
+      var needle = (localQ.value || "").trim().toLowerCase();
+      document.querySelectorAll("#client-email-table tbody tr[data-client-id]").forEach(function (tr) {
+        var hay = tr.getAttribute("data-search") || "";
+        tr.style.display = !needle || hay.indexOf(needle) >= 0 ? "" : "none";
+      });
+    });
+  }
+
+  document.querySelectorAll(".client-email-merge-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var token = chip.getAttribute("data-insert") || "";
+      var subj = subjectInput();
+      var body = bodyInput();
+      var target = document.activeElement === subj ? subj : body;
+      if (!target) target = body;
+      var start = target.selectionStart != null ? target.selectionStart : target.value.length;
+      var end = target.selectionEnd != null ? target.selectionEnd : start;
+      target.value = target.value.slice(0, start) + token + target.value.slice(end);
+      target.focus();
+    });
+  });
+
+  var fileInput = document.getElementById("bulk-email-attachments");
+  var drop = document.getElementById("client-email-drop");
+  var fileList = document.getElementById("client-email-file-list");
+  var selectedFiles = [];
+  function fileKey(f) { return [f.name, f.size, f.lastModified].join(":"); }
+  function syncFileInput() {
+    var dt = new DataTransfer();
+    selectedFiles.forEach(function (f) { dt.items.add(f); });
+    fileInput.files = dt.files;
+    fileList.innerHTML = selectedFiles.map(function (f, i) {
+      return '<span class="client-email-file-chip"><span>' + escapeHtml(f.name) + '</span><button type="button" data-i="' + i + '">&times;</button></span>';
+    }).join("");
+  }
+  function addFiles(list) {
+    Array.prototype.slice.call(list || []).forEach(function (f) {
+      if (selectedFiles.length >= 8) return;
+      if (!selectedFiles.some(function (x) { return fileKey(x) === fileKey(f); })) selectedFiles.push(f);
+    });
+    syncFileInput();
+  }
+  document.getElementById("client-email-file-btn").addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () { addFiles(fileInput.files); });
+  fileList.addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-i]");
+    if (!btn) return;
+    selectedFiles.splice(Number(btn.getAttribute("data-i")), 1);
+    syncFileInput();
+  });
+  drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("is-over"); });
+  drop.addEventListener("dragleave", function () { drop.classList.remove("is-over"); });
+  drop.addEventListener("drop", function (e) {
+    e.preventDefault();
+    drop.classList.remove("is-over");
+    addFiles(e.dataTransfer.files);
+  });
+
+  document.getElementById("client-email-preview-btn").addEventListener("click", function () {
+    var clientId = null;
+    selectedIds.forEach(function (id) {
+      if (clientId) return;
+      var row = document.querySelector('tr[data-client-id="' + id + '"]');
+      if (row && row.getAttribute("data-has-email") === "1") clientId = id;
+    });
+    if (!clientId) {
+      var fallback = document.querySelector('tr[data-has-email="1"]');
+      clientId = fallback ? fallback.getAttribute("data-client-id") : null;
+    }
+    if (!clientId) {
+      alert("Select a client with an email address to preview.");
+      return;
+    }
+    var fd = new FormData();
+    fd.append("csrfmiddlewaretoken", csrfVal);
+    fd.append("client_id", clientId);
+    fd.append("subject", subjectInput().value);
+    fd.append("body", bodyInput().value);
+    fetch(PREVIEW_URL, { method: "POST", body: fd, headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Preview failed");
+        document.getElementById("client-email-preview-meta").textContent =
+          "Sample for " + data.client_name + " · To: " + (data.to_emails || []).join(", ");
+        document.getElementById("client-email-preview-subject").textContent = data.subject || "(empty subject)";
+        document.getElementById("client-email-preview-body").textContent = data.body || "";
+        document.getElementById("client-email-preview-modal").hidden = false;
+      })
+      .catch(function (err) { alert(err.message); });
+  });
+  document.getElementById("client-email-preview-close").addEventListener("click", function () {
+    document.getElementById("client-email-preview-modal").hidden = true;
+  });
+
+  document.getElementById("client-email-form").addEventListener("submit", function (e) {
+    syncHiddenIds();
+    if (!selectedIds.size) {
+      e.preventDefault();
+      alert("Select at least one client to email.");
+      return;
+    }
+    if (!confirm("Send this email to " + selectedIds.size + " selected client(s)? Clients without email will be skipped.")) {
+      e.preventDefault();
+      return;
+    }
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+  });
+
+  layoutRecipientsPanel();
+  window.addEventListener("resize", scheduleLayoutRecipientsPanel);
+  if (composePanel && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(scheduleLayoutRecipientsPanel).observe(composePanel);
+  }
+})();
+</script>
+{% endblock %}
