@@ -2679,15 +2679,26 @@ class ClientBulkEmailTests(TestCase):
 
     @patch("business.client_bulk_email.send_company_outbound", return_value=(True, None))
     def test_send_personalizes_and_attaches(self, send_mock):
-        response = self.client.post(
-            reverse("client_email"),
-            {
-                "client_ids": [str(self.client_a.pk)],
-                "subject": "Hello {{client_name}}",
-                "body": "Dear {{client_name}}, from {{company_name}}.",
-            },
-        )
-        self.assertRedirects(response, reverse("client_email"))
+        from business.tasks import send_client_bulk_emails_task
+
+        def _run_bulk_task(*args, **kwargs):
+            return send_client_bulk_emails_task(*args, **kwargs)
+
+        with patch(
+            "business.tasks.send_client_bulk_emails_task.delay",
+            side_effect=_run_bulk_task,
+        ):
+            response = self.client.post(
+                reverse("client_email"),
+                {
+                    "client_ids": [str(self.client_a.pk)],
+                    "subject": "Hello {{client_name}}",
+                    "body": "Dear {{client_name}}, from {{company_name}}.",
+                },
+                follow=True,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "in the background")
         send_mock.assert_called_once()
         _company, to_addrs, subject, body, *_rest = send_mock.call_args[0]
         kwargs = send_mock.call_args.kwargs

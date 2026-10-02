@@ -1737,7 +1737,7 @@ def client_email(request):
             per_page=per_page,
         )
 
-    from business.client_bulk_email import collect_attachments, send_client_bulk_emails
+    from business.client_bulk_email import collect_attachments, enqueue_client_bulk_emails
 
     try:
         attachments = collect_attachments(request.FILES.getlist("attachments"))
@@ -1771,7 +1771,7 @@ def client_email(request):
         )
 
     try:
-        sent, skipped, failures = send_client_bulk_emails(
+        enqueue_client_bulk_emails(
             company,
             clients,
             form.cleaned_data["subject"],
@@ -1780,13 +1780,14 @@ def client_email(request):
         )
     except Exception:
         logger.exception(
-            "Client bulk email failed company_id=%s client_count=%s",
+            "Client bulk email queue failed company_id=%s client_count=%s",
             company.pk,
             len(clients),
         )
+        cache.delete(throttle_key)
         messages.error(
             request,
-            "Could not send bulk email. Check outgoing email settings and try again.",
+            "Could not queue bulk email. Ensure the background worker is running and try again.",
         )
         return _render_client_email(
             request,
@@ -1798,14 +1799,12 @@ def client_email(request):
             per_page=per_page,
         )
 
-    for line in skipped:
-        messages.warning(request, line)
-    for line in failures:
-        messages.error(request, line)
-    if sent:
-        messages.success(request, f"Sent custom email to {sent} client(s).")
-    elif not skipped and not failures:
-        messages.info(request, "No emails were sent.")
+    n = len(clients)
+    messages.success(
+        request,
+        f"Sending email to {n} client(s) in the background. "
+        "Clients without an email address are skipped automatically.",
+    )
     return _client_email_redirect(filters, per_page=per_page)
 
 

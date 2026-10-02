@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from html import escape
 
@@ -100,9 +101,65 @@ def send_client_bulk_emails(
     return sent, skipped, failures
 
 
+def attachments_for_task(
+    attachments: list[tuple[str, bytes, str]] | None,
+) -> list[dict[str, str]]:
+    """JSON-safe attachment payload for Celery."""
+    payload: list[dict[str, str]] = []
+    for name, data, content_type in attachments or ():
+        payload.append(
+            {
+                "name": name,
+                "content_type": content_type or "application/octet-stream",
+                "content_b64": base64.b64encode(data).decode("ascii"),
+            }
+        )
+    return payload
+
+
+def attachments_from_task(
+    payload: list[dict[str, str]] | None,
+) -> list[tuple[str, bytes, str]]:
+    attachments: list[tuple[str, bytes, str]] = []
+    for item in payload or ():
+        name = (item.get("name") or "attachment")[:200]
+        content_type = item.get("content_type") or "application/octet-stream"
+        raw = item.get("content_b64") or ""
+        try:
+            data = base64.b64decode(raw)
+        except (TypeError, ValueError):
+            continue
+        if not data:
+            continue
+        attachments.append((name, data, content_type))
+    return attachments
+
+
+def enqueue_client_bulk_emails(
+    company,
+    clients,
+    subject_template: str,
+    body_template: str,
+    attachments=None,
+) -> None:
+    from business.tasks import send_client_bulk_emails_task
+
+    client_ids = [c.pk for c in clients]
+    send_client_bulk_emails_task.delay(
+        company.pk,
+        client_ids,
+        subject_template,
+        body_template,
+        attachments_for_task(attachments),
+    )
+
+
 __all__ = [
     "BULK_EMAIL_MERGE_TAGS",
     "client_bulk_merge_context",
+    "attachments_for_task",
+    "attachments_from_task",
     "collect_attachments",
+    "enqueue_client_bulk_emails",
     "send_client_bulk_emails",
 ]
