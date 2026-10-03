@@ -1,4 +1,4 @@
-"""Branded support-ticket notification emails (assign / requester / closed).
+"""Branded support-ticket notification emails (created / assign / requester / closed).
 
 Uses django-helpdesk Ticket fields (submitter_email, assigned_to, status) for
 recipients and ticket data. Outbound mail stays branded via company SMTP/logo
@@ -37,6 +37,10 @@ _CARD_BG = "#FFFFFF"
 _CLOSED_MESSAGE = (
     "Hope your issue is resolved. Your ticket is closed now. "
     "Feel free to approach us for further issues."
+)
+_CREATED_MESSAGE = (
+    "We have generated a ticket for your email. "
+    "Please keep this ticket ID if you write to us again about the same issue."
 )
 
 
@@ -441,6 +445,62 @@ def build_requester_assignment_email_html(
     )
 
 
+def build_ticket_created_email_text(company: CompanyProfile, ticket) -> str:
+    lines = [
+        "Hello,",
+        "",
+        f"We have generated ticket {_ticket_ref(ticket)} from your email.",
+        "",
+        _CREATED_MESSAGE,
+        "",
+        f"Company: {company.company_name}",
+        "",
+    ]
+    lines.extend(_text_table(_detail_rows_for_requester(ticket)))
+    lines.extend(
+        [
+            "",
+            "Best regards,",
+            company.company_name or "Support team",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_ticket_created_email_html(
+    company: CompanyProfile,
+    ticket,
+    *,
+    logo_cid: str = "",
+) -> str:
+    ref = escape(_ticket_ref(ticket))
+    subject = escape(ticket.title or "")
+    intro = f"""
+            <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{_TEXT};font-family:{_FONT};">
+              Hello,
+            </p>
+            <p style="margin:0 0 22px 0;font-size:15px;line-height:1.55;color:{_TEXT};font-family:{_FONT};">
+              We have generated ticket <strong style="color:{_BLUE};">{ref}</strong>
+              (<em>{subject}</em>) from your email.
+            </p>
+    """
+    body = f"""
+            <p style="margin:8px 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
+              {escape(_CREATED_MESSAGE)}
+            </p>
+    """
+    return _branded_shell(
+        company=company,
+        logo_cid=logo_cid,
+        eyebrow="Support ticket confirmation",
+        heading="We have generated a ticket",
+        intro_html=intro,
+        rows=_detail_rows_for_requester(ticket),
+        body_html=body,
+        footer="This email confirms that we received your message and created a support ticket.",
+    )
+
+
 def build_closed_email_text(company: CompanyProfile, ticket) -> str:
     lines = [
         "Hello,",
@@ -615,6 +675,39 @@ def send_requester_assignment_email(
     )
 
 
+def send_ticket_created_email(
+    *,
+    company: CompanyProfile,
+    ticket,
+) -> tuple[str, str | None]:
+    """Confirm to the person who emailed support that a ticket was created."""
+    recipient = (getattr(ticket, "submitter_email", None) or "").strip()
+    if not recipient or "@" not in recipient:
+        return "skipped_no_email", "Ticket sender has no email address."
+
+    support = (company.support_email or "").strip().lower()
+    if support and recipient.lower() == support:
+        return "skipped_self", None
+
+    logo_inline, logo_cid = _company_logo(company)
+    subject = (
+        f"[{_ticket_ref(ticket)}] We have generated a ticket — "
+        f"{ticket.title or 'Support ticket'}"
+    )
+    return _send_branded(
+        company=company,
+        recipient=recipient,
+        subject=subject,
+        text_body=build_ticket_created_email_text(company, ticket),
+        html_body=build_ticket_created_email_html(
+            company,
+            ticket,
+            logo_cid=logo_cid,
+        ),
+        logo_inline=logo_inline,
+    )
+
+
 def send_ticket_closed_email(
     *,
     company: CompanyProfile,
@@ -647,6 +740,7 @@ def send_ticket_closed_email(
 _BG_MAIL_TITLES = {
     "assignment-email": "Ticket assignment email to engineer failed",
     "requester-assignment-email": "Ticket assignment email to requester failed",
+    "ticket-created-email": "Ticket confirmation email to sender failed",
     "ticket-closed-email": "Ticket closed email to requester failed",
 }
 
@@ -743,6 +837,23 @@ def queue_assignment_emails(
     _bg_send("assignment-email", _send_assignee, company_id=company_id)
     if assignee_id is not None:
         _bg_send("requester-assignment-email", _send_requester, company_id=company_id)
+
+
+def queue_ticket_created_email(*, company: CompanyProfile, ticket) -> None:
+    """Queue the sender confirmation without blocking mailbox polling."""
+    from helpdesk.models import Ticket
+
+    company_id = company.pk
+    ticket_id = ticket.pk
+
+    def _send_created():
+        company_obj = CompanyProfile.objects.get(pk=company_id)
+        ticket_obj = Ticket.objects.select_related("assigned_to", "queue").get(
+            pk=ticket_id
+        )
+        return send_ticket_created_email(company=company_obj, ticket=ticket_obj)
+
+    _bg_send("ticket-created-email", _send_created, company_id=company_id)
 
 
 def queue_ticket_closed_email(*, company: CompanyProfile, ticket) -> None:

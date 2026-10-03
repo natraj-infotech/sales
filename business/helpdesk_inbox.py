@@ -273,8 +273,8 @@ def fetch_helpdesk_mail_for_company(company: CompanyProfile) -> dict:
 
 def maybe_fetch_on_dashboard(company: CompanyProfile, *, min_interval_seconds: int = 20) -> dict | None:
     """
-    Throttled inbox poll for page refresh (runserver-only workflow).
-    Returns fetch result dict, or None if skipped due to throttle.
+    Throttled inbox poll shared by the ticket page and the background fetch.
+    Returns fetch result dict, or None if this company was checked recently.
     """
     from django.core.cache import cache
 
@@ -296,6 +296,7 @@ def fetch_helpdesk_mail_for_all_companies() -> dict:
     - Other providers → django-helpdesk IMAP (process_email)
     """
     logs: list[str] = []
+    created_total = 0
     graph_created = 0
     ms_companies = 0
     other_imap = False
@@ -304,16 +305,22 @@ def fetch_helpdesk_mail_for_all_companies() -> dict:
         support = (company.support_email or "").strip()
         if not support:
             continue
-        host = _detect_imap_host(support)
-        result = fetch_helpdesk_mail_for_company(company)
+        # Same cache key as the open ticket page, so the two polls do not
+        # hit the mailbox twice inside the throttle window.
+        result = maybe_fetch_on_dashboard(company)
+        if not result:
+            continue
         logs.extend(result.get("logs") or [])
+        created = int(result.get("created") or 0)
+        created_total += created
         if result.get("mode") == "graph":
             ms_companies += 1
-            graph_created += int(result.get("created") or 0)
+            graph_created += created
         elif result.get("mode") == "imap":
             other_imap = True
 
     return {
+        "created": created_total,
         "graph_created": graph_created,
         "microsoft_companies": ms_companies,
         "imap_polled": other_imap,

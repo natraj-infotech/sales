@@ -442,3 +442,76 @@ class SupportDigestTests(TestCase):
         self.assertTrue(data.startswith(b"PK"))
         self.company.refresh_from_db()
         self.assertEqual(self.company.support_digest_last_sent, timezone.localdate())
+
+
+class TicketCreatedConfirmationTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user("owner-confirm@example.com", "pass")
+        self.company = CompanyProfile.objects.create(
+            user=self.owner,
+            company_name="Confirm Co",
+            support_email="support@confirm.example",
+            support_email_app_password="app-secret",
+        )
+        self.queue = Queue.objects.create(
+            title="Confirm Co",
+            slug=f"c{self.company.pk}-confirm",
+        )
+
+    def _ticket(self, sender="customer@example.com"):
+        return Ticket.objects.create(
+            title="Printer offline",
+            queue=self.queue,
+            description="It will not print",
+            submitter_email=sender,
+        )
+
+    def test_email_import_queues_confirmation_to_sender(self):
+        from business.helpdesk_signals import email_sender_ticket_confirmation
+
+        ticket = self._ticket()
+        with patch(
+            "business.helpdesk_assign_mail.queue_ticket_created_email"
+        ) as queued:
+            email_sender_ticket_confirmation(sender="helpdesk_inbox", ticket=ticket)
+        queued.assert_called_once()
+        self.assertEqual(queued.call_args.kwargs["company"], self.company)
+        self.assertEqual(queued.call_args.kwargs["ticket"], ticket)
+
+    def test_manual_ticket_form_does_not_queue_confirmation(self):
+        from business.helpdesk_signals import email_sender_ticket_confirmation
+
+        ticket = self._ticket()
+        with patch(
+            "business.helpdesk_assign_mail.queue_ticket_created_email"
+        ) as queued:
+            email_sender_ticket_confirmation(sender="TicketForm", ticket=ticket)
+        queued.assert_not_called()
+
+    def test_confirmation_is_addressed_to_the_sender(self):
+        from business.helpdesk_assign_mail import send_ticket_created_email
+
+        ticket = self._ticket()
+        with patch(
+            "business.helpdesk_assign_mail.send_outbound",
+            return_value=(True, None),
+        ) as send:
+            status, err = send_ticket_created_email(
+                company=self.company, ticket=ticket
+            )
+        self.assertEqual((status, err), ("sent", None))
+        self.assertEqual(send.call_args.kwargs["to_addresses"], ["customer@example.com"])
+        self.assertIn("We have generated a ticket", send.call_args.kwargs["subject"])
+        self.assertIn(f"TK-{ticket.pk:05d}", send.call_args.kwargs["body"])
+
+    def test_support_mailbox_is_not_sent_a_confirmation(self):
+        from business.helpdesk_assign_mail import send_ticket_created_email
+
+        ticket = self._ticket(sender="support@confirm.example")
+        with patch("business.helpdesk_assign_mail.send_outbound") as send:
+            status, err = send_ticket_created_email(
+                company=self.company, ticket=ticket
+            )
+        self.assertEqual((status, err), ("skipped_self", None))
+        send.assert_not_called()

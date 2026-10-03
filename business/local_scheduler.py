@@ -1,7 +1,9 @@
-"""Send scheduled expiry reminder emails while using Django runserver.
+"""Background jobs while using Django runserver.
 
 Production uses Celery beat. Locally, only `runserver` is usually running,
-so this daemon thread checks due reminder slots every minute, all day.
+so this daemon thread runs every minute for as long as the server is up:
+expiry reminders, team notifications, and support-mailbox ticket import.
+Support mail is read even when nobody is logged in and the ticket page is closed.
 """
 
 from __future__ import annotations
@@ -43,13 +45,13 @@ def start_if_runserver() -> None:
         _started = True
     thread = threading.Thread(
         target=_loop,
-        name="local-expiry-scheduler",
+        name="local-scheduler",
         daemon=True,
     )
     thread.start()
     logger.warning(
-        "Local expiry mail scheduler started (every %ss, all day IST). "
-        "Scheduled reminder times send automatically while runserver is running.",
+        "Local scheduler started (every %ss). Expiry mail, team notifications, "
+        "and support inbox fetch run while runserver is up, even if nobody is logged in.",
         TICK_SECONDS,
     )
 
@@ -94,6 +96,19 @@ def _tick() -> None:
         scan_scheduled_notifications()
     except Exception:
         logger.exception("Local team notification scan failed")
+    try:
+        from business.helpdesk_inbox import fetch_helpdesk_mail_for_all_companies
+
+        result = fetch_helpdesk_mail_for_all_companies()
+        created = int(result.get("created") or 0)
+        if created:
+            logger.warning("Automatic support mail: imported %s ticket(s).", created)
+        for line in result.get("logs") or []:
+            lower = str(line).lower()
+            if "fail" in lower or "error" in lower:
+                logger.warning("Automatic support mail: %s", line)
+    except Exception:
+        logger.exception("Local support mail fetch failed")
     finally:
         close_old_connections()
         _tick_lock.release()
