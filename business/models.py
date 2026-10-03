@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import time, timedelta
 
@@ -86,6 +87,17 @@ class Vendor(models.Model):
     def __str__(self):
         return self.name
 
+    def contact_emails(self) -> list[str]:
+        emails: list[str] = []
+        seen: set[str] = set()
+        for raw in (self.email, self.email_2, self.email_3):
+            addr = (raw or "").strip()
+            key = addr.lower()
+            if addr and key not in seen:
+                seen.add(key)
+                emails.append(addr)
+        return emails
+
 
 class ReminderTemplate(models.Model):
     company = models.ForeignKey(
@@ -123,12 +135,23 @@ class ReminderTemplate(models.Model):
         return label
 
 
+PAN_PATTERN = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+PAN_FORMAT_ERROR = "Enter a valid PAN (e.g. ABCDE1234F)."
+
+
+def normalize_pan(raw) -> str:
+    return "".join(str(raw or "").split()).upper()
+
+
 class Client(models.Model):
     company = models.ForeignKey(
         CompanyProfile, on_delete=models.CASCADE, related_name="clients"
     )
     name = models.CharField(max_length=255)
     gst_number = models.CharField("GST number", max_length=32, blank=True)
+    pan_number = models.CharField("PAN number", max_length=10, blank=True)
+    tenant_id = models.CharField("Tenant ID", max_length=255, blank=True)
+    address = models.TextField(blank=True)
     email = models.EmailField("Email 1", blank=True)
     email_2 = models.EmailField("Email 2", blank=True)
     email_3 = models.EmailField("Email 3", blank=True)
@@ -179,6 +202,12 @@ class Product(models.Model):
         null=True,
         blank=True,
         related_name="products",
+    )
+    vendors = models.ManyToManyField(
+        Vendor,
+        blank=True,
+        related_name="supplied_products",
+        help_text="All vendors that sell this product.",
     )
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=128, blank=True)
@@ -2001,3 +2030,90 @@ class Lead(models.Model):
         if self.source == self.Source.EMAIL:
             return "Email"
         return self.get_source_display() or "—"
+
+
+class TeamNotification(models.Model):
+    """In-app bell item. One row per recipient so read state stays personal."""
+
+    class Kind(models.TextChoices):
+        SUPPORT_TICKET = "support_ticket", "Support ticket"
+        QUOTATION_PRICE = "quotation_price", "Quotation price"
+        FINAL_QUOTATION = "final_quotation", "Final quotation"
+        CASELOCK_SUBMIT = "caselock_submit", "Case lock form"
+        NEW_LEAD = "new_lead", "New lead"
+        TICKET_OVERDUE = "ticket_overdue", "Ticket overdue"
+        SUBSCRIPTION_EXPIRY = "subscription_expiry", "Subscription expiry"
+        RENEWAL_CONFIRMED = "renewal_confirmed", "Renewal confirmed"
+        TICKET_ASSIGNED = "ticket_assigned", "Ticket assigned"
+        TICKET_REPLY = "ticket_reply", "Ticket reply"
+        EMAIL_FAILED = "email_failed", "Email failed"
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="team_notifications",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="team_notifications",
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    title = models.CharField(max_length=255)
+    body = models.CharField(max_length=500, blank=True)
+    target_url = models.CharField(max_length=500)
+    dedupe_key = models.CharField(max_length=190)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recipient", "dedupe_key"],
+                name="unique_team_notification_per_recipient",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["recipient", "is_read", "created_at"]),
+            models.Index(fields=["company", "created_at"]),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class VendorPriceRequest(models.Model):
+    """Price quote asked from a vendor for one expiring subscription."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="vendor_price_requests",
+    )
+    subscription = models.ForeignKey(
+        ClientSubscription,
+        on_delete=models.CASCADE,
+        related_name="vendor_price_requests",
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.CASCADE,
+        related_name="subscription_price_requests",
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    product_name = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField()
+    client_name = models.CharField(max_length=255, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.vendor} / {self.product_name}"

@@ -2,7 +2,7 @@ import logging
 
 from django.dispatch import receiver
 from helpdesk.models import FollowUp
-from helpdesk.signals import new_ticket_done
+from helpdesk.signals import new_ticket_done, update_ticket_done
 
 from business.email_body_clean import clean_inbound_email_body
 from business.models import SupportTicketMeta
@@ -51,4 +51,34 @@ def scrub_external_caution_from_ticket(sender, ticket, **kwargs):
         logger.exception(
             "Email caution scrub failed ticket_id=%s",
             getattr(ticket, "pk", None),
+        )
+
+
+@receiver(new_ticket_done)
+def notify_team_of_new_ticket(sender, ticket, **kwargs):
+    """Inbox imports (Graph and IMAP) show up on the team bell."""
+    try:
+        from business.team_notifications import notify_new_ticket
+
+        notify_new_ticket(ticket)
+    except Exception:
+        logger.exception(
+            "Team notification failed for new ticket_id=%s",
+            getattr(ticket, "pk", None),
+        )
+
+
+@receiver(update_ticket_done)
+def notify_team_of_customer_reply(sender, followup, **kwargs):
+    """IMAP replies to an existing ticket (helpdesk also reopens closed ones)."""
+    if sender != "create_object_from_email_message":
+        return
+    try:
+        from business.team_notifications import notify_ticket_reply
+
+        notify_ticket_reply(followup)
+    except Exception:
+        logger.exception(
+            "Team notification failed for ticket reply followup_id=%s",
+            getattr(followup, "pk", None),
         )

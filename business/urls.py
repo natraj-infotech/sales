@@ -1,9 +1,31 @@
 from django.urls import path
 
 from . import views
+from . import views_notifications
 from . import views_procurement
 
 urlpatterns = [
+    path("notifications/", views_notifications.notification_list, name="notification_list"),
+    path(
+        "notifications/feed/",
+        views_notifications.notification_feed,
+        name="notification_feed",
+    ),
+    path(
+        "notifications/read/",
+        views_notifications.notification_mark_all_read,
+        name="notification_mark_all_read",
+    ),
+    path(
+        "notifications/<int:pk>/open/",
+        views_notifications.notification_open,
+        name="notification_open",
+    ),
+    path(
+        "vendor-quote/<uuid:token>/",
+        views.vendor_quote_public,
+        name="vendor_quote_public",
+    ),
     path(
         "vendor-price-submit/<uuid:token>/",
         views_procurement.vendor_price_submit,
@@ -89,6 +111,21 @@ urlpatterns = [
         name="caselock_submission_status_update",
     ),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path(
+        "dashboard/subscriptions/<int:pk>/deal-lost/",
+        views.dashboard_set_deal_lost,
+        name="dashboard_set_deal_lost",
+    ),
+    path(
+        "dashboard/subscriptions/<int:pk>/quote-vendors/",
+        views.dashboard_quote_vendors,
+        name="dashboard_quote_vendors",
+    ),
+    path(
+        "dashboard/subscriptions/<int:pk>/renewal-info/",
+        views.dashboard_subscription_renewal_info,
+        name="dashboard_subscription_renewal_info",
+    ),
     path("backups/", views.backup_list, name="backup_list"),
     path("backups/create/", views.backup_create, name="backup_create"),
     path(

@@ -114,6 +114,12 @@ def create_lead(
         lead.source,
         company.pk if company is not None else None,
     )
+    try:
+        from business.team_notifications import notify_new_lead
+
+        notify_new_lead(lead)
+    except Exception:
+        logger.exception("Team notification failed for lead_id=%s", lead.pk)
     return lead, True
 
 

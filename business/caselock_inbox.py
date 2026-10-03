@@ -350,6 +350,15 @@ def _send_invite_email(company: CompanyProfile, invite: CaseLockInvite, sender: 
             company.outgoing_email,
             url,
         )
+        if not _looks_like_bounce_or_auto(sender, subj):
+            from business.team_notifications import notify_email_failed
+
+            notify_email_failed(
+                company,
+                area="caselock_invite",
+                title="Case lock form link email failed",
+                body=f"Could not email {sender}. Check outgoing email in Company profile.",
+            )
 
 
 def send_caselock_decision_email(submission: CaseLockSubmission) -> bool:

@@ -12,7 +12,7 @@ from django.core.validators import validate_email
 
 from accounts.models import CompanyProfile
 from business.import_io import cell_str, detect_header_row, iter_spreadsheet_rows, norm_header
-from business.models import Client
+from business.models import PAN_PATTERN, Client, normalize_pan
 from openpyxl import Workbook
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,9 @@ EXPORT_HEADERS: tuple[str, ...] = (
     "Client ID",
     "Name",
     "GST Number",
+    "PAN Number",
+    "Tenant ID",
+    "Address",
     "Email 1",
     "Email 2",
     "Email 3",
@@ -38,6 +41,12 @@ HEADER_ALIASES: dict[str, str] = {
     "gst_number": "gst_number",
     "gst": "gst_number",
     "gst_no": "gst_number",
+    "pan_number": "pan_number",
+    "pan": "pan_number",
+    "pan_no": "pan_number",
+    "tenant_id": "tenant_id",
+    "tenant": "tenant_id",
+    "address": "address",
     "email": "email",
     "email_1": "email",
     "email1": "email",
@@ -62,7 +71,7 @@ HEADER_ALIASES: dict[str, str] = {
     "notes": "notes",
 }
 
-HINT_WORDS = frozenset({"client", "name", "gst", "email", "contact", "phone", "notes"})
+HINT_WORDS = frozenset({"client", "name", "gst", "pan", "tenant", "address", "email", "contact", "phone", "notes"})
 _UNSET = object()
 
 
@@ -77,6 +86,9 @@ def build_client_export_bytes(company: CompanyProfile) -> bytes:
                 client.pk,
                 client.name,
                 client.gst_number,
+                client.pan_number,
+                client.tenant_id,
+                client.address,
                 client.email,
                 client.email_2,
                 client.email_3,
@@ -142,6 +154,15 @@ def _mapped_text(get, col_map: dict[str, int], field: str, maxlen: int) -> Any:
     return cell_str(get(field))[:maxlen]
 
 
+def _mapped_pan(get, col_map: dict[str, int]) -> tuple[Any, str | None]:
+    if "pan_number" not in col_map:
+        return _UNSET, None
+    pan = normalize_pan(cell_str(get("pan_number")))
+    if pan and not PAN_PATTERN.match(pan):
+        return None, f"Invalid PAN number: {pan}"
+    return pan, None
+
+
 def _upsert_client(
     company: CompanyProfile,
     get,
@@ -152,6 +173,11 @@ def _upsert_client(
     client_id = _parse_client_id(get("client_id"))
     name = cell_str(get("name"))
     gst_number = cell_str(get("gst_number"))[:32]
+    pan_number, pan_err = _mapped_pan(get, col_map)
+    if pan_err:
+        return None, pan_err, False
+    tenant_id = _mapped_text(get, col_map, "tenant_id", 255)
+    address = _mapped_text(get, col_map, "address", 2000)
     email, email_err = _mapped_email(get, col_map, "email")
     if email_err:
         return None, email_err, False
@@ -182,6 +208,9 @@ def _upsert_client(
             company=company,
             name=name,
             gst_number=gst_number,
+            pan_number="" if pan_number is _UNSET else pan_number,
+            tenant_id="" if tenant_id is _UNSET else tenant_id,
+            address="" if address is _UNSET else address,
             email="" if email is _UNSET else (email or ""),
             email_2="" if email_2 is _UNSET else (email_2 or ""),
             email_3="" if email_3 is _UNSET else (email_3 or ""),
@@ -197,6 +226,12 @@ def _upsert_client(
     if name:
         existing.name = name
     existing.gst_number = gst_number
+    if pan_number is not _UNSET:
+        existing.pan_number = pan_number
+    if tenant_id is not _UNSET:
+        existing.tenant_id = tenant_id
+    if address is not _UNSET:
+        existing.address = address
     if email is not _UNSET:
         existing.email = email or ""
     if email_2 is not _UNSET:

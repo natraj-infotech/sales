@@ -57,6 +57,14 @@ def poll_renewal_read_receipts_task():
 
 
 @shared_task
+def scan_team_notifications_task():
+    """Bell items for overdue tickets and subscriptions nearing expiry."""
+    from .team_notifications import scan_scheduled_notifications
+
+    return _run_task("scan_team_notifications_task", scan_scheduled_notifications)
+
+
+@shared_task
 def create_backup_task():
     """Create combined PostgreSQL + media backup (see business.backup)."""
     from django.conf import settings

@@ -88,6 +88,12 @@ def _tick() -> None:
                 logger.warning("Automatic expiry mail: %s", line)
     except Exception:
         logger.exception("Local expiry mail scheduler tick failed")
+    try:
+        from business.team_notifications import scan_scheduled_notifications
+
+        scan_scheduled_notifications()
+    except Exception:
+        logger.exception("Local team notification scan failed")
     finally:
         close_old_connections()
         _tick_lock.release()

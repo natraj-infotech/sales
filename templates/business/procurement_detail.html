@@ -95,7 +95,7 @@
       <tbody>
         {% for row in matrix %}
           {% for round_row in row.rounds %}
-          <tr>
+          <tr data-vendor-id="{{ row.vendor.pk }}">
             {% if forloop.first %}
             <td rowspan="{{ row.rounds|length }}">{{ row.vendor.name }}</td>
             {% endif %}
@@ -128,7 +128,7 @@
       </thead>
       <tbody>
         {% for row in timeline %}
-        <tr>
+        <tr data-vendor-id="{{ row.vendor_id }}">
           <td>{{ row.time|date:"d/m/Y H:i" }}</td>
           <td>{{ row.vendor }}</td>
           <td>{{ row.product }}</td>
@@ -145,4 +145,15 @@
   {% endif %}
 </section>
 </div>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var vendorId = params.get("vendor");
+  if (!vendorId || !/^\d+$/.test(vendorId)) return;
+  var rows = document.querySelectorAll('tr[data-vendor-id="' + vendorId + '"]');
+  if (!rows.length) return;
+  rows.forEach(function (row) { row.classList.add("notif-row-focus"); });
+  rows[0].scrollIntoView({ block: "center" });
+})();
+</script>
 {% endblock %}

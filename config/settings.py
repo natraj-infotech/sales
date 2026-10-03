@@ -372,6 +372,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "business.tasks.send_expiry_notifications_task",
         "schedule": 60.0,
     },
+    "scan-team-notifications-every-60-seconds": {
+        "task": "business.tasks.scan_team_notifications_task",
+        "schedule": 60.0,
+    },
     "poll-renewal-read-receipts-every-2-minutes": {
         "task": "business.tasks.poll_renewal_read_receipts_task",
         "schedule": 120.0,

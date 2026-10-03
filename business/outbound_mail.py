@@ -251,6 +251,34 @@ def _friendly_smtp_error(exc: Exception, *, host: str, sender: str) -> str:
     return f"SMTP send failed via {host} for {sender}: {exc}"
 
 
+def open_smtp_connection(from_email: str, app_password: str, *, timeout: int = 30):
+    """Log in once and return an open connection for several send_smtp_outbound calls.
+
+    Returns None when login fails; callers then fall back to one connection per mail.
+    The caller must close() the connection.
+    """
+    sender = (from_email or "").strip()
+    password = (app_password or "").strip()
+    if not sender or not password:
+        return None
+    host, port = _smtp_for_address(sender)
+    conn = get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=host,
+        port=port,
+        username=sender,
+        password=password,
+        use_tls=True,
+        timeout=timeout,
+    )
+    try:
+        conn.open()
+    except Exception:
+        logger.exception("SMTP login failed for sender %s via %s", sender, host)
+        return None
+    return conn
+
+
 def send_smtp_outbound(
     from_email: str,
     app_password: str,
@@ -262,8 +290,9 @@ def send_smtp_outbound(
     attachments: Sequence[Attachment] | None = None,
     inline_images: Sequence[InlineImage] | None = None,
     extra_headers: dict[str, str] | None = None,
+    connection=None,
 ) -> tuple[bool, str | None]:
-    """Return (success, error_message)."""
+    """Return (success, error_message). Pass `connection` to reuse an open SMTP login."""
     sender = (from_email or "").strip()
     password = (app_password or "").strip()
     if not sender or not password:
@@ -275,7 +304,7 @@ def send_smtp_outbound(
 
     host, port = _smtp_for_address(sender)
     try:
-        conn = get_connection(
+        conn = connection or get_connection(
             backend="django.core.mail.backends.smtp.EmailBackend",
             host=host,
             port=port,

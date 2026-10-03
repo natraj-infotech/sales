@@ -1,6 +1,7 @@
 import csv
 import logging
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from io import StringIO
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -60,6 +61,8 @@ from .models import (
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
+    VendorPriceRequest,
+    lost_reminder_resume_on,
     TicketPriorityRule,
     Vendor,
 )
@@ -236,6 +239,72 @@ def _expiring_subscription_choices():
     ]
 
 
+def _product_company_vendor_map(company):
+    """Company names (case-insensitive) and the vendors tagged with each on the Vendor page."""
+    labels = {}
+    vendor_companies = {}
+
+    def add_label(raw):
+        label = (raw or "").strip()
+        if not label:
+            return ""
+        key = label.lower()
+        current = labels.get(key)
+        if current is None or (label[:1].isupper() and not current[:1].isupper()):
+            labels[key] = label
+        return key
+
+    for name in company.products.values_list("company_name", flat=True):
+        add_label(name)
+    for vendor_id, catalog in company.vendors.values_list("pk", "catalog_companies"):
+        for name in catalog or []:
+            key = add_label(name)
+            if key:
+                vendor_companies.setdefault(vendor_id, set()).add(key)
+    companies = [
+        {"key": key, "label": label}
+        for key, label in sorted(labels.items(), key=lambda item: item[1].lower())
+    ]
+    return companies, vendor_companies
+
+
+def _attach_dashboard_zoho(company, subs):
+    """Set ``zoho`` and ``zoho_ref_id`` on each subscription from its latest renewal email."""
+    from business.zoho_crm import zoho_configured
+
+    configured = zoho_configured()
+    lines = (
+        SubscriptionRenewalInviteLine.objects.filter(
+            subscription__in=subs,
+            invite__company=company,
+            invite__email_sent_at__isnull=False,
+        )
+        .select_related("invite")
+        .order_by("-invite__email_sent_at", "-invite__created_at")
+    )
+    best = {}
+    for line in lines:
+        invite = line.invite
+        current = best.get(line.subscription_id)
+        if current is None or (invite.zoho_quote_url and not current.zoho_quote_url):
+            best[line.subscription_id] = invite
+    for sub in subs:
+        invite = best.get(sub.pk)
+        if invite is None:
+            sub.zoho = None
+            sub.zoho_ref_id = ""
+            continue
+        sub.zoho = _zoho_payload(
+            invite,
+            zoho_connected=company.zoho_connected,
+            zoho_configured=configured,
+        )
+        sub.zoho_ref_id = (
+            (invite.zoho_quote_number or "").strip()
+            or (invite.zoho_quote_id or "").strip()
+        )
+
+
 @sales_module_required
 def dashboard(request):
     company = _company(request)
@@ -245,10 +314,19 @@ def dashboard(request):
         company.subscriptions.filter(status=ClientSubscription.Status.ACTIVE),
         expiring_days,
         today,
+    ).exclude(
+        deal_status=ClientSubscription.DealStatus.WIN,
+        win_form_completed=True,
+    ).exclude(
+        deal_status=ClientSubscription.DealStatus.LOST,
     )
-    expiring_subs = expiring_qs.select_related("client", "product", "vendor").order_by(
-        "end_date", "client__name"
-    )[:50]
+    expiring_subs = list(
+        expiring_qs.select_related("client", "product", "vendor").order_by(
+            "end_date", "client__name"
+        )[:50]
+    )
+    _attach_dashboard_zoho(company, expiring_subs)
+    quote_companies, vendor_companies = _product_company_vendor_map(company)
     charts = sales_dashboard_charts(company, expiring_qs=expiring_qs, today=today)
     ctx = {
         "company": company,
@@ -274,9 +352,338 @@ def dashboard(request):
         "dashboard_renew_next": (
             f"{reverse('dashboard')}?expiring_days={expiring_days}"
         ),
+        "quote_vendors": [
+            {
+                "id": vendor.pk,
+                "name": vendor.name,
+                "has_email": bool(vendor.contact_emails()),
+                "companies": sorted(vendor_companies.get(vendor.pk, ())),
+            }
+            for vendor in company.vendors.all().order_by("name")
+        ],
+        "quote_companies": quote_companies,
         "charts": charts,
     }
     return render(request, "business/dashboard.html", ctx)
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def dashboard_set_deal_lost(request, pk):
+    company = _company(request)
+    sub = get_object_or_404(ClientSubscription, pk=pk, company=company)
+    if sub.deal_status and sub.deal_status != ClientSubscription.DealStatus.CANCEL:
+        return JsonResponse(
+            {"ok": False, "error": "Deal status is already set."},
+            status=400,
+        )
+    sub.deal_status = ClientSubscription.DealStatus.LOST
+    if not sub.deal_status_set_at:
+        sub.deal_status_set_at = timezone.now()
+    sub.lost_remark = (request.POST.get("lost_remark") or "").strip()
+    sub.lost_reminder_resume_on = lost_reminder_resume_on(sub.end_date)
+    sub.save(
+        update_fields=[
+            "deal_status",
+            "deal_status_set_at",
+            "lost_remark",
+            "lost_reminder_resume_on",
+        ]
+    )
+    invite_line = (
+        SubscriptionRenewalInviteLine.objects.filter(subscription=sub)
+        .select_related("invite")
+        .order_by("-id")
+        .first()
+    )
+    if invite_line and invite_line.invite_id and not invite_line.invite.deal_status_set_at:
+        invite_line.invite.deal_status_set_at = sub.deal_status_set_at
+        invite_line.invite.save(update_fields=["deal_status_set_at"])
+    return JsonResponse({"ok": True, "deal_status": ClientSubscription.DealStatus.LOST})
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def dashboard_quote_vendors(request, pk):
+    company = _company(request)
+    sub = get_object_or_404(
+        ClientSubscription.objects.select_related("client", "product"),
+        pk=pk,
+        company=company,
+    )
+    raw_ids = request.POST.getlist("vendor_ids")
+    vendor_ids = []
+    for raw in raw_ids:
+        try:
+            vendor_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not vendor_ids:
+        return JsonResponse(
+            {"ok": False, "error": "Select at least one vendor."},
+            status=400,
+        )
+    vendors = list(company.vendors.filter(pk__in=vendor_ids).order_by("name"))
+    if not vendors:
+        return JsonResponse(
+            {"ok": False, "error": "Select at least one vendor."},
+            status=400,
+        )
+    from business.vendor_quote import send_subscription_price_requests
+
+    result = send_subscription_price_requests(company, sub, vendors)
+    if not result["queued"]:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": " ".join(result["errors"]) or "Could not send the email.",
+            },
+            status=400,
+        )
+    names = ", ".join(result["queued"])
+    deal_no = result.get("deal_no")
+    deal_suffix = f" (Deal No: {deal_no})" if deal_no else ""
+    message = f"Price request is being sent to {names}{deal_suffix}."
+    if result["errors"]:
+        message = f"{message} {' '.join(result['errors'])}"
+    return JsonResponse(
+        {"ok": True, "message": message, "queued": result["queued"], "deal_no": deal_no}
+    )
+
+
+@sales_module_required
+@require_http_methods(["GET"])
+def dashboard_subscription_renewal_info(request, pk):
+    company = _company(request)
+    sub = get_object_or_404(
+        ClientSubscription.objects.select_related("client", "product"),
+        pk=pk,
+        company=company,
+    )
+    payload = {
+        "id": sub.pk,
+        "client_name": sub.client.name,
+        "product_name": sub.product.name,
+        "subscription_list_id": sub.subscription_list_id or "",
+        "quantity": sub.quantity,
+        "start_date": _format_date(sub.start_date),
+        "end_date": _format_date(sub.end_date),
+        "days_left": sub.days_until_expiry,
+        "deal_status": sub.deal_status or "",
+        "lost_remark": sub.lost_remark or "",
+        "client_emails": sub.client.contact_emails(),
+    }
+
+    vendor_quotes = []
+    deal_no = ""
+    deal_url = ""
+    try:
+        from business.models import ProcurementDeal, VendorPriceRequest
+
+        proc_deal = (
+            ProcurementDeal.objects.filter(
+                company=company, deal_name=f"Subscription:{sub.pk}"
+            )
+            .order_by("-id")
+            .first()
+        )
+        if proc_deal:
+            deal_no = proc_deal.deal_no
+            deal_url = reverse("procurement_detail", kwargs={"deal_no": deal_no})
+
+        requests = (
+            VendorPriceRequest.objects.filter(company=company, subscription=sub)
+            .select_related("vendor")
+            .order_by("vendor__name", "vendor_id", "created_at", "id")
+        )
+        email_numbers = {}
+        for req in requests:
+            email_numbers[req.vendor_id] = email_numbers.get(req.vendor_id, 0) + 1
+            vendor_quotes.append(
+                {
+                    "vendor_id": req.vendor_id,
+                    "vendor_name": req.vendor.name,
+                    "email_no": email_numbers[req.vendor_id],
+                    "sent_at": _format_dt(req.email_sent_at or req.created_at),
+                    "price": float(req.price) if req.price is not None else None,
+                    "submitted_at": _format_dt(req.submitted_at) if req.submitted_at else "",
+                    "status": "Submitted" if req.submitted_at else ("Sent" if req.email_sent_at else "Pending"),
+                }
+            )
+        vendor_quotes.sort(key=lambda vq: (vq["vendor_name"].lower(), vq["vendor_id"], -vq["email_no"]))
+    except Exception:
+        logger.exception("Failed to load vendor quotes for subscription %s", sub.pk)
+
+    try:
+        invite_ids = SubscriptionRenewalInviteLine.objects.filter(
+            subscription=sub
+        ).values("invite_id")
+        invites = list(_renewal_invite_queryset(company).filter(pk__in=invite_ids))
+        if not invites:
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "sent": False,
+                    "subscription": payload,
+                    "row": None,
+                    "new_products": [],
+                    "vendor_quotes": vendor_quotes,
+                    "procurement_deal_no": deal_no,
+                    "procurement_deal_url": deal_url,
+                }
+            )
+        from business.renewal_sla import get_or_create_renewal_sla_settings
+        from business.zoho_crm import zoho_configured
+
+        groups = _renewal_product_groups(
+            invites,
+            company=company,
+            zoho_connected=company.zoho_connected,
+            zoho_configured=zoho_configured(),
+            sla_settings=get_or_create_renewal_sla_settings(company),
+            include_won=False,
+        )
+        rows = [row for group in groups for row in group["rows"]]
+        line_rows = [
+            row for row in rows if row.get("kind") == "line" and row.get("subscription_id") == sub.pk
+        ]
+        chosen = None
+        for row in line_rows:
+            if row.get("renewal_quantity") is not None:
+                chosen = row
+                break
+        if chosen is None and line_rows:
+            chosen = line_rows[0]
+        if chosen is None:
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "sent": False,
+                    "subscription": payload,
+                    "row": None,
+                    "new_products": [],
+                    "vendor_quotes": vendor_quotes,
+                    "procurement_deal_no": deal_no,
+                    "procurement_deal_url": deal_url,
+                }
+            )
+        new_products = [row for row in rows if row.get("kind") == "new"]
+        return JsonResponse(
+            {
+                "ok": True,
+                "sent": True,
+                "subscription": payload,
+                "row": chosen,
+                "new_products": new_products,
+                "vendor_quotes": vendor_quotes,
+                "procurement_deal_no": deal_no,
+                "procurement_deal_url": deal_url,
+            }
+        )
+    except Exception:
+        logger.exception(
+            "dashboard_subscription_renewal_info failed company_id=%s sub_id=%s",
+            company.pk,
+            sub.pk,
+        )
+        return _json_error("Could not load renewal info.")
+
+
+@require_http_methods(["GET", "POST"])
+def vendor_quote_public(request, token):
+    quote = get_object_or_404(
+        VendorPriceRequest.objects.select_related("company", "vendor"),
+        token=token,
+    )
+    if quote.submitted_at:
+        return render(
+            request,
+            "business/vendor_quote_public.html",
+            {"quote": quote, "submitted": True, "public_page": True},
+        )
+    error = ""
+    posted_price = ""
+    if request.method == "POST":
+        posted_price = (request.POST.get("price") or "").strip()
+        try:
+            price = Decimal(posted_price)
+        except (InvalidOperation, ValueError):
+            price = None
+        if price is None or price < 0:
+            error = "Enter a valid price."
+        else:
+            quote.price = price.quantize(Decimal("0.01"))
+            quote.submitted_at = timezone.now()
+            quote.save(update_fields=["price", "submitted_at"])
+
+            try:
+                from business.models import (
+                    DealRound,
+                    DealRoundVendorPrice,
+                    DealVendor,
+                    ProcurementDeal,
+                    VendorPriceSubmission,
+                    VendorProductPrice,
+                )
+                from business.team_notifications import notify_quotation_submitted
+
+                proc_deal = (
+                    ProcurementDeal.objects.filter(
+                        company=quote.company, deal_name=f"Subscription:{quote.subscription_id}"
+                    )
+                    .order_by("-id")
+                    .first()
+                )
+                if proc_deal:
+                    deal_no = proc_deal.deal_no
+                    DealVendor.objects.filter(
+                        company=quote.company, deal_no=deal_no, vendor=quote.vendor
+                    ).update(price=quote.price)
+                    round_obj = (
+                        DealRound.objects.filter(company=quote.company, deal_no=deal_no)
+                        .order_by("-round_number")
+                        .first()
+                    )
+                    if round_obj:
+                        DealRoundVendorPrice.objects.update_or_create(
+                            deal_round=round_obj,
+                            vendor=quote.vendor,
+                            product=quote.subscription.product,
+                            defaults={"price": quote.price},
+                        )
+                    subm = VendorPriceSubmission.objects.filter(
+                        company=quote.company, deal_no=deal_no, vendor=quote.vendor
+                    ).first()
+                    if subm:
+                        subm.is_submitted = True
+                        subm.submitted_at = quote.submitted_at
+                        subm.save(update_fields=["is_submitted", "submitted_at"])
+                        VendorProductPrice.objects.update_or_create(
+                            submission=subm,
+                            product=quote.subscription.product,
+                            defaults={"price": quote.price},
+                        )
+                        notify_quotation_submitted(subm)
+            except Exception:
+                logger.exception("Failed to sync vendor quote to procurement deal")
+
+            return render(
+                request,
+                "business/vendor_quote_public.html",
+                {"quote": quote, "submitted": True, "public_page": True},
+            )
+    return render(
+        request,
+        "business/vendor_quote_public.html",
+        {
+            "quote": quote,
+            "submitted": False,
+            "error": error,
+            "posted_price": posted_price,
+            "public_page": True,
+        },
+    )
+
 
 
 def _renewal_invite_line_prefetch():
@@ -286,6 +693,7 @@ def _renewal_invite_line_prefetch():
             "subscription",
             "subscription__client",
             "subscription__product",
+            "subscription__renewal_draft_product",
         ),
     )
 
@@ -387,7 +795,33 @@ def _format_date(value):
     return date_format(value, "d M Y")
 
 
+def _sla_off_payload():
+    return {
+        "status": "off",
+        "label": "—",
+        "zoho_status": "none",
+        "zoho_status_label": "—",
+        "zoho_stage": "",
+        "target_hours": 0,
+        "elapsed_hours": None,
+        "elapsed_label": "—",
+        "remaining_hours": None,
+        "remaining_label": "—",
+        "qty_to_quote_hours": None,
+        "qty_to_quote_label": "—",
+        "quote_to_send_hours": None,
+        "quote_to_send_label": "—",
+        "clock_mode": "",
+        "quantity_at": "",
+        "quote_number_at": "",
+        "quote_sent_at": "",
+        "due_at": "",
+    }
+
+
 def _sla_row_payload(invite, sla_settings):
+    if invite is None:
+        return _sla_off_payload()
     from business.renewal_sla import sla_status_for_invite
 
     raw = sla_status_for_invite(invite, sla_settings)
@@ -486,13 +920,36 @@ def _display_ref_id(row):
     )
 
 
-def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=False, sla_settings=None):
+def _renewed_product_name(sub, original_name):
+    if not sub or not sub.win_form_completed:
+        return ""
+    draft = getattr(sub, "renewal_draft_product", None)
+    if draft is None:
+        return ""
+    name = (draft.name or "").strip()
+    if name.lower() == (original_name or "").strip().lower():
+        return ""
+    return name
+
+
+def _renewal_product_groups(
+    invites,
+    *,
+    company=None,
+    zoho_connected=False,
+    zoho_configured=False,
+    sla_settings=None,
+    include_won=True,
+):
     """One product row per company, collapsing reminder emails for the same item."""
-    if sla_settings is None and invites:
+    if company is None and invites:
+        company = invites[0].company
+    if sla_settings is None and company is not None:
         from business.renewal_sla import get_or_create_renewal_sla_settings
 
-        sla_settings = get_or_create_renewal_sla_settings(invites[0].company)
+        sla_settings = get_or_create_renewal_sla_settings(company)
     buckets = {}
+    seen_subscription_ids = set()
     for invite in invites:
         emails = invite.sent_to_emails or [invite.client_email]
         deal_url = reverse(
@@ -500,12 +957,8 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
         )
         for line in invite.lines.all():
             sub = getattr(line, "subscription", None)
-            if (
-                sub
-                and sub.deal_status == ClientSubscription.DealStatus.WIN
-                and sub.win_form_completed
-            ):
-                continue
+            if sub:
+                seen_subscription_ids.add(sub.pk)
             key = (
                 "line",
                 sub.pk if sub else f"{invite.pk}-{line.pk}",
@@ -515,7 +968,7 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             if row is None:
                 status = (getattr(sub, "deal_status", "") or "") if sub else ""
                 renew_url = ""
-                if sub:
+                if sub and not sub.win_form_completed:
                     renew_url = "{}?{}".format(
                         reverse("subscription_renew", kwargs={"pk": sub.pk}),
                         urlencode(
@@ -530,6 +983,9 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
                     "kind": "line",
                     "company_name": (line.company_name or "").strip(),
                     "product_name": line.product_name,
+                    "renewed_product_name": _renewed_product_name(
+                        sub, line.product_name
+                    ),
                     "is_new": False,
                     "client_email": invite.client_email,
                     "recipient_emails": emails,
@@ -575,6 +1031,10 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             if row["renewal_quantity"] is None and line.renewal_count is not None:
                 row["renewal_quantity"] = line.renewal_count
                 row["previous_quantity"] = line.current_quantity
+            if sub and sub.win_form_completed:
+                row["renew_url"] = ""
+                row["form_empty"] = False
+                row["deal_status"] = ClientSubscription.DealStatus.WIN
         for item in invite.new_products.all():
             if not invite.submitted_at:
                 continue
@@ -622,6 +1082,50 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             if invite.zoho_quote_number:
                 row["zoho_quote_number"] = invite.zoho_quote_number
 
+    if include_won and company is not None:
+        won_subs = (
+            company.subscriptions.filter(
+                deal_status=ClientSubscription.DealStatus.WIN,
+                win_form_completed=True,
+            )
+            .exclude(pk__in=seen_subscription_ids)
+            .select_related("client", "product")
+            .order_by("client__name", "product__name", "id")
+        )
+        for sub in won_subs:
+            client_name = (sub.client.name or "").strip()
+            renewal_qty = (
+                sub.renewal_draft_quantity
+                if sub.renewal_draft_quantity is not None
+                else sub.quantity
+            )
+            buckets[("won", sub.pk)] = {
+                "id": f"won-{sub.pk}",
+                "kind": "line",
+                "company_name": client_name,
+                "product_name": sub.product.name,
+                "is_new": False,
+                "client_email": sub.client.email or "",
+                "recipient_emails": sub.client.contact_emails(),
+                "previous_quantity": sub.quantity,
+                "renewal_quantity": renewal_qty,
+                "deal_status": ClientSubscription.DealStatus.WIN,
+                "deal_status_url": "",
+                "renew_url": "",
+                "subscription_id": sub.pk,
+                "form_empty": False,
+                "lost_remark": sub.lost_remark or "",
+                "zoho_invite": None,
+                "zoho_quote_url": "",
+                "zoho_quote_id": "",
+                "zoho_quote_number": "",
+                "events": [],
+                "deal_status_set_at": sub.deal_status_set_at,
+                "start_date": _format_date(sub.start_date),
+                "end_date": _format_date(sub.end_date),
+                "subscription_list_id": sub.subscription_list_id or "",
+            }
+
     grouped = {}
     for row in buckets.values():
         payload = {
@@ -629,6 +1133,7 @@ def _renewal_product_groups(invites, *, zoho_connected=False, zoho_configured=Fa
             "kind": row["kind"],
             "company_name": row["company_name"],
             "product_name": row["product_name"],
+            "renewed_product_name": row.get("renewed_product_name") or "",
             "is_new": row["is_new"],
             "client_email": row["client_email"],
             "recipient_emails": row["recipient_emails"],
@@ -719,6 +1224,7 @@ def client_renewal_list(request):
             "company": company,
             "renewal_groups": _renewal_product_groups(
                 invites,
+                company=company,
                 zoho_connected=company.zoho_connected,
                 zoho_configured=configured,
                 sla_settings=sla_settings,
@@ -803,6 +1309,7 @@ def client_renewal_live(request):
                 "logs": poll_logs,
                 "groups": _renewal_product_groups(
                     invites,
+                    company=company,
                     zoho_connected=company.zoho_connected,
                     zoho_configured=zoho_configured(),
                     sla_settings=sla_settings,
@@ -1039,8 +1546,11 @@ def client_renewal_send_quotation(request, pk):
 
 
 def _after_quotation_redirect(request, invite):
-    if request.POST.get("next") == reverse("client_renewal_list"):
+    next_url = (request.POST.get("next") or "").strip()
+    if next_url == reverse("client_renewal_list"):
         return redirect("client_renewal_list")
+    if next_url.startswith(reverse("dashboard")):
+        return redirect(_safe_next_url(next_url, reverse("dashboard")))
     return redirect("client_renewal_detail", pk=invite.pk)
 
 
@@ -2701,6 +3211,14 @@ def support_ticket_update(request, pk):
             if assignee is None:
                 messages.success(request, "Ticket unassigned.")
             else:
+                try:
+                    from business.team_notifications import notify_ticket_assigned
+
+                    notify_ticket_assigned(ticket, assignee, assigned_by=request.user)
+                except Exception:
+                    logger.exception(
+                        "Team notification failed for assigned ticket_id=%s", ticket.pk
+                    )
                 queue_assignment_emails(
                     company=company,
                     ticket=ticket,
@@ -3336,6 +3854,14 @@ def _save_renewal_confirmation(
         invite.lines.select_related("subscription__product").order_by("id")
     )
     new_products = list(invite.new_products.select_related("product").order_by("id"))
+    try:
+        from business.team_notifications import notify_renewal_confirmed
+
+        notify_renewal_confirmed(invite, lines, new_products=new_products)
+    except Exception:
+        logger.exception(
+            "Team notification failed for renewal invite_id=%s", invite.pk
+        )
     send_renewal_confirmation_email(invite, lines, new_products=new_products)
     return new_products
 
@@ -3466,6 +3992,15 @@ def caselock_public_form(request, invite_id):
                     "Could not save this form. Try again.",
                 )
             else:
+                try:
+                    from business.team_notifications import notify_caselock_submitted
+
+                    notify_caselock_submitted(sub)
+                except Exception:
+                    logger.exception(
+                        "Team notification failed for case lock submission_id=%s",
+                        sub.pk,
+                    )
                 return render(
                     request,
                     "business/caselock_public_thanks_guest.html",
@@ -3803,6 +4338,12 @@ def lead_add(request):
                 lead.source = Lead.Source.MANUAL
             lead.save()
             form.save_m2m()
+            try:
+                from business.team_notifications import notify_new_lead
+
+                notify_new_lead(lead)
+            except Exception:
+                logger.exception("Team notification failed for lead_id=%s", lead.pk)
             messages.success(request, "Lead created.")
             return redirect("lead_detail", pk=lead.pk)
     else:

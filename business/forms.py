@@ -253,6 +253,9 @@ class ClientForm(forms.ModelForm):
         fields = (
             "name",
             "gst_number",
+            "pan_number",
+            "tenant_id",
+            "address",
             "email",
             "email_2",
             "email_3",
@@ -265,6 +268,7 @@ class ClientForm(forms.ModelForm):
         )
         widgets = {
             "notes": forms.HiddenInput(),
+            "address": forms.Textarea(attrs={"rows": 3}),
             "renewal_emails_enabled": forms.CheckboxInput(),
         }
 
@@ -276,6 +280,9 @@ class ClientForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for name in (
             "gst_number",
+            "pan_number",
+            "tenant_id",
+            "address",
             "email",
             "email_2",
             "email_3",
@@ -284,6 +291,9 @@ class ClientForm(forms.ModelForm):
             "phone_3",
         ):
             self.fields[name].required = False
+        self.fields["pan_number"].widget.attrs.update(
+            {"placeholder": "ABCDE1234F", "maxlength": "10", "style": "text-transform:uppercase;"}
+        )
         self.fields["renewal_emails_enabled"].label = "Renewal emails"
         self.fields["renewal_emails_enabled"].required = False
         self.fields["renewal_emails_enabled"].help_text = (
@@ -303,6 +313,17 @@ class ClientForm(forms.ModelForm):
         self.fields["reminder_template"].help_text = (
             "Choose which renewal reminder schedule this client follows."
         )
+
+    def clean_pan_number(self):
+        from business.models import PAN_FORMAT_ERROR, PAN_PATTERN, normalize_pan
+
+        pan = normalize_pan(self.cleaned_data.get("pan_number"))
+        if pan and not PAN_PATTERN.match(pan):
+            raise forms.ValidationError(PAN_FORMAT_ERROR)
+        return pan
+
+    def clean_tenant_id(self):
+        return (self.cleaned_data.get("tenant_id") or "").strip()
 
 
 class ProductForm(forms.ModelForm):
@@ -354,7 +375,6 @@ class ProductForm(forms.ModelForm):
             "company_email",
             "components",
             "notes",
-            "vendor",
             "sku",
             "unit_price",
             "discounted_price",
@@ -370,7 +390,6 @@ class ProductForm(forms.ModelForm):
         self.fields["depreciation"].label = "Depreciation Percentage (%)"
         self.fields["tax"].widget.attrs.setdefault("placeholder", "Enter GST %")
         self.fields["depreciation"].widget.attrs.setdefault("placeholder", "Enter depreciation %")
-        self.fields["vendor"].required = False
         self.fields["unit_price"].required = False
         self.fields["unit_price"].label = "Price"
         self.fields["unit_price"].widget.attrs.setdefault("placeholder", "Enter price")
@@ -419,8 +438,6 @@ class ProductForm(forms.ModelForm):
                 if line.strip()
             ]
             self.initial["components_count"] = len(self.component_items)
-        if company is not None:
-            self.fields["vendor"].queryset = company.vendors.all().order_by("name")
 
     def clean(self):
         cleaned = super().clean()

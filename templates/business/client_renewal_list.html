@@ -624,14 +624,13 @@
     text-align: left;
     white-space: nowrap;
   }
-  .cr-th-company { width: 15%; }
-  .cr-th-product { width: 15%; }
-  .cr-th-ref { width: 13%; }
-  .cr-th-qty { width: 6%; text-align: center; }
-  .cr-th-renew { width: 7%; text-align: center; }
-  .cr-th-zoho { width: 13%; }
-  .cr-th-sla { width: 16%; }
-  .cr-th-deal { width: 15%; }
+  .cr-th-company { width: 14%; }
+  .cr-th-product { width: 21%; }
+  .cr-th-qty { width: 8%; text-align: center; }
+  .cr-th-renew { width: 9%; text-align: center; }
+  .cr-th-zoho { width: 10%; }
+  .cr-th-sla { width: 22%; }
+  .cr-th-deal { width: 16%; }
   .cr-company-row > td {
     border-bottom: 1px solid #e5e7eb;
     background: #fff;
@@ -670,13 +669,41 @@
     border-collapse: collapse;
     table-layout: fixed;
   }
-  .cr-products .cr-col-product { width: 17.65%; }
-  .cr-products .cr-col-ref { width: 15.29%; }
-  .cr-products .cr-col-qty { width: 7.06%; text-align: center; white-space: nowrap; }
-  .cr-products .cr-col-renew { width: 8.24%; text-align: center; white-space: nowrap; }
-  .cr-products .cr-col-zoho { width: 15.29%; }
-  .cr-products .cr-col-sla { width: 18.82%; }
-  .cr-products .cr-col-deal { width: 17.65%; }
+  .cr-products .cr-col-product { width: 24.42%; }
+  .cr-products .cr-col-qty { width: 9.3%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-renew { width: 10.47%; text-align: center; white-space: nowrap; }
+  .cr-products .cr-col-zoho { width: 11.63%; }
+  .cr-products .cr-col-sla { width: 25.58%; }
+  .cr-products .cr-col-status { width: 18.6%; }
+  .cr-tip {
+    position: fixed;
+    z-index: 2000;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+    transform: translate(-50%, calc(-100% - 8px));
+  }
+  .cr-tip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top-color: #0f172a;
+  }
+  .cr-status-fill {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
   .cr-products td {
     padding: 0.85rem 1rem;
     border-bottom: 1px solid #eef2f7;
@@ -697,6 +724,13 @@
     font-weight: 800;
     letter-spacing: 0.04em;
     vertical-align: middle;
+  }
+  .cr-product-renewed {
+    display: block;
+    margin-top: 0.25rem;
+    color: #166534;
+    font-size: 0.78rem;
+    font-weight: 600;
   }
   .cr-expand-btn {
     width: 1.1rem;
@@ -923,10 +957,64 @@
     color: #1d4ed8;
   }
   .cr-zoho-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+  .cr-zoho-circle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    text-decoration: none;
+    box-sizing: border-box;
+    padding: 0;
+    line-height: 1;
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .cr-zoho-circle-btn:hover {
+    transform: scale(1.12);
+  }
+  .cr-zoho-circle-btn:active {
+    transform: scale(0.95);
+  }
+  /* Light blue state: Send to Zoho (matching Win / Lost deal choice style) */
+  .cr-zoho-circle-btn--send {
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+  }
+  .cr-zoho-circle-btn--send:hover {
+    background: #bfdbfe;
+    color: #1e3a8a;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  }
+  /* Dark blue state: Open quote in Zoho */
+  .cr-zoho-circle-btn--open {
+    background: #1d4ed8;
+    border: 1.5px solid #1e40af;
+    color: #ffffff;
+  }
+  .cr-zoho-circle-btn--open:hover {
+    background: #1e3a8a;
+    box-shadow: 0 2px 8px rgba(29, 78, 216, 0.45);
+    color: #ffffff;
+  }
+  /* Connect Zoho */
+  .cr-zoho-circle-btn--connect {
+    background: #e2e8f0;
+    border: 1.5px solid #94a3b8;
+    color: #475569;
+  }
+  .cr-zoho-circle-btn--connect:hover {
+    background: #cbd5e1;
+    color: #1e293b;
   }
   .cr-zoho-form {
     display: inline;
@@ -1351,12 +1439,11 @@
         <tr>
           <th class="cr-th-company">Company</th>
           <th class="cr-th-product">Product</th>
-          <th class="cr-th-ref">Quotation ID</th>
           <th class="cr-th-qty">Prev qty</th>
           <th class="cr-th-renew">Renewal qty</th>
           <th class="cr-th-zoho">Zoho</th>
           <th class="cr-th-sla">SLA</th>
-          <th class="cr-th-deal">Deal Status</th>
+          <th class="cr-th-deal">Status</th>
         </tr>
       </thead>
       <tbody id="cr-tbody">
@@ -1368,7 +1455,7 @@
               <span>{{ group.company_name }}</span>
             </div>
           </td>
-          <td class="cr-products-cell" colspan="7">
+          <td class="cr-products-cell" colspan="6">
             <table class="cr-products">
               <tbody>
                 {% for row in group.rows %}
@@ -1376,9 +1463,6 @@
                   <td class="cr-col-product">
                     {{ row.product_name }}
                     {% if row.is_new %}<span class="cr-product-new">NEW</span>{% endif %}
-                  </td>
-                  <td class="cr-col-ref" data-col="ref">
-                    {% if row.ref_id %}{{ row.ref_id }}{% else %}—{% endif %}
                   </td>
                   <td class="cr-col-qty">{% if row.previous_quantity is None %}—{% else %}{{ row.previous_quantity }}{% endif %}</td>
                   <td class="cr-col-renew">
@@ -1392,20 +1476,28 @@
                   </td>
                   <td class="cr-col-zoho" data-col="zoho">
                     {% if row.zoho.kind == "connect" %}
-                    <a class="cr-zoho-btn cr-zoho-btn--ghost" href="{{ row.zoho.setup_url }}">Connect Zoho</a>
-                    {% elif row.zoho.quote_url or row.zoho.kind == "send" %}
-                    <div class="cr-zoho-actions">
-                      {% if row.zoho.quote_url %}
-                      <a class="cr-zoho-btn cr-zoho-btn--ghost" href="{{ row.zoho.quote_url }}" target="_blank" rel="noopener">Open quote in Zoho</a>
-                      {% endif %}
-                      {% if row.zoho.kind == "send" %}
-                      <form method="post" action="{{ row.zoho.send_url }}" class="cr-zoho-form">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{% url 'client_renewal_list' %}">
-                        <button type="submit" class="cr-zoho-btn">Send to Zoho</button>
-                      </form>
-                      {% endif %}
-                    </div>
+                    <a class="cr-zoho-circle-btn cr-zoho-circle-btn--connect" href="{{ row.zoho.setup_url }}" title="Connect Zoho" aria-label="Connect Zoho">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </a>
+                    {% elif row.zoho.quote_url %}
+                    <a class="cr-zoho-circle-btn cr-zoho-circle-btn--open" href="{{ row.zoho.quote_url }}" target="_blank" rel="noopener" data-tip="{% if row.ref_id %}Quotation ID: {{ row.ref_id }}{% else %}Open quote in Zoho{% endif %}" aria-label="{% if row.ref_id %}Quotation ID: {{ row.ref_id }}{% else %}Open quote in Zoho{% endif %}">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                      </svg>
+                    </a>
+                    {% elif row.zoho.kind == "send" and row.zoho.send_url %}
+                    <form method="post" action="{{ row.zoho.send_url }}" class="cr-zoho-form">
+                      {% csrf_token %}
+                      <input type="hidden" name="next" value="{% url 'client_renewal_list' %}">
+                      <button type="submit" class="cr-zoho-circle-btn cr-zoho-circle-btn--send" title="Send to Zoho" aria-label="Send to Zoho">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="22" y1="2" x2="11" y2="13"></line>
+                          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                      </button>
+                    </form>
                     {% else %}
                     —
                     {% endif %}
@@ -1419,32 +1511,14 @@
                     <span class="cr-meta">{{ row.sla.elapsed_label }} / {{ row.sla.target_hours }}h</span>
                     {% endif %}
                   </td>
-                  <td class="cr-col-deal cr-deal-cell" data-col="deal">
-                    {% if row.kind == "line" and row.deal_status_url and row.subscription_id %}
-                      {% if row.deal_status == "win" and not row.form_empty %}
-                      <span class="cr-deal-pill cr-status--win">Win</span>
-                      {% elif row.deal_status == "win" %}
-                      <div class="cr-row-deal-actions">
-                        <a class="btn-table-edit cr-deal-choice" href="{{ row.renew_url }}">Win</a>
-                      </div>
-                      {% elif row.deal_status == "lost" %}
-                      <span class="cr-deal-pill cr-status--lost"{% if row.lost_remark %} title="{{ row.lost_remark }}"{% endif %}>Lost</span>
-                      {% else %}
-                      <div class="cr-row-deal-actions">
-                        <a
-                          class="btn-table-edit cr-deal-choice cr-row-win"
-                          href="{{ row.renew_url }}"
-                        >Win</a>
-                        <button
-                          type="button"
-                          class="btn-table-edit cr-deal-choice cr-row-lost"
-                          data-deal-url="{{ row.deal_status_url }}"
-                          data-subscription-id="{{ row.subscription_id }}"
-                        >Lost</button>
-                      </div>
-                      {% endif %}
+                  <td class="cr-col-status" data-col="status">
+                    {% if row.deal_status == "win" %}
+                    <span class="cr-deal-pill cr-status--win">Win</span>
+                    {% if row.form_empty and row.renew_url %}<a class="cr-status-fill" href="{{ row.renew_url }}">Fill form</a>{% endif %}
+                    {% elif row.deal_status == "lost" %}
+                    <span class="cr-deal-pill cr-status--lost"{% if row.lost_remark %} title="{{ row.lost_remark }}"{% endif %}>Lost</span>
                     {% else %}
-                    <span class="cr-status cr-status--no">—</span>
+                    —
                     {% endif %}
                   </td>
                 </tr>
@@ -1455,7 +1529,7 @@
         </tr>
         {% empty %}
         <tr id="cr-empty-row" class="cr-empty-row">
-          <td colspan="8">
+          <td colspan="7">
             No renewal emails sent yet. They appear here after expiry reminder emails are sent to clients.
           </td>
         </tr>
@@ -1666,9 +1740,9 @@
       .replace(/"/g, "&quot;");
   }
 
-  function refIdHtml(row) {
+  function zohoTipText(row) {
     var value = (row.ref_id || "").trim();
-    return value ? escapeHtml(value) : "—";
+    return value ? "Quotation ID: " + value : "Open quote in Zoho";
   }
 
   function clientEmailHtml(row) {
@@ -1697,6 +1771,22 @@
       escapeHtml(dealBadgeLabel(key)) +
       "</span>"
     );
+  }
+
+  function statusHtml(row) {
+    if (row.deal_status === "win") {
+      var fill =
+        row.form_empty && row.renew_url
+          ? '<a class="cr-status-fill" href="' + escapeHtml(row.renew_url) + '">Fill form</a>'
+          : "";
+      return dealPillHtml("win") + fill;
+    }
+    if (row.deal_status === "lost") {
+      var remark = (row.lost_remark || "").trim();
+      var title = remark ? ' title="' + escapeHtml(remark) + '"' : "";
+      return '<span class="cr-deal-pill cr-status--lost"' + title + ">Lost</span>";
+    }
+    return "—";
   }
 
   function dealHtml(row) {
@@ -1749,21 +1839,32 @@
     var zoho = row.zoho || {};
     if (zoho.kind === "connect" && zoho.setup_url) {
       return (
-        '<a class="cr-zoho-btn cr-zoho-btn--ghost" href="' +
+        '<a class="cr-zoho-circle-btn cr-zoho-circle-btn--connect" href="' +
         escapeHtml(zoho.setup_url) +
-        '">Connect Zoho</a>'
+        '" title="Connect Zoho" aria-label="Connect Zoho">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
+        '</a>'
       );
     }
-    var parts = [];
     if (zoho.quote_url) {
-      parts.push(
-        '<a class="cr-zoho-btn cr-zoho-btn--ghost" href="' +
+      return (
+        '<a class="cr-zoho-circle-btn cr-zoho-circle-btn--open" href="' +
         escapeHtml(zoho.quote_url) +
-        '" target="_blank" rel="noopener">Open quote in Zoho</a>'
+        '" target="_blank" rel="noopener" data-tip="' +
+        escapeHtml(zohoTipText(row)) +
+        '" aria-label="' +
+        escapeHtml(zohoTipText(row)) +
+        '">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>' +
+        '<polyline points="15 3 21 3 21 9"></polyline>' +
+        '<line x1="10" y1="14" x2="21" y2="3"></line>' +
+        '</svg>' +
+        '</a>'
       );
     }
     if (zoho.kind === "send" && zoho.send_url) {
-      parts.push(
+      return (
         '<form method="post" action="' +
         escapeHtml(zoho.send_url) +
         '" class="cr-zoho-form">' +
@@ -1773,11 +1874,16 @@
         '<input type="hidden" name="next" value="' +
         escapeHtml(LIST_URL) +
         '">' +
-        '<button type="submit" class="cr-zoho-btn">Send to Zoho</button></form>'
+        '<button type="submit" class="cr-zoho-circle-btn cr-zoho-circle-btn--send" title="Send to Zoho" aria-label="Send to Zoho">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<line x1="22" y1="2" x2="11" y2="13"></line>' +
+        '<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>' +
+        '</svg>' +
+        '</button>' +
+        '</form>'
       );
     }
-    if (!parts.length) return "—";
-    return '<div class="cr-zoho-actions">' + parts.join("") + "</div>";
+    return "—";
   }
 
   function slaHtml(row) {
@@ -1893,8 +1999,26 @@
     );
   }
 
+  function renewedProductHtml(row) {
+    if (!row.renewed_product_name) return "";
+    return (
+      '<span class="cr-product-renewed">Renewed to: ' +
+      escapeHtml(row.renewed_product_name) +
+      "</span>"
+    );
+  }
+
+  function newRowsLast(rows) {
+    return rows
+      .map(function (row, i) { return { row: row, i: i }; })
+      .sort(function (a, b) {
+        return (a.row.is_new ? 1 : 0) - (b.row.is_new ? 1 : 0) || a.i - b.i;
+      })
+      .map(function (x) { return x.row; });
+  }
+
   function productInfoHtml(group) {
-    var rows = (group && group.rows) || [];
+    var rows = newRowsLast((group && group.rows) || []);
     if (!rows.length) {
       return '<p class="cr-info-hint">No products for this company.</p>';
     }
@@ -1918,6 +2042,7 @@
         "<tr><td>" +
         escapeHtml(row.product_name || "") +
         (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
+        renewedProductHtml(row) +
         "</td><td>" +
         qtyHtml(row.subscription_list_id, false) +
         "</td><td>" +
@@ -1938,7 +2063,7 @@
   }
 
   function emailInfoHtml(group) {
-    var rows = (group && group.rows) || [];
+    var rows = newRowsLast((group && group.rows) || []);
     if (!rows.length) {
       return '<p class="cr-info-hint">No email activity for this company.</p>';
     }
@@ -1949,6 +2074,7 @@
         '<h4 class="cr-info-email-title">' +
         escapeHtml(row.product_name || "") +
         (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
+        renewedProductHtml(row) +
         "</h4>" +
         '<div class="cr-meta">' +
         clientEmailHtml(row) +
@@ -2110,7 +2236,7 @@
       form.dataset.bound = "1";
       form.addEventListener("click", function (e) { e.stopPropagation(); });
     }
-    tr.querySelectorAll("a.cr-zoho-btn").forEach(function (link) {
+    tr.querySelectorAll("a.cr-zoho-circle-btn, button.cr-zoho-circle-btn, a.cr-zoho-btn").forEach(function (link) {
       if (link.dataset.bound === "1") return;
       link.dataset.bound = "1";
       link.addEventListener("click", function (e) { e.stopPropagation(); });
@@ -2420,15 +2546,13 @@
       escapeHtml(row.product_name || "") +
       (row.is_new ? '<span class="cr-product-new">NEW</span>' : "") +
       "</td>" +
-      '<td class="cr-col-ref" data-col="ref">' + refIdHtml(row) + "</td>" +
       '<td class="cr-col-qty">' + qtyHtml(row.previous_quantity, false) + "</td>" +
       '<td class="cr-col-renew">' + qtyHtml(row.renewal_quantity, changed) + "</td>" +
       '<td class="cr-col-zoho" data-col="zoho">' + zohoHtml(row) + "</td>" +
       '<td class="cr-col-sla cr-sla-cell" data-col="sla">' + slaHtml(row) + "</td>" +
-      '<td class="cr-col-deal cr-deal-cell" data-col="deal">' + dealHtml(row) + "</td>";
+      '<td class="cr-col-status" data-col="status">' + statusHtml(row) + "</td>";
 
     bindZoho(tr);
-    bindRowDealActions(tr);
     return tr;
   }
 
@@ -2437,7 +2561,7 @@
     tbody.innerHTML = "";
     if (!groups.length) {
       tbody.innerHTML =
-        '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="8">' +
+        '<tr id="cr-empty-row" class="cr-empty-row"><td colspan="7">' +
         escapeHtml(emptyMessage) +
         "</td></tr>";
       if (infoModal && !infoModal.hidden) renderInfoBody();
@@ -2457,7 +2581,7 @@
         "<span>" +
         escapeHtml(companyName) +
         "</span></div></td>" +
-        '<td class="cr-products-cell" colspan="7"><table class="cr-products"><tbody></tbody></table></td>';
+        '<td class="cr-products-cell" colspan="6"><table class="cr-products"><tbody></tbody></table></td>';
       var innerBody = companyTr.querySelector("tbody");
       (group.rows || []).forEach(function (row) {
         innerBody.appendChild(createProductRow(row));
@@ -2499,7 +2623,6 @@
     if (!tbody) return;
     tbody.querySelectorAll("tr.cr-product-row").forEach(function (tr) {
       bindZoho(tr);
-      bindRowDealActions(tr);
     });
     bindInfoButtons();
   }
@@ -3190,6 +3313,30 @@
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) poll();
   });
+
+  var tipEl = null;
+  function hideTip() {
+    if (tipEl) tipEl.hidden = true;
+  }
+  document.addEventListener("mouseover", function (e) {
+    var target = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+    if (!target) {
+      hideTip();
+      return;
+    }
+    if (!tipEl) {
+      tipEl = document.createElement("div");
+      tipEl.className = "cr-tip";
+      tipEl.setAttribute("role", "tooltip");
+      document.body.appendChild(tipEl);
+    }
+    var rect = target.getBoundingClientRect();
+    tipEl.textContent = target.getAttribute("data-tip") || "";
+    tipEl.style.left = rect.left + rect.width / 2 + "px";
+    tipEl.style.top = rect.top + "px";
+    tipEl.hidden = false;
+  });
+  window.addEventListener("scroll", hideTip, true);
 
   start();
 })();

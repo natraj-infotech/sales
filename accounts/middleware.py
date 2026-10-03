@@ -90,6 +90,7 @@ class RequireCompanyProfileMiddleware:
         "/caselock/fill/",
         "/renewal/",
         "/vendor-price-submit/",
+        "/vendor-quote/",
         "/privacy-policy/",
         "/whatsapp/",
         "/backups/",

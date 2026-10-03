@@ -97,9 +97,123 @@
     }
     .layout.sidebar-collapsed .sidebar-top {
       justify-content: center;
+      flex-direction: column;
+      gap: 0.45rem;
       padding-left: 0.5rem;
       padding-right: 0.5rem;
     }
+    .notif-bell {
+      position: relative;
+      width: 42px;
+      height: 42px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 10px;
+      background: var(--sb-bg-elevated);
+      color: var(--sb-text);
+      cursor: pointer;
+      padding: 0;
+    }
+    .notif-bell:hover { background: rgba(255, 255, 255, 0.14); }
+    .notif-bell svg { width: 20px; height: 20px; }
+    .notif-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 99px;
+      background: #ef4444;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+    }
+    .notif-panel {
+      position: fixed;
+      z-index: 80;
+      top: 12px;
+      left: calc(var(--sidebar-width) + 12px);
+      width: min(380px, calc(100vw - var(--sidebar-width) - 24px));
+      max-height: min(70vh, 520px);
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      color: #1a2433;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+      overflow: hidden;
+    }
+    .notif-panel[hidden] { display: none !important; }
+    .notif-panel-head, .notif-panel-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.75rem 0.9rem;
+      background: #f8fafc;
+    }
+    .notif-panel-head { border-bottom: 1px solid #e5e7eb; }
+    .notif-panel-foot {
+      border-top: 1px solid #e5e7eb;
+      color: var(--header-blue);
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-decoration: none;
+    }
+    .notif-mark-all {
+      border: none;
+      background: transparent;
+      color: var(--header-blue);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .notif-list { overflow: auto; }
+    a.notif-item,
+    a.notif-item:link,
+    a.notif-item:visited,
+    a.notif-item:hover,
+    a.notif-item:active {
+      display: block;
+      padding: 0.75rem 0.9rem;
+      border-bottom: 1px solid #f1f5f9;
+      text-decoration: none;
+      color: #1a2433;
+    }
+    a.notif-item:hover { background: #f8fafc; }
+    a.notif-item.is-unread { background: #eff6ff; }
+    .notif-item-kind {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--header-blue);
+    }
+    .notif-item-title {
+      display: block;
+      font-weight: 650;
+      font-size: 0.88rem;
+      margin-top: 0.15rem;
+      color: #1a2433;
+      text-decoration: none;
+    }
+    .notif-item-body, .notif-item-time {
+      display: block;
+      color: #64748b;
+      font-size: 0.78rem;
+      margin-top: 0.15rem;
+      text-decoration: none;
+    }
+    .notif-empty { padding: 1.25rem 0.9rem; color: #64748b; font-size: 0.88rem; }
+    tr.notif-row-focus td { background: #e8f1fc !important; }
     .sidebar-hamburger-btn {
       width: 42px;
       height: 42px;
@@ -2671,6 +2785,13 @@
           <svg class="sidebar-toggle-icon-collapse" aria-hidden="true"><use href="#i-chevron-left"/></svg>
           <svg class="sidebar-toggle-icon-expand" aria-hidden="true"><use href="#i-chevron-right"/></svg>
         </button>
+        <button type="button" class="notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications" aria-expanded="false" aria-controls="notif-panel" data-feed-url="{% url 'notification_feed' %}" data-read-url="{% url 'notification_mark_all_read' %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"/>
+            <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+          </svg>
+          <span class="notif-badge" id="notif-badge" hidden>0</span>
+        </button>
       </div>
       <div class="sidebar-brand">
         <a href="{% url 'root' %}" class="logo-wordmark">
@@ -2754,6 +2875,15 @@
         </a>
       </nav>
     </aside>
+    <div id="notif-panel" class="notif-panel" hidden>
+      <div class="notif-panel-head">
+        <strong>Notifications</strong>
+        <button type="button" class="notif-mark-all" id="notif-mark-all">Mark all read</button>
+      </div>
+      <div id="notif-list" class="notif-list"></div>
+      <a class="notif-panel-foot" href="{% url 'notification_list' %}">View all</a>
+      <form id="notif-read-form" hidden>{% csrf_token %}</form>
+    </div>
     <main class="tracker-main">
       {% if messages %}
         {% for message in messages %}
@@ -2800,6 +2930,119 @@ Note: {{ warn }}
     toggleBtn.addEventListener("click", function () {
       setCollapsed(!layout.classList.contains("sidebar-collapsed"));
     });
+  })();
+  </script>
+  <script>
+  (function () {
+    var bell = document.getElementById("notif-bell");
+    var panel = document.getElementById("notif-panel");
+    var list = document.getElementById("notif-list");
+    var badge = document.getElementById("notif-badge");
+    var markAll = document.getElementById("notif-mark-all");
+    var csrfInput = document.querySelector("#notif-read-form input[name=csrfmiddlewaretoken]");
+    if (!bell || !panel || !list) return;
+
+    function timeAgo(iso) {
+      var then = new Date(iso).getTime();
+      if (!then) return "";
+      var seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+      if (seconds < 60) return "Just now";
+      var minutes = Math.round(seconds / 60);
+      if (minutes < 60) return minutes + " min ago";
+      var hours = Math.round(minutes / 60);
+      if (hours < 24) return hours + " hr ago";
+      var days = Math.round(hours / 24);
+      return days + " day" + (days === 1 ? "" : "s") + " ago";
+    }
+
+    function setBadge(count) {
+      if (!badge) return;
+      if (!count) {
+        badge.hidden = true;
+        badge.textContent = "0";
+        bell.setAttribute("aria-label", "Notifications");
+        return;
+      }
+      badge.hidden = false;
+      badge.textContent = count > 99 ? "99+" : String(count);
+      bell.setAttribute("aria-label", "Notifications, " + count + " unread");
+    }
+
+    function render(items) {
+      if (!items.length) {
+        list.innerHTML = '<p class="notif-empty">No notifications this week.</p>';
+        return;
+      }
+      list.innerHTML = items.map(function (item) {
+        var body = item.body ? '<span class="notif-item-body"></span>' : "";
+        return (
+          '<a class="notif-item' + (item.is_read ? "" : " is-unread") + '" href="' + item.open_url + '">' +
+            '<span class="notif-item-kind"></span>' +
+            '<span class="notif-item-title"></span>' +
+            body +
+            '<span class="notif-item-time"></span>' +
+          "</a>"
+        );
+      }).join("");
+      var links = list.querySelectorAll(".notif-item");
+      items.forEach(function (item, index) {
+        var link = links[index];
+        if (!link) return;
+        link.querySelector(".notif-item-kind").textContent = item.kind_label || "";
+        link.querySelector(".notif-item-title").textContent = item.title || "";
+        var bodyEl = link.querySelector(".notif-item-body");
+        if (bodyEl) bodyEl.textContent = item.body || "";
+        link.querySelector(".notif-item-time").textContent = timeAgo(item.created_at);
+      });
+    }
+
+    function loadFeed() {
+      fetch(bell.getAttribute("data-feed-url"), {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      })
+        .then(function (resp) { return resp.ok ? resp.json() : null; })
+        .then(function (data) {
+          if (!data) return;
+          setBadge(data.unread || 0);
+          render(data.items || []);
+        })
+        .catch(function () {});
+    }
+
+    function setOpen(open) {
+      panel.hidden = !open;
+      bell.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) loadFeed();
+    }
+
+    bell.addEventListener("click", function (event) {
+      event.stopPropagation();
+      setOpen(panel.hidden);
+    });
+    document.addEventListener("click", function (event) {
+      if (panel.hidden) return;
+      if (panel.contains(event.target) || bell.contains(event.target)) return;
+      setOpen(false);
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") setOpen(false);
+    });
+    if (markAll) {
+      markAll.addEventListener("click", function () {
+        var token = csrfInput ? csrfInput.value : "";
+        fetch(bell.getAttribute("data-read-url"), {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "X-CSRFToken": token,
+          },
+        }).then(function () { loadFeed(); });
+      });
+    }
+    loadFeed();
+    window.setInterval(loadFeed, 30000);
   })();
   </script>
   {% else %}

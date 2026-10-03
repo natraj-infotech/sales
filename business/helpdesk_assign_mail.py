@@ -644,7 +644,26 @@ def send_ticket_closed_email(
     )
 
 
-def _bg_send(label: str, fn, **kwargs) -> None:
+_BG_MAIL_TITLES = {
+    "assignment-email": "Ticket assignment email to engineer failed",
+    "requester-assignment-email": "Ticket assignment email to requester failed",
+    "ticket-closed-email": "Ticket closed email to requester failed",
+}
+
+
+def _alert_owner_mail_failed(company_id, label: str, err) -> None:
+    from business.team_notifications import notify_email_failed
+
+    company = CompanyProfile.objects.filter(pk=company_id).first()
+    notify_email_failed(
+        company,
+        area="ticket_mail",
+        title=_BG_MAIL_TITLES.get(label, "Ticket email failed"),
+        body=err or "",
+    )
+
+
+def _bg_send(label: str, fn, *, company_id=None, **kwargs) -> None:
     """Fire-and-forget mail so assign/close UI is not blocked on SMTP/Graph."""
     import threading
 
@@ -654,8 +673,10 @@ def _bg_send(label: str, fn, **kwargs) -> None:
         close_old_connections()
         try:
             status, err = fn(**kwargs)
-            if status == "failed":
-                logger.warning("%s failed: %s", label, err)
+            if status in ("failed", "skipped_no_smtp"):
+                logger.warning("%s %s: %s", label, status, err)
+                if company_id is not None:
+                    _alert_owner_mail_failed(company_id, label, err)
             else:
                 logger.info("%s status=%s", label, status)
         except Exception:
@@ -719,9 +740,9 @@ def queue_assignment_emails(
             assigned_by=by_obj,
         )
 
-    _bg_send("assignment-email", _send_assignee)
+    _bg_send("assignment-email", _send_assignee, company_id=company_id)
     if assignee_id is not None:
-        _bg_send("requester-assignment-email", _send_requester)
+        _bg_send("requester-assignment-email", _send_requester, company_id=company_id)
 
 
 def queue_ticket_closed_email(*, company: CompanyProfile, ticket) -> None:
@@ -738,4 +759,4 @@ def queue_ticket_closed_email(*, company: CompanyProfile, ticket) -> None:
         )
         return send_ticket_closed_email(company=company_obj, ticket=ticket_obj)
 
-    _bg_send("ticket-closed-email", _send_closed)
+    _bg_send("ticket-closed-email", _send_closed, company_id=company_id)

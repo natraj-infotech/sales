@@ -22,6 +22,7 @@ _PUBLIC_URL_NAMES = frozenset(
         "caselock_public_form",
         "vendor_price_submit",
         "vendor_price_submit_post",
+        "vendor_quote_public",
     }
 )
 

@@ -446,12 +446,16 @@ def _upsert_product(
         for attr, value in fields.items():
             setattr(existing, attr, value)
         existing.save()
+        if vendor is not None:
+            existing.vendors.add(vendor)
         products_by_name[name.lower()] = existing
         if existing.sku:
             products_by_sku[existing.sku.lower()] = existing
         return existing, None, False
 
     product = Product.objects.create(company=company, **fields)
+    if vendor is not None:
+        product.vendors.add(vendor)
     products_by_name[name.lower()] = product
     if product.sku:
         products_by_sku[product.sku.lower()] = product

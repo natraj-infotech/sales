@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <div>
+      <h1 class="tracker-page-title">Notifications</h1>
+      <p class="tracker-page-subtitle">Kept for 7 days. Click an item to open it.</p>
+    </div>
+  </div>
+  {% if unread_count %}
+  <div class="tracker-page-actions">
+    <form method="post" action="{% url 'notification_mark_all_read' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-tracker-header">Mark all read</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="padding: 1.25rem 1.5rem 2rem;">
+  {% for note in notifications %}
+  <a class="notif-item{% if not note.is_read %} is-unread{% endif %}" href="{% url 'notification_open' note.pk %}" style="border:1px solid #e5e7eb;border-radius:10px;margin-bottom:0.6rem;">
+    <span class="notif-item-kind">{{ note.get_kind_display }}</span>
+    <span class="notif-item-title">{{ note.title }}</span>
+    {% if note.body %}<span class="notif-item-body">{{ note.body }}</span>{% endif %}
+    <span class="notif-item-time">{{ note.created_at|timesince }} ago</span>
+  </a>
+  {% empty %}
+  <p class="muted">No notifications this week.</p>
+  {% endfor %}
+</div>
+{% endblock %}

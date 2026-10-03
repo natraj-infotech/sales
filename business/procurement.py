@@ -491,6 +491,16 @@ def submit_vendor_prices(submission: VendorPriceSubmission, items: list[dict]):
                 "note": (item.get("note") or "").strip(),
             },
         )
+    try:
+        from business.team_notifications import notify_quotation_submitted
+
+        notify_quotation_submitted(submission)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Team notification failed for quotation submission_id=%s", submission.pk
+        )
     return submission
 
 
@@ -661,6 +671,7 @@ def timeline_rows(company, deal_no: str) -> list[dict]:
                 {
                     "time": submission.submitted_at,
                     "vendor": submission.vendor.name,
+                    "vendor_id": submission.vendor_id,
                     "product": price.product.name,
                     "price": price.price,
                     "note": price.note,
@@ -677,6 +688,7 @@ def timeline_rows(company, deal_no: str) -> list[dict]:
             {
                 "time": row.created_at,
                 "vendor": row.vendor.name,
+                "vendor_id": row.vendor_id,
                 "product": row.product.name,
                 "price": row.price,
                 "note": row.note,

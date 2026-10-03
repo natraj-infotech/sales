@@ -23,6 +23,11 @@
           <div class="tracker-mock-grid">
             {% include "includes/form_field_mock.html" with field=form.name %}
             {% include "includes/form_field_mock.html" with field=form.gst_number %}
+            {% include "includes/form_field_mock.html" with field=form.pan_number %}
+            {% include "includes/form_field_mock.html" with field=form.tenant_id %}
+          </div>
+          <div style="margin-top:1rem;">
+            {% include "includes/form_field_mock.html" with field=form.address %}
           </div>
           <div class="tracker-mock-grid tracker-mock-grid--three" style="margin-top:1rem;">
             {% include "includes/form_field_mock.html" with field=form.email %}

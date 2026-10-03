@@ -160,6 +160,7 @@ class CompanyProfile(models.Model):
         help_text="Optional extra recipients for the team digest (comma or newline separated).",
     )
     expiry_team_digest_last_sent = models.DateField(null=True, blank=True)
+    support_digest_last_sent = models.DateField(null=True, blank=True)
     zoho_refresh_token = models.TextField(blank=True)
     zoho_access_token = models.TextField(blank=True)
     zoho_access_token_expires_at = models.DateTimeField(null=True, blank=True)

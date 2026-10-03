@@ -402,6 +402,16 @@ def create_internal_ticket(
         priority=ui_priority,
         priority_source=priority_source,
     )
+    try:
+        from business.team_notifications import notify_new_ticket
+
+        notify_new_ticket(ticket)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Team notification failed for internal ticket_id=%s", ticket.pk
+        )
     return ticket
 
 

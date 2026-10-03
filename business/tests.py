@@ -1,8 +1,9 @@
+from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from openpyxl import load_workbook
 
@@ -23,12 +24,14 @@ from business.models import (
     ClientSubscription,
     Product,
     Vendor,
+    VendorPriceRequest,
     SubscriptionProductRenewal,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
     SubscriptionRenewalInviteNewProduct,
     SubscriptionRenewalInviteRecipient,
     RenewalSLASettings,
+    TeamNotification,
     annotate_internal_case_locks,
 )
 
@@ -383,8 +386,7 @@ class ClientRenewalTabRowsTests(TestCase):
         self.assertContains(response, "Prev qty")
         self.assertContains(response, "Renewal qty")
         self.assertContains(response, "VPN")
-        self.assertContains(response, "Quotation ID")
-        self.assertContains(response, 'class="cr-th-ref"')
+        self.assertNotContains(response, 'class="cr-th-ref"')
         self.assertContains(response, 'id="cr-filters"')
         self.assertContains(response, "Fill form pending")
         self.assertContains(response, "Win / Lost pending")
@@ -1790,12 +1792,13 @@ class ClientRenewalDealStatusTests(TestCase):
         self.assertEqual(self.subscription.start_date, date(2026, 10, 7))
         self.assertEqual(self.subscription.end_date, date(2028, 10, 7))
         again = self.client.get(reverse("client_renewal_list"))
+        self.assertContains(again, self.product.name)
         self.assertNotContains(again, f"/subscriptions/{self.subscription.pk}/renew/")
 
     def test_renewal_list_uses_same_choice_colour_and_lost_remark_modal(self):
         page = self.client.get(reverse("client_renewal_list"))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "cr-deal-choice")
+        self.assertContains(page, 'class="cr-th-deal"')
         self.assertContains(page, 'id="cr-lost-modal"')
         self.assertContains(page, "Add remark")
         self.assertContains(page, 'name="duration"')
@@ -2633,3 +2636,593 @@ class ProductPriceFieldsTests(TestCase):
         self.assertNotContains(response, "Discounted price")
         self.assertNotContains(response, "999.00")
 
+
+@contextmanager
+def _inline_vendor_mail(connection=None):
+    """Run the vendor price mail job inline, without a real SMTP login."""
+    with patch(
+        "business.vendor_quote._start_background", side_effect=lambda fn, *a: fn(*a)
+    ), patch("business.vendor_quote.close_old_connections"), patch(
+        "business.vendor_quote._uses_graph", return_value=False
+    ), patch(
+        "business.vendor_quote.open_smtp_connection", return_value=connection
+    ) as opener:
+        yield opener
+
+
+class DashboardExpiringTableTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "owner@example.com", "pass"
+        )
+        self.company = CompanyProfile.objects.create(
+            user=self.user,
+            company_name="Co",
+            outgoing_email="sales@example.com",
+            outgoing_email_app_password="secret",
+        )
+        self.client_obj = Client.objects.create(company=self.company, name="IMI Tools")
+        self.product = Product.objects.create(
+            company=self.company, name="Microsoft 365 Apps for business"
+        )
+        self.vendor = Vendor.objects.create(
+            company=self.company, name="Redington", email="vendor@example.com"
+        )
+        today = timezone.localdate()
+        self.subscription = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=300),
+            end_date=today + timedelta(days=10),
+            quantity=2,
+            billing_amount=Decimal("100.00"),
+            status=ClientSubscription.Status.ACTIVE,
+        )
+        self.client.force_login(self.user)
+
+    def test_expiring_table_columns_and_win_link(self):
+        page = self.client.get(reverse("dashboard"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Quote to vendor")
+        self.assertContains(page, ">Quote<")
+        self.assertContains(page, ">Win<")
+        self.assertContains(page, ">Lost<")
+        self.assertNotContains(page, ">Renew<")
+        self.assertContains(page, "required=1")
+        renew_url = reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        self.assertContains(page, renew_url)
+        self.assertContains(page, self.product.name)
+        html = page.content.decode()
+        header = html.split("<thead>", 1)[1].split("</thead>", 1)[0]
+        self.assertLess(header.find("End date"), header.find("Product"))
+        self.assertLess(header.find("Product"), header.find(">Qty<"))
+        self.assertNotIn(">Status<", header)
+
+    def test_quote_popup_maps_product_companies_to_vendors(self):
+        Vendor.objects.create(
+            company=self.company,
+            name="Tata",
+            email="tata@example.com",
+            catalog_companies=["Reserved VM Instance"],
+        )
+        self.vendor.catalog_companies = ["microsoft", "Reserved VM Instance"]
+        self.vendor.save(update_fields=["catalog_companies"])
+        self.product.company_name = "Microsoft"
+        self.product.save(update_fields=["company_name"])
+        Product.objects.create(
+            company=self.company, name="Laptop", company_name="Dell", vendor=self.vendor
+        )
+        page = self.client.get(reverse("dashboard"))
+        self.assertEqual(
+            page.context["quote_companies"],
+            [
+                {"key": "dell", "label": "Dell"},
+                {"key": "microsoft", "label": "Microsoft"},
+                {"key": "reserved vm instance", "label": "Reserved VM Instance"},
+            ],
+        )
+        by_name = {v["name"]: v["companies"] for v in page.context["quote_vendors"]}
+        self.assertEqual(by_name["Redington"], ["microsoft", "reserved vm instance"])
+        self.assertEqual(by_name["Tata"], ["reserved vm instance"])
+        self.assertContains(page, 'data-company="Microsoft"')
+        self.assertContains(page, 'id="dash-company-input"')
+        self.assertContains(page, 'id="dash-company-search"')
+
+    def test_lost_from_dashboard_updates_subscription(self):
+        response = self.client.post(
+            reverse("dashboard_set_deal_lost", kwargs={"pk": self.subscription.pk}),
+            {"lost_remark": "price too high"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.deal_status, ClientSubscription.DealStatus.LOST)
+        self.assertEqual(self.subscription.lost_remark, "price too high")
+        page = self.client.get(reverse("dashboard"))
+        self.assertNotIn(self.subscription, page.context["expiring_subs"])
+        renew_url = reverse("subscription_renew", kwargs={"pk": self.subscription.pk})
+        self.assertNotContains(page, renew_url)
+
+    def test_quote_email_uses_price_cta_and_keeps_quantity(self):
+        with patch(
+            "business.vendor_quote.send_vendor_price_email", return_value=(True, "")
+        ) as send, _inline_vendor_mail(), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("dashboard_quote_vendors", kwargs={"pk": self.subscription.pk}),
+                {"vendor_ids": [str(self.vendor.pk)]},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        send.assert_called_once()
+        _company, addresses, subject, body, html_body = send.call_args.args[:5]
+        self.assertEqual(addresses, ["vendor@example.com"])
+        self.assertIn("SUBMIT PRICE", html_body)
+        self.assertIn("Microsoft 365 Apps for business", html_body)
+        self.assertIn(">Qty</th>", html_body)
+        self.assertIn(str(self.subscription.quantity), body)
+        end_label = self.subscription.end_date.strftime("%d %b %Y")
+        for text in (html_body, body):
+            self.assertIn(self.subscription.client.name, text)
+            self.assertIn(self.subscription.subscription_list_id, text)
+            self.assertIn("Bill Type:", text)
+            self.assertIn(end_label, text)
+        self.assertIn(
+            f"Subscription ID: {self.subscription.subscription_list_id}", body
+        )
+        self.assertIn(">Subscription ID</th>", html_body)
+        self.assertIn(">End Date</th>", html_body)
+        self.assertIn(">Days Left</th>", html_body)
+        quote = VendorPriceRequest.objects.get(subscription=self.subscription)
+        self.assertIsNotNone(quote.email_sent_at)
+        public = self.client.get(reverse("vendor_quote_public", kwargs={"token": quote.token}))
+        self.assertEqual(public.status_code, 200)
+        self.assertContains(public, "Enter price here")
+        self.assertContains(public, "Microsoft 365 Apps for business")
+        saved = self.client.post(
+            reverse("vendor_quote_public", kwargs={"token": quote.token}),
+            {"price": "450.50"},
+        )
+        self.assertEqual(saved.status_code, 200)
+        quote.refresh_from_db()
+        self.assertEqual(quote.price, Decimal("450.50"))
+        self.assertIsNotNone(quote.submitted_at)
+
+    def test_quote_request_returns_before_email_is_sent(self):
+        with patch(
+            "business.vendor_quote.send_vendor_price_email", return_value=(True, "")
+        ) as send:
+            response = self.client.post(
+                reverse("dashboard_quote_vendors", kwargs={"pk": self.subscription.pk}),
+                {"vendor_ids": [str(self.vendor.pk)]},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("is being sent to Redington", response.json()["message"])
+        send.assert_not_called()
+        quote = VendorPriceRequest.objects.get(subscription=self.subscription)
+        self.assertIsNone(quote.email_sent_at)
+
+    def test_quote_emails_share_one_smtp_login_and_alert_owner_on_failure(self):
+        tata = Vendor.objects.create(
+            company=self.company, name="Tata", email="tata@example.com"
+        )
+        connection = MagicMock()
+        results = {"vendor@example.com": (True, ""), "tata@example.com": (False, "550 rejected")}
+        with patch(
+            "business.vendor_quote.send_vendor_price_email",
+            side_effect=lambda company, addresses, *a, **kw: results[addresses[0]],
+        ) as send, _inline_vendor_mail(connection) as opener, self.captureOnCommitCallbacks(
+            execute=True
+        ):
+            response = self.client.post(
+                reverse("dashboard_quote_vendors", kwargs={"pk": self.subscription.pk}),
+                {"vendor_ids": [str(self.vendor.pk), str(tata.pk)]},
+            )
+        self.assertEqual(response.status_code, 200)
+        opener.assert_called_once()
+        self.assertEqual(send.call_count, 2)
+        self.assertIs(send.call_args_list[0].kwargs["connection"], connection)
+        connection.close.assert_called()
+        sent = VendorPriceRequest.objects.get(subscription=self.subscription)
+        self.assertEqual(sent.vendor, self.vendor)
+        self.assertIsNotNone(sent.email_sent_at)
+        note = TeamNotification.objects.get(
+            recipient=self.user, kind=TeamNotification.Kind.EMAIL_FAILED
+        )
+        self.assertIn("Tata: 550 rejected", note.body)
+
+    def test_quote_without_smtp_fails_right_away(self):
+        self.company.outgoing_email_app_password = ""
+        self.company.save(update_fields=["outgoing_email_app_password"])
+        response = self.client.post(
+            reverse("dashboard_quote_vendors", kwargs={"pk": self.subscription.pk}),
+            {"vendor_ids": [str(self.vendor.pk)]},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Configure outgoing SMTP", response.json()["error"])
+        self.assertFalse(VendorPriceRequest.objects.exists())
+
+    def test_completed_win_moves_from_dashboard_to_client_renewal(self):
+        self.subscription.deal_status = ClientSubscription.DealStatus.WIN
+        self.subscription.win_form_completed = True
+        self.subscription.save(update_fields=["deal_status", "win_form_completed"])
+
+        dashboard = self.client.get(reverse("dashboard"))
+        html = dashboard.content.decode()
+        expiring = html.split("Expiring subscriptions", 1)[1].split("Quick actions", 1)[0]
+        self.assertNotIn("IMI Tools", expiring)
+
+        renewal = self.client.get(reverse("client_renewal_list"))
+        self.assertContains(renewal, "IMI Tools")
+        self.assertContains(renewal, self.product.name)
+
+
+class DashboardSubscriptionRenewalInfoTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("owner@example.com", "pass")
+        self.company = CompanyProfile.objects.create(
+            user=self.user,
+            company_name="Test Corp",
+            outgoing_email="sales@example.com",
+            outgoing_email_app_password="secret",
+        )
+        self.client_obj = Client.objects.create(company=self.company, name="Acme Inc")
+        self.product = Product.objects.create(company=self.company, name="Widget Pro")
+        self.vendor = Vendor.objects.create(company=self.company, name="Vendor A", email="vendor@example.com")
+        today = timezone.localdate()
+        self.sub = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            vendor=self.vendor,
+            start_date=today - timedelta(days=300),
+            end_date=today + timedelta(days=10),
+            quantity=5,
+            billing_amount=Decimal("100.00"),
+            status=ClientSubscription.Status.ACTIVE,
+        )
+        self.client.force_login(self.user)
+
+    def test_not_sent(self):
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertFalse(data["sent"])
+        self.assertIsNone(data["row"])
+        self.assertEqual(data["new_products"], [])
+        self.assertEqual(data["subscription"]["product_name"], "Widget Pro")
+        self.assertEqual(data["subscription"]["id"], self.sub.pk)
+        self.assertEqual(data["subscription"]["quantity"], 5)
+
+    def test_sent_not_submitted(self):
+        now = timezone.now()
+        invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="client@example.com",
+            email_sent_at=now,
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=self.sub,
+            company_name="Acme Inc",
+            product_name="Widget Pro",
+            current_quantity=5,
+            renewal_count=None,
+        )
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["sent"])
+        self.assertIsNotNone(data["row"])
+        self.assertEqual(data["row"]["subscription_id"], self.sub.pk)
+        self.assertIsNone(data["row"]["renewal_quantity"])
+        self.assertTrue(len(data["row"]["timestamps"]["sent"]) > 0)
+        self.assertEqual(data["new_products"], [])
+
+    def test_sent_and_submitted_with_new_product(self):
+        now = timezone.now()
+        invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="client@example.com",
+            email_sent_at=now,
+            submitted_at=now,
+            submitted_by_email="client@example.com",
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=self.sub,
+            company_name="Acme Inc",
+            product_name="Widget Pro",
+            current_quantity=5,
+            renewal_count=7,
+        )
+        SubscriptionRenewalInviteNewProduct.objects.create(
+            invite=invite,
+            company_name="Acme Inc",
+            product_name="Extra Addon",
+            quantity=3,
+        )
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["sent"])
+        self.assertEqual(data["row"]["renewal_quantity"], 7)
+        self.assertEqual(len(data["new_products"]), 1)
+        np = data["new_products"][0]
+        self.assertTrue(np["is_new"])
+        self.assertEqual(np["product_name"], "Extra Addon")
+        self.assertEqual(np["renewal_quantity"], 3)
+
+    def test_only_this_subscription(self):
+        product2 = Product.objects.create(company=self.company, name="Other Product")
+        sub2 = ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=product2,
+            vendor=self.vendor,
+            start_date=timezone.localdate() - timedelta(days=300),
+            end_date=timezone.localdate() + timedelta(days=10),
+            quantity=2,
+            status=ClientSubscription.Status.ACTIVE,
+        )
+        now = timezone.now()
+        invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="client@example.com",
+            email_sent_at=now,
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=self.sub,
+            company_name="Acme Inc",
+            product_name="Widget Pro",
+            current_quantity=5,
+            renewal_count=5,
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=sub2,
+            company_name="Acme Inc",
+            product_name="Other Product",
+            current_quantity=2,
+            renewal_count=2,
+        )
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["row"]["subscription_id"], self.sub.pk)
+        self.assertEqual(data["row"]["product_name"], "Widget Pro")
+
+    def test_company_isolation(self):
+        user2 = get_user_model().objects.create_user("other@example.com", "pass")
+        company2 = CompanyProfile.objects.create(
+            user=user2,
+            company_name="Other Co",
+        )
+        client2 = Client.objects.create(company=company2, name="Other Client")
+        product_other = Product.objects.create(company=company2, name="Other Prod")
+        other_sub = ClientSubscription.objects.create(
+            company=company2,
+            client=client2,
+            product=product_other,
+            start_date=timezone.localdate(),
+            end_date=timezone.localdate() + timedelta(days=5),
+            quantity=1,
+        )
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": other_sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_won_subscriptions_not_included(self):
+        ClientSubscription.objects.create(
+            company=self.company,
+            client=self.client_obj,
+            product=self.product,
+            start_date=timezone.localdate() - timedelta(days=20),
+            end_date=timezone.localdate() + timedelta(days=340),
+            quantity=10,
+            deal_status=ClientSubscription.DealStatus.WIN,
+            deal_status_set_at=timezone.now(),
+        )
+        now = timezone.now()
+        invite = SubscriptionRenewalInvite.objects.create(
+            company=self.company,
+            client_email="client@example.com",
+            email_sent_at=now,
+        )
+        SubscriptionRenewalInviteLine.objects.create(
+            invite=invite,
+            subscription=self.sub,
+            company_name="Acme Inc",
+            product_name="Widget Pro",
+            current_quantity=5,
+            renewal_count=5,
+        )
+        response = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["row"]["subscription_id"], self.sub.pk)
+
+    def test_client_renewal_list_and_live_regression(self):
+        res_list = self.client.get(reverse("client_renewal_list"))
+        self.assertEqual(res_list.status_code, 200)
+        res_live = self.client.get(reverse("client_renewal_live"), HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(res_live.status_code, 200)
+
+    def test_dashboard_renders_plus_button(self):
+        page = self.client.get(reverse("dashboard"))
+        self.assertEqual(page.status_code, 200)
+        info_url = reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk})
+        self.assertContains(page, f'data-info-url="{info_url}"')
+        self.assertContains(page, 'class="dash-info-btn"')
+        self.assertContains(page, f'data-client="{self.client_obj.name}"')
+        self.assertContains(page, f'data-product="{self.product.name}"')
+        self.assertContains(page, 'class="dash-client-cell"')
+        self.assertContains(page, ">+<")
+
+    def test_subscription_quote_creates_procurement_deal_and_syncs_prices(self):
+        with patch(
+            "business.vendor_quote.send_vendor_price_email", return_value=(True, "")
+        ) as send, _inline_vendor_mail(), self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("dashboard_quote_vendors", kwargs={"pk": self.sub.pk}),
+                {"vendor_ids": [str(self.vendor.pk)]},
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        deal_no = data.get("deal_no")
+        self.assertTrue(deal_no.startswith("SQ-"))
+
+        # Verify email contents: no expiry message, no "Expires today", no "Days left"
+        send.assert_called_once()
+        _company, addresses, subject, body, html_body = send.call_args.args[:5]
+        self.assertNotIn("Your subscription is expiring", html_body)
+        self.assertNotIn("Expires today", html_body)
+        self.assertNotIn("Days left", html_body)
+        self.assertIn("SUBMIT PRICE", html_body)
+        self.assertIn(deal_no, html_body)
+
+        # Verify ProcurementDeal created
+        from business.models import DealVendor, ProcurementDeal
+        deal = ProcurementDeal.objects.get(deal_no=deal_no)
+        self.assertEqual(deal.product, self.product)
+        self.assertEqual(deal.quantity, self.sub.quantity)
+
+        # Vendor submits price via public quote page
+        quote = VendorPriceRequest.objects.get(subscription=self.sub)
+        saved = self.client.post(
+            reverse("vendor_quote_public", kwargs={"token": quote.token}),
+            {"price": "750.00"},
+        )
+        self.assertEqual(saved.status_code, 200)
+
+        # Check procurement price sync
+        dv = DealVendor.objects.get(deal_no=deal_no, vendor=self.vendor)
+        self.assertEqual(dv.price, Decimal("750.00"))
+
+        # Check dashboard renewal info includes vendor quote
+        info_resp = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(info_resp.status_code, 200)
+        info_data = info_resp.json()
+        self.assertEqual(info_data["procurement_deal_no"], deal_no)
+        self.assertEqual(len(info_data["vendor_quotes"]), 1)
+        self.assertEqual(info_data["vendor_quotes"][0]["vendor_name"], self.vendor.name)
+        self.assertEqual(info_data["vendor_quotes"][0]["price"], 750.0)
+        self.assertEqual(info_data["vendor_quotes"][0]["status"], "Submitted")
+
+        # A second email to the same vendor shows as its own row, newest first
+        with patch(
+            "business.vendor_quote.send_vendor_price_email", return_value=(True, "")
+        ), _inline_vendor_mail(), self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                reverse("dashboard_quote_vendors", kwargs={"pk": self.sub.pk}),
+                {"vendor_ids": [str(self.vendor.pk)]},
+            )
+        info_data = self.client.get(
+            reverse("dashboard_subscription_renewal_info", kwargs={"pk": self.sub.pk}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        ).json()
+        rows = info_data["vendor_quotes"]
+        self.assertEqual([r["email_no"] for r in rows], [2, 1])
+        self.assertEqual([r["status"] for r in rows], ["Sent", "Submitted"])
+        self.assertEqual(rows[1]["price"], 750.0)
+        self.assertTrue(rows[0]["sent_at"])
+
+
+class ClientPanNumberTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("owner@example.com", "pass")
+        self.company = CompanyProfile.objects.create(user=self.user, company_name="Co")
+        self.client.force_login(self.user)
+
+    def test_add_client_saves_uppercase_pan_and_lists_it(self):
+        response = self.client.post(
+            reverse("client_add"),
+            {
+                "name": "IMI Tools",
+                "pan_number": " abcde1234f ",
+                "tenant_id": " imitools.onmicrosoft.com ",
+                "address": "12 MG Road\nPune",
+                "renewal_emails_enabled": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        client = Client.objects.get(company=self.company, name="IMI Tools")
+        self.assertEqual(client.pan_number, "ABCDE1234F")
+        self.assertEqual(client.tenant_id, "imitools.onmicrosoft.com")
+        self.assertEqual(client.address, "12 MG Road\nPune")
+        page = self.client.get(reverse("client_list"))
+        self.assertContains(page, "<th>PAN number</th>", html=True)
+        self.assertContains(page, "<th>Tenant ID</th>", html=True)
+        self.assertContains(page, "<th>Address</th>", html=True)
+        self.assertContains(page, "ABCDE1234F")
+        self.assertContains(page, "imitools.onmicrosoft.com")
+        self.assertContains(page, "12 MG Road<br>Pune")
+
+    def test_add_client_rejects_invalid_pan(self):
+        response = self.client.post(
+            reverse("client_add"), {"name": "IMI Tools", "pan_number": "12345"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enter a valid PAN (e.g. ABCDE1234F).")
+        self.assertFalse(Client.objects.filter(company=self.company).exists())
+
+    def test_excel_export_and_import_handle_pan(self):
+        from business.client_import import build_client_export_bytes, import_clients_from_file
+
+        client = Client.objects.create(
+            company=self.company,
+            name="IMI Tools",
+            pan_number="ABCDE1234F",
+            tenant_id="tenant-1",
+            address="Old address",
+        )
+        ws = load_workbook(BytesIO(build_client_export_bytes(self.company))).active
+        headers = [cell.value for cell in ws[1]]
+        self.assertEqual(ws.cell(row=2, column=headers.index("PAN Number") + 1).value, "ABCDE1234F")
+        self.assertEqual(ws.cell(row=2, column=headers.index("Tenant ID") + 1).value, "tenant-1")
+        self.assertEqual(ws.cell(row=2, column=headers.index("Address") + 1).value, "Old address")
+
+        created, updated, errs = import_clients_from_file(
+            self.company,
+            b"Name,PAN Number,Tenant ID,Address\n"
+            b"IMI Tools,pqrst6789z,tenant-2,New address\nBad Co,XYZ,,\n",
+            "clients.csv",
+        )
+        self.assertEqual((created, updated), (0, 1))
+        self.assertEqual(errs, [(3, "Invalid PAN number: XYZ")])
+        client.refresh_from_db()
+        self.assertEqual(client.pan_number, "PQRST6789Z")
+        self.assertEqual(client.tenant_id, "tenant-2")
+        self.assertEqual(client.address, "New address")
+
+        import_clients_from_file(self.company, b"Name,GST Number\nIMI Tools,27AAA\n", "c.csv")
+        client.refresh_from_db()
+        self.assertEqual(client.pan_number, "PQRST6789Z")
+        self.assertEqual(client.tenant_id, "tenant-2")
+        self.assertEqual(client.address, "New address")

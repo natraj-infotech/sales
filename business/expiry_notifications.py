@@ -182,6 +182,15 @@ def _company_can_send_mail(company: CompanyProfile) -> bool:
     )
 
 
+_NO_SMTP_BODY = "Outgoing email or app password is missing in Company profile."
+
+
+def _alert_owner(company: CompanyProfile, area: str, title: str, body: str = "") -> None:
+    from business.team_notifications import notify_email_failed
+
+    notify_email_failed(company, area=area, title=title, body=body)
+
+
 def _team_recipients(company: CompanyProfile) -> list[str]:
     recipients: list[str] = []
     owner_email = (company.user.email or "").strip().lower()
@@ -441,6 +450,13 @@ def _days_left_badge(days_remaining: int | None) -> tuple[str, str, str]:
         return f"{days_remaining} days", "🟠", "#D97706"
     return f"{days_remaining} days", "🟢", "#16A34A"
 
+_CLIENT_QTY_CTA = "CONFIRM SUBSCRIPTIONS QTY"
+_CLIENT_QTY_OFFER = (
+    "So we can submit you the best and competitive commercial offer "
+    "for the confirmed subscriptions Quantities."
+)
+
+
 def _client_email_body(
     company: CompanyProfile,
     sections: list[tuple[str, list[tuple[ClientSubscription, int, int | None]]]],
@@ -448,6 +464,8 @@ def _client_email_body(
     renewal_url: str = "",
     initial_paragraph: str | None = None,
     end_paragraph: str | None = None,
+    cta_label: str = _CLIENT_QTY_CTA,
+    offer_line: str = _CLIENT_QTY_OFFER,
 ) -> str:
     contact_bits = _client_contact_lines(company)
     all_items = [item for _, items in sections for item in items]
@@ -497,14 +515,14 @@ def _client_email_body(
     )
     lines.extend(
         [
-            "So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.",
+            offer_line,
             "",
         ]
     )
     if renewal_url:
         lines.extend(
             [
-                f"CONFIRM SUBSCRIPTIONS QTY: {renewal_url}",
+                f"{cta_label}: {renewal_url}",
                 "",
             ]
         )
@@ -567,6 +585,8 @@ def _client_email_html(
     logo_cid: str = "",
     initial_paragraph: str | None = None,
     end_paragraph: str | None = None,
+    cta_label: str = _CLIENT_QTY_CTA,
+    offer_line: str = _CLIENT_QTY_OFFER,
 ) -> str:
     all_items = [item for _, items in sections for item in items]
     threshold_days = max(notice_threshold for _, notice_threshold, _ in all_items)
@@ -680,7 +700,7 @@ def _client_email_html(
                   <td align="center" bgcolor="{header_bg}" style="background-color:{header_bg};border-radius:4px;">
                     <a href="{renewal_url}"
                        style="display:inline-block;padding:12px 22px;font-family:{font};font-size:14px;font-weight:600;color:#FFFFFF;text-decoration:none;">
-                      CONFIRM SUBSCRIPTIONS QTY
+                      {cta_label}
                     </a>
                   </td>
                 </tr>
@@ -689,6 +709,7 @@ def _client_email_html(
             header_bg=header_bg,
             font=font,
             renewal_url=escape(renewal_url),
+            cta_label=escape(cta_label),
         )
 
     company_name = escape(company.company_name)
@@ -756,7 +777,7 @@ def _client_email_html(
               {end_paragraph}
             </p>
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{text};">
-              So we can submit you the best and competitive commercial offer for the confirmed subscriptions Quantities.
+              {offer_line}
             </p>
             {cta_html}
             <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{text};">
@@ -808,6 +829,7 @@ def _client_email_html(
         sections="\n".join(section_blocks),
         cta_html=cta_html,
         contact_html=contact_html,
+        offer_line=escape(offer_line),
     )
 
 
@@ -1127,6 +1149,12 @@ def send_renewal_confirmation_email(
                 "Skipped renewal confirmation email for invite %s: outgoing mail not configured.",
                 invite.pk,
             )
+            _alert_owner(
+                company,
+                "renewal_confirmation",
+                "Renewal confirmation email was not sent",
+                _NO_SMTP_BODY,
+            )
             return False
 
         if lines is None:
@@ -1156,6 +1184,12 @@ def send_renewal_confirmation_email(
             "Failed sending renewal confirmation email for invite %s",
             invite.pk,
         )
+        _alert_owner(
+            invite.company,
+            "renewal_confirmation",
+            "Renewal confirmation email failed",
+            f"Could not email {invite.submitted_by_email or 'the client'}.",
+        )
         return False
 
     if not ok:
@@ -1164,6 +1198,12 @@ def send_renewal_confirmation_email(
             invite.pk,
             to_email,
             err or "unknown error",
+        )
+        _alert_owner(
+            company,
+            "renewal_confirmation",
+            "Renewal confirmation email failed",
+            f"Could not email {to_email}: {err or 'unknown error'}",
         )
         return False
     return True
@@ -1792,6 +1832,12 @@ def send_client_expiry_emails(
         logs.append(
             f"{company.company_name}: client expiry emails skipped (outgoing SMTP not configured)."
         )
+        _alert_owner(
+            company,
+            "renewal_reminder",
+            "Client renewal reminders are not being sent",
+            _NO_SMTP_BODY,
+        )
         return 0, logs
 
     min_days, max_days = company_reminder_bounds(company)
@@ -1907,6 +1953,8 @@ def send_client_expiry_emails(
                 (sub, notice_threshold, days_remaining, slot)
             )
 
+    failed_to: list[str] = []
+    last_error = ""
     for _client_id, items in grouped.items():
         client = items[0][0].client
         contact_emails = client.contact_emails()
@@ -1961,6 +2009,8 @@ def send_client_expiry_emails(
                 )
                 if err:
                     logs.append(err)
+                failed_to.append(to_email)
+                last_error = err or last_error
                 continue
             if cc_for_send:
                 team_cc_attached = True
@@ -2010,6 +2060,14 @@ def send_client_expiry_emails(
                 f"{company.company_name}: failed to send client reminder to {client_email}."
             )
 
+    if failed_to:
+        body = f"Could not email {', '.join(failed_to[:3])}"
+        if len(failed_to) > 3:
+            body += f" and {len(failed_to) - 3} more"
+        if last_error:
+            body += f": {last_error}"
+        _alert_owner(company, "renewal_reminder", "Client renewal reminder failed", body)
+
     return sent_count, logs
 
 
@@ -2029,6 +2087,12 @@ def send_team_expiry_digest(
     if not _company_can_send_mail(company):
         logs.append(
             f"{company.company_name}: team digest skipped (outgoing SMTP not configured)."
+        )
+        _alert_owner(
+            company,
+            "team_digest",
+            "Daily expiry digest is not being sent",
+            _NO_SMTP_BODY,
         )
         return 0, logs
 
@@ -2090,6 +2154,12 @@ def send_team_expiry_digest(
     logs.append(f"{company.company_name}: failed to send team digest.")
     if err:
         logs.append(err)
+    _alert_owner(
+        company,
+        "team_digest",
+        "Daily expiry digest failed",
+        err or "The team digest email could not be sent.",
+    )
     return 0, logs
 
 
@@ -2097,12 +2167,21 @@ def send_expiry_notifications_for_company(
     company: CompanyProfile,
     today=None,
 ) -> dict[str, int | list[str]]:
+    from business.support_digest import send_support_ticket_digest
+
     client_sent, client_logs = send_client_expiry_emails(company, today=today)
     team_sent, team_logs = send_team_expiry_digest(company, today=today)
+    try:
+        support_sent, support_logs = send_support_ticket_digest(company, today=today)
+    except Exception:
+        logger.exception("Support digest failed company_id=%s", company.pk)
+        support_sent, support_logs = 0, [
+            f"{company.company_name}: failed to send support digest."
+        ]
     return {
         "client_emails_sent": client_sent,
-        "team_digests_sent": team_sent,
-        "logs": client_logs + team_logs,
+        "team_digests_sent": team_sent + support_sent,
+        "logs": client_logs + team_logs + support_logs,
     }
 
 

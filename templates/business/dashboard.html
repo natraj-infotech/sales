@@ -55,10 +55,528 @@
     letter-spacing: 0.03em;
     white-space: nowrap;
   }
-  .dash-deal--win { background: #dbeafe; color: #1e40af; }
-  .dash-deal--lost { background: #eff6ff; color: #3b82f6; }
+  .dash-deal--win { background: #dbeafe; color: #1e3a8a; }
+  .dash-deal--lost { background: #dbeafe; color: #1e3a8a; }
   .dash-deal--cancel { background: #e2e8f0; color: #334155; }
   .dash-deal--empty { color: var(--muted, #64748b); font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .dash-expiring-table { width: 100%; table-layout: fixed; }
+  .dash-expiring-table .col-client { width: 19%; }
+  .dash-expiring-table .col-end { width: 11%; white-space: nowrap; }
+  .dash-expiring-table .col-product { width: 17%; }
+  .dash-expiring-table td.col-product { overflow-wrap: anywhere; }
+  .dash-expiring-table .col-qty { width: 6%; white-space: nowrap; }
+  .dash-expiring-table .col-days { width: 8%; white-space: nowrap; }
+  .dash-expiring-table .col-zoho { width: 8%; }
+  .dash-expiring-table .col-quote { width: 13%; }
+  .dash-expiring-table .col-deal { width: 18%; }
+  .dash-zoho-form { margin: 0; display: inline; }
+  .dash-zoho-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: none;
+    box-sizing: border-box;
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .dash-zoho-btn:hover { transform: scale(1.12); }
+  .dash-zoho-btn--send { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
+  .dash-zoho-btn--send:hover { background: #bfdbfe; color: #1e3a8a; }
+  .dash-zoho-btn--open { background: #1d4ed8; border: 1.5px solid #1e40af; color: #fff; }
+  .dash-zoho-btn--open:hover { background: #1e3a8a; color: #fff; }
+  .dash-zoho-btn--connect { background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; }
+  .dash-tip {
+    position: fixed;
+    z-index: 2000;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+    transform: translate(-50%, calc(-100% - 8px));
+  }
+  .dash-tip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top-color: #0f172a;
+  }
+  .dash-deal-actions { display: inline-flex; flex-direction: column; gap: 0.35rem; align-items: stretch; }
+  .dash-deal-actions .dash-deal-choice { text-align: center; }
+  .dash-deal-actions .btn-table-edit {
+    padding: 0.28rem 0.7rem;
+    font-size: 0.75rem;
+    min-height: 0;
+  }
+  .dash-deal-actions .dash-deal-choice,
+  .dash-deal-actions .dash-deal-choice:hover,
+  .dash-deal-actions .dash-deal-choice:focus,
+  .dash-deal-actions .dash-deal-choice:focus-visible,
+  .dash-deal-actions .dash-deal-choice:active {
+    background: #dbeafe;
+    color: #1e3a8a !important;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none !important;
+  }
+  .dash-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .dash-modal[hidden] { display: none; }
+  .dash-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .dash-modal-card {
+    position: relative;
+    width: min(32rem, 100%);
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.1rem 1.15rem 1rem;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  }
+  .dash-modal-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+  .dash-modal-head h3 { margin: 0; }
+  .dash-modal-sub { margin: 0.25rem 0 0; color: #64748b; font-size: 0.875rem; }
+  .dash-modal-x {
+    border: none;
+    background: transparent;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #64748b;
+  }
+  .dash-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .dash-client-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+  .dash-client-cell span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .dash-info-btn {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #334155;
+    font-size: 0.72rem;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .dash-info-btn:hover,
+  .dash-info-btn:focus-visible {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .dash-info-modal-card {
+    width: min(56rem, calc(100vw - 2rem));
+    max-height: min(48rem, calc(100vh - 2rem));
+    overflow: auto;
+  }
+  .dash-info-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.95rem;
+  }
+  .dash-info-tab {
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    border-radius: 999px;
+    padding: 0.38rem 0.9rem;
+    font-size: 0.8rem;
+    font-weight: 650;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .dash-info-tab:hover,
+  .dash-info-tab:focus-visible {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .dash-info-tab.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  .dash-info-body {
+    margin-top: 0.9rem;
+  }
+  .dash-ri-section-title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    margin: 1rem 0 0.5rem;
+  }
+  .dash-ri-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-top: 0.5rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .dash-ri-table-wrap::-webkit-scrollbar {
+    display: none;
+  }
+  table.dash-ri-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+  }
+  .dash-ri-table th,
+  .dash-ri-table td {
+    padding: 0.7rem 0.85rem;
+    text-align: left;
+    border-bottom: 1px solid #eef2f7;
+    vertical-align: middle;
+  }
+  .dash-ri-table th {
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .dash-ri-table tr:last-child td {
+    border-bottom: none;
+  }
+  .dash-ri-vq-table tr.dash-ri-vq-first:not(:first-child) td {
+    border-top: 2px solid #e2e8f0;
+  }
+  .dash-ri-vq-table td.dash-ri-vq-vendor {
+    vertical-align: middle;
+    background: #f8fafc;
+    border-right: 1px solid #eef2f7;
+    border-bottom: none;
+  }
+  .dash-ri-vq-table td.dash-ri-vq-email {
+    white-space: nowrap;
+    font-weight: 600;
+    color: #0f172a;
+  }
+  .dash-ri-vq-sent {
+    font-weight: 400;
+    color: #64748b;
+  }
+  .dash-ri-table td:nth-child(2),
+  .dash-ri-table td:nth-child(5),
+  .dash-ri-table td:nth-child(6),
+  .dash-ri-table td:nth-child(8) {
+    white-space: nowrap;
+  }
+  .dash-ri-status {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .dash-ri-status--yes { background: #d1fae5; color: #065f46; }
+  .dash-ri-status--win { background: #d1fae5; color: #065f46; }
+  .dash-ri-status--lost { background: #fee2e2; color: #991b1b; }
+  .dash-ri-status--cancel { background: #e2e8f0; color: #334155; }
+  .dash-ri-status--no { background: #f1f5f9; color: #64748b; }
+  .dash-ri-status--pending { background: #fef3c7; color: #92400e; }
+  .dash-ri-deal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.22rem 0.72rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    color: #fff;
+  }
+  .dash-ri-deal-pill.dash-ri-status--win { background: #16a34a; color: #fff; }
+  .dash-ri-deal-pill.dash-ri-status--lost { background: #f43f5e; color: #fff; }
+  .dash-ri-deal-pill.dash-ri-status--cancel { background: #94a3b8; color: #fff; }
+  .dash-ri-deal-pill.dash-ri-status--pending { background: #f59e0b; color: #fff; }
+  .dash-ri-product-new {
+    display: inline-block;
+    margin-left: 0.3rem;
+    padding: 0.08rem 0.4rem;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+  }
+  .dash-ri-qty-changed {
+    color: #b45309;
+    font-weight: 700;
+  }
+  .dash-ri-meta {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.15rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .dash-ri-email-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .dash-ri-email-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem 0.85rem;
+    background: #f8fafc;
+  }
+  .dash-ri-email-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .dash-ri-email-card .dash-ri-ts-grid {
+    margin-top: 0.55rem;
+  }
+  .dash-ri-ts-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .dash-ri-ts-item {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 0;
+  }
+  .dash-ri-ts-item .dash-ri-meta {
+    margin-top: 0.15rem;
+    overflow-wrap: anywhere;
+  }
+  .dash-ri-sla-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .dash-ri-sla-badge--off { background: #f1f5f9; color: #64748b; }
+  .dash-ri-sla-badge--on_track { background: #dbeafe; color: #1d4ed8; }
+  .dash-ri-sla-badge--overdue,
+  .dash-ri-sla-badge--breached { background: #fee2e2; color: #b91c1c; }
+  .dash-ri-sla-badge--met { background: #d1fae5; color: #065f46; }
+  .dash-ri-sla-zoho {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: #0f172a;
+    margin-bottom: 0.18rem;
+  }
+  .dash-ri-empty {
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 1.25rem;
+    text-align: center;
+    color: #475569;
+  }
+  .dash-ri-empty strong {
+    display: block;
+    color: #0f172a;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+  .dash-ri-ghost-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 8px;
+    border: 1px solid #2563eb;
+    background: #fff;
+    color: #2563eb;
+    font-size: 0.75rem;
+    font-weight: 650;
+    text-decoration: none;
+    line-height: 1.2;
+  }
+  .dash-ri-ghost-link:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+  @media (max-width: 720px) {
+    .dash-ri-ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dash-ri-email-card .dash-ri-ts-grid { grid-template-columns: 1fr; }
+  }
+  .dash-company-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+  }
+  .dash-company-filter label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #475569;
+  }
+  .dash-combo {
+    position: relative;
+    flex: 1;
+  }
+  .dash-company-search {
+    flex-shrink: 0;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  .dash-combo input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 4rem 0.5rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.875rem;
+  }
+  .dash-combo input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .dash-combo-toggle,
+  .dash-combo-clear {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0;
+  }
+  .dash-combo-toggle { right: 0.35rem; }
+  .dash-combo-clear { right: 2rem; font-size: 1.1rem; line-height: 1; }
+  .dash-combo-toggle:hover,
+  .dash-combo-clear:hover { background: #f1f5f9; color: #0f172a; }
+  .dash-combo-menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 13rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.3rem;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  }
+  .dash-combo-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #0f172a;
+    cursor: pointer;
+  }
+  .dash-combo-option.is-active { background: #eff6ff; color: #1d4ed8; }
+  .dash-combo-option.is-selected { font-weight: 700; }
+  .dash-combo-option.is-selected::after { content: "✓"; color: #2563eb; }
+  .dash-combo-option--all { color: #475569; border-bottom: 1px solid #f1f5f9; border-radius: 6px 6px 0 0; }
+  .dash-combo-empty { padding: 0.55rem 0.65rem; font-size: 0.84rem; color: #64748b; }
+  .dash-vendor-count {
+    margin: -0.4rem 0 0.6rem;
+    font-size: 0.78rem;
+    color: #64748b;
+  }
+  .dash-vendor-list {
+    max-height: 16rem;
+    overflow: auto;
+    margin: 0.9rem 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+  .dash-vendor-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .dash-vendor-row:last-child { border-bottom: none; }
+  .dash-modal-error { color: #dc2626; font-size: 0.875rem; margin: 0 0 0.75rem; }
+  .dash-modal-ok { color: #166534; font-size: 0.875rem; margin: 0 0 0.75rem; }
+  .dash-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+  .dash-lost-remark {
+    width: 100%;
+    margin: 0.85rem 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    font: inherit;
+  }
 </style>
 {% endblock %}
 
@@ -184,39 +702,93 @@
   </p>
   {% if expiring_subs %}
   <div class="table-wrap">
-  <table>
+  <table class="dash-expiring-table">
     <thead>
       <tr>
-        <th>Client</th>
-        <th>Product</th>
-        <th>Qty</th>
-        <th>Status</th>
-        <th>End date</th>
-        <th>Days left</th>
-        <th>Deal Status</th>
-        <th></th>
+        <th class="col-client">Client</th>
+        <th class="col-end">End date</th>
+        <th class="col-product">Product</th>
+        <th class="col-qty">Qty</th>
+        <th class="col-days">Days left</th>
+        <th class="col-zoho">Zoho</th>
+        <th class="col-quote">Quote to vendor</th>
+        <th class="col-deal">Deal Status</th>
       </tr>
     </thead>
     <tbody>
       {% for s in expiring_subs %}
       <tr>
-        <td>{{ s.client.name }}</td>
-        <td>{{ s.product.name }}</td>
-        <td>{{ s.quantity }}</td>
-        <td>{{ s.get_status_display }}</td>
-        <td>{{ s.end_date }}</td>
-        <td>{{ s.days_until_expiry }}</td>
-        <td>
-          {% if s.deal_status == "win" %}
-          <span class="dash-deal dash-deal--win">Win</span>
-          {% elif s.deal_status == "lost" %}
-          <span class="dash-deal dash-deal--lost">Lost</span>
+        <td class="col-client">
+          <div class="dash-client-cell">
+            <button
+              type="button"
+              class="dash-info-btn"
+              data-info-url="{% url 'dashboard_subscription_renewal_info' s.pk %}"
+              data-client="{{ s.client.name }}"
+              data-product="{{ s.product.name }}"
+              aria-label="Show renewal details for {{ s.client.name }}"
+            >+</button>
+            <span>{{ s.client.name }}</span>
+          </div>
+        </td>
+        <td class="col-end">{{ s.end_date|date:"d/m/Y" }}</td>
+        <td class="col-product">{{ s.product.name }}</td>
+        <td class="col-qty">{{ s.quantity }}</td>
+        <td class="col-days">{{ s.days_until_expiry }}</td>
+        <td class="col-zoho">
+          {% if not s.zoho %}
+          —
+          {% elif s.zoho.kind == "connect" %}
+          <a class="dash-zoho-btn dash-zoho-btn--connect" href="{{ s.zoho.setup_url }}" data-tip="Connect Zoho" aria-label="Connect Zoho">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path></svg>
+          </a>
+          {% elif s.zoho.quote_url %}
+          <a class="dash-zoho-btn dash-zoho-btn--open" href="{{ s.zoho.quote_url }}" target="_blank" rel="noopener" data-tip="{% if s.zoho_ref_id %}Quotation ID: {{ s.zoho_ref_id }}{% else %}Open quote in Zoho{% endif %}" aria-label="{% if s.zoho_ref_id %}Quotation ID: {{ s.zoho_ref_id }}{% else %}Open quote in Zoho{% endif %}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+          {% elif s.zoho.kind == "send" and s.zoho.send_url %}
+          <form method="post" action="{{ s.zoho.send_url }}" class="dash-zoho-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ dashboard_renew_next }}">
+            <button type="submit" class="dash-zoho-btn dash-zoho-btn--send" data-tip="Send to Zoho" aria-label="Send to Zoho">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </form>
           {% else %}
-          <span class="dash-deal dash-deal--empty">—</span>
+          —
           {% endif %}
         </td>
-        <td>
-          <a class="btn-table-edit" href="{% url 'subscription_renew' s.pk %}?next={{ dashboard_renew_next|urlencode }}">Renew</a>
+        <td class="col-quote">
+          <div class="dash-row-actions">
+            <button
+              type="button"
+              class="btn-table-edit dash-quote-btn"
+              data-quote-url="{% url 'dashboard_quote_vendors' s.pk %}"
+              data-product="{{ s.product.name }}"
+              data-quantity="{{ s.quantity }}"
+              data-company="{{ s.product.company_name }}"
+            >Quote</button>
+          </div>
+        </td>
+        <td class="col-deal">
+          {% if s.deal_status == "win" and not s.win_form_empty %}
+          <span class="dash-deal dash-deal--win">Win</span>
+          {% elif s.deal_status == "win" %}
+          <div class="dash-deal-actions">
+            <a class="btn-table-edit dash-deal-choice" href="{% url 'subscription_renew' s.pk %}?next={{ dashboard_renew_next|urlencode }}&required=1">Win</a>
+          </div>
+          {% elif s.deal_status == "lost" %}
+          <span class="dash-deal dash-deal--lost"{% if s.lost_remark %} title="{{ s.lost_remark }}"{% endif %}>Lost</span>
+          {% else %}
+          <div class="dash-deal-actions">
+            <a class="btn-table-edit dash-deal-choice" href="{% url 'subscription_renew' s.pk %}?next={{ dashboard_renew_next|urlencode }}&required=1">Win</a>
+            <button
+              type="button"
+              class="btn-table-edit dash-deal-choice dash-lost-btn"
+              data-lost-url="{% url 'dashboard_set_deal_lost' s.pk %}"
+            >Lost</button>
+          </div>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -276,6 +848,80 @@
   {% endif %}
 </div>
 
+<form id="dash-csrf-form" hidden>{% csrf_token %}</form>
+{{ quote_vendors|json_script:"dash-quote-vendors" }}
+{{ quote_companies|json_script:"dash-quote-companies" }}
+
+<div id="dash-lost-modal" class="dash-modal" hidden>
+  <div class="dash-modal-backdrop" data-close="1"></div>
+  <div class="dash-modal-card" role="dialog" aria-modal="true" aria-labelledby="dash-lost-title">
+    <div class="dash-modal-head">
+      <div>
+        <h3 id="dash-lost-title">Add remark</h3>
+        <p class="dash-modal-sub">Remark is optional. Lost is saved when you click Save.</p>
+      </div>
+      <button type="button" class="dash-modal-x" data-close="1" aria-label="Close">&times;</button>
+    </div>
+    <textarea id="dash-lost-remark" class="dash-lost-remark" rows="4" maxlength="2000" placeholder="Add a remark (optional)"></textarea>
+    <p id="dash-lost-error" class="dash-modal-error" hidden></p>
+    <div class="dash-modal-actions">
+      <button type="button" class="btn btn-ghost" data-close="1">Close</button>
+      <button type="button" class="btn btn-primary" id="dash-lost-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="dash-quote-modal" class="dash-modal" hidden>
+  <div class="dash-modal-backdrop" data-quote-close="1"></div>
+  <div class="dash-modal-card" role="dialog" aria-modal="true" aria-labelledby="dash-quote-title">
+    <div class="dash-modal-head">
+      <div>
+        <h3 id="dash-quote-title">Quote to vendor</h3>
+        <p id="dash-quote-sub" class="dash-modal-sub"></p>
+      </div>
+      <button type="button" class="dash-modal-x" data-quote-close="1" aria-label="Close">&times;</button>
+    </div>
+    <div class="dash-company-filter">
+      <label for="dash-company-input">Company</label>
+      <div class="dash-combo">
+        <input type="text" id="dash-company-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="dash-company-menu" placeholder="Search company…" autocomplete="off" spellcheck="false">
+        <button type="button" class="dash-combo-clear" id="dash-company-clear" aria-label="Clear company" hidden>&times;</button>
+        <button type="button" class="dash-combo-toggle" id="dash-company-toggle" aria-label="Show companies" tabindex="-1">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <ul id="dash-company-menu" class="dash-combo-menu" role="listbox" hidden></ul>
+      </div>
+      <button type="button" class="btn btn-primary dash-company-search" id="dash-company-search">Search</button>
+    </div>
+    <div id="dash-vendor-list" class="dash-vendor-list"></div>
+    <p id="dash-vendor-count" class="dash-vendor-count" hidden></p>
+    <p id="dash-quote-error" class="dash-modal-error" hidden></p>
+    <p id="dash-quote-ok" class="dash-modal-ok" hidden></p>
+    <div class="dash-modal-actions">
+      <button type="button" class="btn btn-ghost" data-quote-close="1">Close</button>
+      <button type="button" class="btn btn-primary" id="dash-quote-send">Send price request</button>
+    </div>
+  </div>
+</div>
+
+<div id="dash-info-modal" class="dash-modal" hidden>
+  <div class="dash-modal-backdrop" data-info-close="1"></div>
+  <div class="dash-modal-card dash-info-modal-card" role="dialog" aria-modal="true" aria-labelledby="dash-info-title">
+    <div class="dash-modal-head">
+      <div>
+        <h3 id="dash-info-title">Renewal details</h3>
+        <p id="dash-info-sub" class="dash-modal-sub">Subscription details and email activity.</p>
+      </div>
+      <button type="button" class="dash-modal-x" data-info-close="1" aria-label="Close">&times;</button>
+    </div>
+    <div class="dash-info-tabs" role="tablist" aria-label="Renewal details view">
+      <button type="button" class="dash-info-tab is-active" id="dash-info-tab-product" role="tab" aria-selected="true">Product info</button>
+      <button type="button" class="dash-info-tab" id="dash-info-tab-email" role="tab" aria-selected="false">Email info</button>
+    </div>
+    <div id="dash-info-body" class="dash-info-body"></div>
+  </div>
+</div>
+
 {{ charts|json_script:"sales-charts-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 {% include "includes/adash_charts.js.html" %}
@@ -296,6 +942,836 @@
   }
   Adash.line("chart-renewal-pipeline", data.pipeline_labels, data.pipeline_values, "Expiring");
   Adash.bar("chart-new-qty", data.qty_month_labels, data.qty_month_values);
+})();
+</script>
+<script>
+(function () {
+  var csrfInput = document.querySelector("#dash-csrf-form input[name=csrfmiddlewaretoken]");
+  var csrf = csrfInput ? csrfInput.value : "";
+  var vendors = [];
+  var vendorData = document.getElementById("dash-quote-vendors");
+  if (vendorData) {
+    try { vendors = JSON.parse(vendorData.textContent) || []; } catch (e) { vendors = []; }
+  }
+  var quoteCompanies = [];
+  var companyData = document.getElementById("dash-quote-companies");
+  if (companyData) {
+    try { quoteCompanies = JSON.parse(companyData.textContent) || []; } catch (e) { quoteCompanies = []; }
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function qtyHtml(value, changed) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (changed) return '<span class="dash-ri-qty-changed">' + escapeHtml(value) + "</span>";
+    return escapeHtml(value);
+  }
+
+  function dealBadgeLabel(status) {
+    var labels = { win: "Win", lost: "Lost", pending: "Pending" };
+    return labels[status] || status || "—";
+  }
+
+  function dealPillHtml(status) {
+    var key = status || "pending";
+    return (
+      '<span class="dash-ri-deal-pill dash-ri-status--' +
+      escapeHtml(key) +
+      '">' +
+      escapeHtml(dealBadgeLabel(key)) +
+      "</span>"
+    );
+  }
+
+  function clientEmailHtml(target) {
+    if (!target) return "—";
+    var emails = [];
+    if (target.recipient_emails && target.recipient_emails.length) {
+      emails = target.recipient_emails;
+    } else if (target.client_emails && target.client_emails.length) {
+      emails = target.client_emails;
+    } else if (target.client_email) {
+      emails = [target.client_email];
+    }
+    if (!emails.length) return "—";
+    var html = "";
+    emails.forEach(function (email, index) {
+      if (index === 0) html += escapeHtml(email || "");
+      else html += '<span class="dash-ri-meta">' + escapeHtml(email) + "</span>";
+    });
+    return html || "—";
+  }
+
+  function emailTimelineHtml(row) {
+    var ts = (row && row.timestamps) || {};
+    var sent = ts.sent || [];
+    var sentBlock = sent.length
+      ? '<span class="dash-ri-status dash-ri-status--yes">Sent</span><span class="dash-ri-meta">' +
+        escapeHtml(sent[0]) +
+        "</span>" +
+        (sent.length > 1
+          ? '<span class="dash-ri-meta">Also sent ' +
+            escapeHtml(sent.slice(1).join(" · ")) +
+            "</span>"
+          : "")
+      : '<span class="dash-ri-status dash-ri-status--no">—</span><span class="dash-ri-meta">Email sent</span>';
+
+    var readBlock;
+    if (ts.read_at) {
+      var source = "";
+      if (ts.read_source === "outlook_receipt") source = '<span class="dash-ri-meta">Outlook read receipt</span>';
+      else if (ts.read_source === "outlook_open") source = '<span class="dash-ri-meta">Opened in Outlook</span>';
+      readBlock =
+        '<span class="dash-ri-status dash-ri-status--yes">Read</span><span class="dash-ri-meta">' +
+        escapeHtml(ts.read_at) +
+        "</span>" +
+        source;
+    } else {
+      readBlock = '<span class="dash-ri-status dash-ri-status--pending">Not read</span>';
+    }
+
+    var responseBlock;
+    if (ts.submitted_at) {
+      responseBlock =
+        '<span class="dash-ri-status dash-ri-status--yes">Received</span><span class="dash-ri-meta">' +
+        escapeHtml(ts.submitted_at) +
+        "</span>";
+      if (ts.submitted_by_email) {
+        responseBlock +=
+          '<span class="dash-ri-meta">Quantity sent by ' +
+          escapeHtml(ts.submitted_by_email) +
+          "</span>";
+      }
+    } else {
+      responseBlock = '<span class="dash-ri-status dash-ri-status--pending">Pending</span>';
+    }
+
+    var sla = (row && row.sla) || {};
+    var slaBlock;
+    if (!sla.status || sla.status === "off") {
+      slaBlock = '<span class="dash-ri-status dash-ri-status--no">—</span><span class="dash-ri-meta">SLA starts after quantity</span>';
+    } else {
+      slaBlock =
+        '<span class="dash-ri-sla-badge dash-ri-sla-badge--' +
+        escapeHtml(sla.status) +
+        '">' +
+        escapeHtml(sla.label || "—") +
+        "</span>" +
+        '<span class="dash-ri-meta">' +
+        escapeHtml(sla.zoho_status_label || "") +
+        "</span>" +
+        (sla.quantity_at
+          ? '<span class="dash-ri-meta">Qty received ' + escapeHtml(sla.quantity_at) + "</span>"
+          : "") +
+        (sla.quote_number_at
+          ? '<span class="dash-ri-meta">Quote no. ' +
+            escapeHtml(sla.quote_number_at) +
+            " · " +
+            escapeHtml(sla.qty_to_quote_label || "—") +
+            "</span>"
+          : "") +
+        (sla.quote_sent_at
+          ? '<span class="dash-ri-meta">Quote sent ' +
+            escapeHtml(sla.quote_sent_at) +
+            " · total " +
+            escapeHtml(sla.elapsed_label || "—") +
+            "</span>"
+          : '<span class="dash-ri-meta">Total ' +
+            escapeHtml(sla.elapsed_label || "—") +
+            " / " +
+            escapeHtml(String(sla.target_hours || "—")) +
+            "h</span>");
+    }
+
+    return (
+      '<div class="dash-ri-ts-grid">' +
+      '<div class="dash-ri-ts-item">' + sentBlock + "</div>" +
+      '<div class="dash-ri-ts-item">' + readBlock + "</div>" +
+      '<div class="dash-ri-ts-item">' + responseBlock + "</div>" +
+      '<div class="dash-ri-ts-item">' + slaBlock + "</div></div>"
+    );
+  }
+
+  var infoModal = document.getElementById("dash-info-modal");
+  var infoBody = document.getElementById("dash-info-body");
+  var infoTitle = document.getElementById("dash-info-title");
+  var infoSub = document.getElementById("dash-info-sub");
+  var infoTabProduct = document.getElementById("dash-info-tab-product");
+  var infoTabEmail = document.getElementById("dash-info-tab-email");
+
+  var infoData = null;
+  var infoTab = "product";
+  var infoRequest = 0;
+
+  function renderInfo() {
+    if (!infoBody) return;
+    if (!infoData) {
+      infoBody.innerHTML = '<p class="muted">Loading…</p>';
+      return;
+    }
+
+    if (infoTab === "product") {
+      renderProductTab();
+    } else {
+      renderEmailTab();
+    }
+  }
+
+  function renderProductTab() {
+    var data = infoData;
+    var sub = data.subscription || {};
+    var row = data.row;
+    var isSent = Boolean(data.sent && row);
+
+    var prodName = isSent
+      ? escapeHtml(row.product_name || sub.product_name || "") + (row.is_new ? '<span class="dash-ri-product-new">NEW</span>' : "")
+      : escapeHtml(sub.product_name || "");
+    var subId = isSent
+      ? qtyHtml(row.subscription_list_id || sub.subscription_list_id, false)
+      : qtyHtml(sub.subscription_list_id, false);
+    var prevQty = isSent
+      ? qtyHtml(row.previous_quantity !== undefined && row.previous_quantity !== null ? row.previous_quantity : sub.quantity, false)
+      : qtyHtml(sub.quantity, false);
+
+    var renewalQtyHtml = "";
+    if (isSent) {
+      if (row.renewal_quantity === null || row.renewal_quantity === undefined) {
+        renewalQtyHtml = '—<span class="dash-ri-meta">Client has not filled the form yet</span>';
+      } else {
+        var changed = (row.previous_quantity !== null && row.previous_quantity !== undefined &&
+          Number(row.renewal_quantity) !== Number(row.previous_quantity));
+        renewalQtyHtml = qtyHtml(row.renewal_quantity, changed);
+      }
+    } else {
+      renewalQtyHtml = '—<span class="dash-ri-meta">Client response pending</span>';
+    }
+
+    var startDate = isSent
+      ? qtyHtml(row.start_date || sub.start_date, false)
+      : qtyHtml(sub.start_date, false);
+    var endDate = isSent
+      ? qtyHtml(row.end_date || sub.end_date, false)
+      : qtyHtml(sub.end_date, false);
+
+    var rawDeal = isSent
+      ? (row.deal_status || sub.deal_status || "")
+      : (sub.deal_status || "");
+    var dealHtml = (rawDeal && rawDeal !== "cancel")
+      ? dealPillHtml(rawDeal)
+      : '<span class="dash-ri-status dash-ri-status--no">—</span>';
+
+    var emailHtml = isSent
+      ? clientEmailHtml(row)
+      : clientEmailHtml(sub);
+
+    var html = '<h4 class="dash-ri-section-title">Subscription</h4>' +
+      '<div class="dash-ri-table-wrap"><table class="dash-ri-table"><thead><tr>' +
+      '<th>Product</th><th>Subscription ID</th><th>Prev qty</th><th>Renewal qty</th>' +
+      '<th>Start date</th><th>End date</th><th>Deal status</th><th>Client email</th>' +
+      '</tr></thead><tbody><tr>' +
+      '<td>' + prodName + '</td>' +
+      '<td>' + subId + '</td>' +
+      '<td>' + prevQty + '</td>' +
+      '<td>' + renewalQtyHtml + '</td>' +
+      '<td>' + startDate + '</td>' +
+      '<td>' + endDate + '</td>' +
+      '<td>' + dealHtml + '</td>' +
+      '<td>' + emailHtml + '</td>' +
+      '</tr></tbody></table></div>';
+
+    var newProducts = data.new_products || [];
+    var isSubmitted = Boolean(isSent && row.timestamps && row.timestamps.submitted_at);
+    if (newProducts.length > 0) {
+      html += '<h4 class="dash-ri-section-title">New products added by client</h4>' +
+        '<div class="dash-ri-table-wrap"><table class="dash-ri-table"><thead><tr>' +
+        '<th>Product</th><th>Quantity</th><th>Submitted on</th></tr></thead><tbody>';
+      var submittedOn = (row.timestamps && row.timestamps.submitted_at) || "—";
+      newProducts.forEach(function (np) {
+        html += '<tr><td>' + escapeHtml(np.product_name || "") + '<span class="dash-ri-product-new">NEW</span></td>' +
+          '<td>' + qtyHtml(np.renewal_quantity, false) + '</td>' +
+          '<td>' + escapeHtml(submittedOn) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    } else if (isSubmitted) {
+      html += '<p class="muted" style="margin:0.75rem 0 0;font-size:0.84rem;">No new products were added on the renewal form.</p>';
+    }
+
+    var vendorQuotes = data.vendor_quotes || [];
+    var dealNo = data.procurement_deal_no || "";
+    var dealUrl = data.procurement_deal_url || "";
+    if (vendorQuotes.length > 0 || dealNo) {
+      html += '<h4 class="dash-ri-section-title">Vendor Price Quotes';
+      if (dealNo) {
+        html += ' <span style="font-size:0.75rem;font-weight:600;color:#64748b;">(';
+        if (dealUrl) {
+          html += '<a href="' + escapeHtml(dealUrl) + '" target="_blank" style="color:#2563eb;text-decoration:underline;">Deal: ' + escapeHtml(dealNo) + '</a>';
+        } else {
+          html += 'Deal: ' + escapeHtml(dealNo);
+        }
+        html += ')</span>';
+      }
+      html += '</h4>';
+
+      if (vendorQuotes.length > 0) {
+        html += '<div class="dash-ri-table-wrap"><table class="dash-ri-table dash-ri-vq-table"><thead><tr>' +
+          '<th>Vendor</th><th>Email</th><th>Status</th><th>Submitted Price</th><th>Submitted On</th>' +
+          '</tr></thead><tbody>';
+        var vendorRowCounts = {};
+        vendorQuotes.forEach(function (vq) {
+          vendorRowCounts[vq.vendor_id] = (vendorRowCounts[vq.vendor_id] || 0) + 1;
+        });
+        var lastVendorId = null;
+        vendorQuotes.forEach(function (vq) {
+          var priceHtml = vq.price !== null && vq.price !== undefined
+            ? '<strong style="color:#166534;font-size:0.92rem;">₹' + escapeHtml(Number(vq.price).toFixed(2)) + '</strong>'
+            : '<span class="dash-ri-status dash-ri-status--pending">Waiting for price</span>';
+          var statusHtml = vq.status === "Submitted"
+            ? '<span class="dash-ri-status dash-ri-status--yes">Submitted</span>'
+            : '<span class="dash-ri-status dash-ri-status--no">Sent</span>';
+          var vendorCell = "";
+          var isFirst = vq.vendor_id !== lastVendorId;
+          if (isFirst) {
+            vendorCell = '<td class="dash-ri-vq-vendor" rowspan="' + vendorRowCounts[vq.vendor_id] + '"><strong>' +
+              escapeHtml(vq.vendor_name || "") + '</strong></td>';
+            lastVendorId = vq.vendor_id;
+          }
+          html += '<tr' + (isFirst ? ' class="dash-ri-vq-first"' : '') + '>' +
+            vendorCell +
+            '<td class="dash-ri-vq-email">Email ' + escapeHtml(String(vq.email_no || "")) +
+              (vq.sent_at ? ' <span class="dash-ri-vq-sent">· ' + escapeHtml(vq.sent_at) + '</span>' : '') + '</td>' +
+            '<td>' + statusHtml + '</td>' +
+            '<td>' + priceHtml + '</td>' +
+            '<td>' + escapeHtml(vq.submitted_at || "—") + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+    }
+
+    infoBody.innerHTML = html;
+  }
+
+  function renderEmailTab() {
+    var data = infoData;
+    var sub = data.subscription || {};
+    var row = data.row;
+    var isSent = Boolean(data.sent && row);
+
+    if (!isSent) {
+      var daysLeft = sub.days_left !== undefined && sub.days_left !== null ? sub.days_left : "—";
+      var endDate = sub.end_date || "—";
+      var emptyHtml = '<div class="dash-ri-empty">' +
+        '<div style="margin-bottom:0.5rem;"><span class="dash-ri-status dash-ri-status--no">Not sent</span></div>' +
+        '<strong>Renewal email not sent yet</strong>' +
+        '<p style="margin:0.25rem 0 0;font-size:0.84rem;color:#64748b;">No renewal reminder has been emailed for this subscription. It expires on ' +
+        escapeHtml(endDate) + ' (' + escapeHtml(String(daysLeft)) + ' days left).</p>' +
+        '</div>';
+      infoBody.innerHTML = emptyHtml;
+      return;
+    }
+
+    var cardHtml = '<div class="dash-ri-email-list"><section class="dash-ri-email-card">' +
+      '<h4 class="dash-ri-email-title">' +
+      escapeHtml(row.product_name || sub.product_name || "") +
+      (row.is_new ? '<span class="dash-ri-product-new">NEW</span>' : "") +
+      '</h4>' +
+      '<div class="dash-ri-meta">' + clientEmailHtml(row) + '</div>' +
+      emailTimelineHtml(row);
+
+    if (row.ref_id) {
+      cardHtml += '<div class="dash-ri-meta" style="margin-top:0.5rem;font-weight:600;">Quotation: ' + escapeHtml(row.ref_id) + '</div>';
+    }
+    if (row.zoho && row.zoho.quote_url) {
+      cardHtml += '<div><a class="dash-ri-ghost-link" href="' + escapeHtml(row.zoho.quote_url) + '" target="_blank" rel="noopener">Open quote in Zoho</a></div>';
+    }
+
+    cardHtml += '</section></div>';
+    infoBody.innerHTML = cardHtml;
+  }
+
+  function switchTab(tab) {
+    infoTab = tab;
+    if (infoTabProduct) {
+      infoTabProduct.classList.toggle("is-active", tab === "product");
+      infoTabProduct.setAttribute("aria-selected", tab === "product" ? "true" : "false");
+    }
+    if (infoTabEmail) {
+      infoTabEmail.classList.toggle("is-active", tab === "email");
+      infoTabEmail.setAttribute("aria-selected", tab === "email" ? "true" : "false");
+    }
+    renderInfo();
+  }
+
+  if (infoTabProduct) {
+    infoTabProduct.addEventListener("click", function () { switchTab("product"); });
+  }
+  if (infoTabEmail) {
+    infoTabEmail.addEventListener("click", function () { switchTab("email"); });
+  }
+
+  function openInfo(btn) {
+    var url = btn.getAttribute("data-info-url") || "";
+    var clientName = btn.getAttribute("data-client") || "";
+    var productName = btn.getAttribute("data-product") || "";
+    if (!url || !infoModal || !infoBody) return;
+
+    if (infoTitle) infoTitle.textContent = clientName || "Renewal details";
+    if (infoSub) infoSub.textContent = productName || "Subscription details and email activity.";
+    infoBody.innerHTML = '<p class="muted">Loading…</p>';
+    switchTab("product");
+    infoModal.hidden = false;
+
+    var currentReq = ++infoRequest;
+    fetch(url, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        return { ok: response.ok, data: data };
+      });
+    }).then(function (result) {
+      if (currentReq !== infoRequest) return;
+      if (!result.ok || !result.data || !result.data.ok) {
+        var err = (result.data && result.data.error) || "Could not load renewal info.";
+        infoBody.innerHTML = '<p class="dash-modal-error">' + escapeHtml(err) + '</p>';
+        return;
+      }
+      infoData = result.data;
+      if (infoData.subscription) {
+        var subText = escapeHtml(infoData.subscription.product_name || productName || "");
+        if (infoData.subscription.end_date) {
+          subText += " · " + escapeHtml(infoData.subscription.end_date);
+        }
+        if (infoSub) infoSub.textContent = subText;
+      }
+      renderInfo();
+    }).catch(function () {
+      if (currentReq !== infoRequest) return;
+      infoBody.innerHTML = '<p class="dash-modal-error">Could not load renewal info.</p>';
+    });
+  }
+
+  function closeInfoModal() {
+    if (!infoModal) return;
+    infoModal.hidden = true;
+    infoData = null;
+    infoRequest++;
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".dash-info-btn");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openInfo(btn);
+  });
+
+  if (infoModal) {
+    infoModal.querySelectorAll("[data-info-close]").forEach(function (el) {
+      el.addEventListener("click", closeInfoModal);
+    });
+  }
+
+  var lostModal = document.getElementById("dash-lost-modal");
+  var lostRemark = document.getElementById("dash-lost-remark");
+  var lostError = document.getElementById("dash-lost-error");
+  var lostSave = document.getElementById("dash-lost-save");
+  var lostUrl = "";
+
+  function showLostError(text) {
+    if (!lostError) return;
+    lostError.hidden = !text;
+    lostError.textContent = text || "";
+  }
+
+  function closeLost() {
+    if (!lostModal) return;
+    lostModal.hidden = true;
+    lostUrl = "";
+    if (lostRemark) lostRemark.value = "";
+    showLostError("");
+  }
+
+  document.querySelectorAll(".dash-lost-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      lostUrl = btn.getAttribute("data-lost-url") || "";
+      if (lostRemark) lostRemark.value = "";
+      showLostError("");
+      if (lostModal) lostModal.hidden = false;
+    });
+  });
+  if (lostModal) {
+    lostModal.querySelectorAll("[data-close]").forEach(function (el) {
+      el.addEventListener("click", closeLost);
+    });
+  }
+  if (lostSave) {
+    lostSave.addEventListener("click", function () {
+      if (!lostUrl) return;
+      lostSave.disabled = true;
+      var body = new FormData();
+      body.append("lost_remark", lostRemark ? lostRemark.value : "");
+      fetch(lostUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+        body: body
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      }).then(function (result) {
+        if (!result.ok || !result.data.ok) {
+          showLostError((result.data && result.data.error) || "Could not save Lost.");
+          lostSave.disabled = false;
+          return;
+        }
+        window.location.reload();
+      }).catch(function () {
+        showLostError("Could not save Lost.");
+        lostSave.disabled = false;
+      });
+    });
+  }
+
+  var quoteModal = document.getElementById("dash-quote-modal");
+  var quoteList = document.getElementById("dash-vendor-list");
+  var quoteSub = document.getElementById("dash-quote-sub");
+  var quoteError = document.getElementById("dash-quote-error");
+  var quoteOk = document.getElementById("dash-quote-ok");
+  var quoteSend = document.getElementById("dash-quote-send");
+  var quoteUrl = "";
+
+  function showQuoteMessage(el, text) {
+    if (!el) return;
+    el.hidden = !text;
+    el.textContent = text || "";
+  }
+
+  function closeQuote() {
+    if (!quoteModal) return;
+    quoteModal.hidden = true;
+    quoteUrl = "";
+    showQuoteMessage(quoteError, "");
+    showQuoteMessage(quoteOk, "");
+    if (quoteSend) quoteSend.disabled = false;
+  }
+
+  var companyInput = document.getElementById("dash-company-input");
+  var companyMenu = document.getElementById("dash-company-menu");
+  var companyToggle = document.getElementById("dash-company-toggle");
+  var companyClear = document.getElementById("dash-company-clear");
+  var vendorCount = document.getElementById("dash-vendor-count");
+  var companySearch = document.getElementById("dash-company-search");
+  var ALL_COMPANIES = "All companies";
+  var appliedCompany = "";
+  var selectedVendorIds = {};
+  var menuItems = [];
+  var activeIndex = -1;
+
+  function menuOpen() {
+    return companyMenu && !companyMenu.hidden;
+  }
+
+  function syncClear() {
+    if (companyClear) companyClear.hidden = !(companyInput && companyInput.value.trim());
+  }
+
+  function setActive(index) {
+    if (!menuItems.length) {
+      activeIndex = -1;
+      return;
+    }
+    activeIndex = (index + menuItems.length) % menuItems.length;
+    menuItems.forEach(function (item, i) {
+      item.el.classList.toggle("is-active", i === activeIndex);
+    });
+    menuItems[activeIndex].el.scrollIntoView({ block: "nearest" });
+  }
+
+  function renderMenu(showAll) {
+    if (!companyMenu || !companyInput) return;
+    var text = companyInput.value.trim().toLowerCase();
+    var current = text;
+    var matches = showAll ? quoteCompanies : quoteCompanies.filter(function (c) {
+      return c.key.indexOf(text) !== -1;
+    });
+    companyMenu.innerHTML = "";
+    menuItems = [];
+    var entries = [{ key: "", label: ALL_COMPANIES, all: true }].concat(matches);
+    entries.forEach(function (entry) {
+      var li = document.createElement("li");
+      li.className = "dash-combo-option" + (entry.all ? " dash-combo-option--all" : "");
+      li.setAttribute("role", "option");
+      li.textContent = entry.label;
+      if ((entry.all && !current) || (!entry.all && entry.key === current)) {
+        li.classList.add("is-selected");
+      }
+      li.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        chooseCompany(entry);
+      });
+      li.addEventListener("mousemove", function () {
+        var idx = menuItems.findIndex(function (item) { return item.el === li; });
+        if (idx !== activeIndex) setActive(idx);
+      });
+      companyMenu.appendChild(li);
+      menuItems.push({ el: li, entry: entry });
+    });
+    if (!matches.length && text) {
+      var empty = document.createElement("li");
+      empty.className = "dash-combo-empty";
+      empty.textContent = "No company matches.";
+      companyMenu.appendChild(empty);
+    }
+    activeIndex = -1;
+  }
+
+  function openMenu(showAll) {
+    if (!companyMenu || !companyInput) return;
+    renderMenu(showAll);
+    companyMenu.hidden = false;
+    companyInput.setAttribute("aria-expanded", "true");
+  }
+
+  function closeMenu() {
+    if (!companyMenu || !companyInput) return;
+    companyMenu.hidden = true;
+    companyInput.setAttribute("aria-expanded", "false");
+    activeIndex = -1;
+  }
+
+  function chooseCompany(entry) {
+    if (!companyInput) return;
+    companyInput.value = entry.all ? "" : entry.label;
+    syncClear();
+    closeMenu();
+  }
+
+  function runCompanySearch() {
+    closeMenu();
+    appliedCompany = companyInput ? companyInput.value.trim() : "";
+    renderVendors();
+  }
+
+  if (companyInput) {
+    companyInput.addEventListener("focus", function () { openMenu(true); });
+    companyInput.addEventListener("click", function () {
+      if (!menuOpen()) openMenu(true);
+    });
+    companyInput.addEventListener("input", function () {
+      syncClear();
+      openMenu(false);
+    });
+    companyInput.addEventListener("blur", closeMenu);
+    companyInput.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!menuOpen()) openMenu(true);
+        setActive(activeIndex + (e.key === "ArrowDown" ? 1 : -1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (menuOpen() && activeIndex >= 0) {
+          chooseCompany(menuItems[activeIndex].entry);
+        } else {
+          runCompanySearch();
+        }
+      } else if (e.key === "Escape" && menuOpen()) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+      }
+    });
+  }
+  if (companyToggle) {
+    companyToggle.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      if (menuOpen()) {
+        closeMenu();
+      } else if (companyInput) {
+        companyInput.focus();
+        openMenu(true);
+      }
+    });
+  }
+  if (companyClear) {
+    companyClear.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      chooseCompany({ all: true });
+      if (companyInput) companyInput.focus();
+    });
+  }
+  if (companySearch) {
+    companySearch.addEventListener("click", runCompanySearch);
+  }
+
+  function filteredVendors() {
+    var text = appliedCompany.toLowerCase();
+    if (!text || text === ALL_COMPANIES.toLowerCase()) {
+      return { list: vendors, text: "" };
+    }
+    var exact = quoteCompanies.filter(function (c) { return c.key === text; });
+    var keys = (exact.length ? exact : quoteCompanies.filter(function (c) {
+      return c.key.indexOf(text) !== -1;
+    })).map(function (c) { return c.key; });
+    var list = vendors.filter(function (vendor) {
+      return (vendor.companies || []).some(function (key) { return keys.indexOf(key) !== -1; });
+    });
+    return { list: list, text: appliedCompany };
+  }
+
+  function renderVendors() {
+    if (!quoteList) return;
+    quoteList.innerHTML = "";
+    if (!vendors.length) {
+      quoteList.innerHTML = '<p class="muted" style="margin:0.75rem;">No vendors yet. Add a vendor first.</p>';
+      if (vendorCount) vendorCount.hidden = true;
+      return;
+    }
+    var result = filteredVendors();
+    if (vendorCount) {
+      vendorCount.hidden = !result.text;
+      vendorCount.textContent = result.text
+        ? "Showing " + result.list.length + " vendor" + (result.list.length === 1 ? "" : "s") +
+          ' for "' + result.text + '". Clear the box and press Search to see all vendors.'
+        : "";
+    }
+    if (!result.list.length) {
+      quoteList.innerHTML = '<p class="muted" style="margin:0.75rem;">No vendors sell products of this company.</p>';
+      return;
+    }
+    result.list.forEach(function (vendor) {
+      var row = document.createElement("label");
+      row.className = "dash-vendor-row";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = vendor.id;
+      box.disabled = !vendor.has_email;
+      box.checked = !box.disabled && !!selectedVendorIds[vendor.id];
+      box.addEventListener("change", function () {
+        selectedVendorIds[vendor.id] = box.checked;
+      });
+      var name = document.createElement("span");
+      name.textContent = vendor.has_email ? vendor.name : vendor.name + " (no email)";
+      row.appendChild(box);
+      row.appendChild(name);
+      quoteList.appendChild(row);
+    });
+  }
+
+  document.querySelectorAll(".dash-quote-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      quoteUrl = btn.getAttribute("data-quote-url") || "";
+      var product = btn.getAttribute("data-product") || "";
+      var qty = btn.getAttribute("data-quantity") || "";
+      if (quoteSub) quoteSub.textContent = product + " · qty " + qty;
+      showQuoteMessage(quoteError, "");
+      showQuoteMessage(quoteOk, "");
+      if (quoteSend) quoteSend.disabled = false;
+      selectedVendorIds = {};
+      if (companyInput) {
+        var productCompany = (btn.getAttribute("data-company") || "").trim();
+        var match = quoteCompanies.filter(function (c) { return c.key === productCompany.toLowerCase(); })[0];
+        companyInput.value = match ? match.label : productCompany;
+        syncClear();
+      }
+      runCompanySearch();
+      if (quoteModal) quoteModal.hidden = false;
+    });
+  });
+  if (quoteModal) {
+    quoteModal.querySelectorAll("[data-quote-close]").forEach(function (el) {
+      el.addEventListener("click", closeQuote);
+    });
+  }
+  if (quoteSend) {
+    quoteSend.addEventListener("click", function () {
+      if (!quoteUrl || !quoteList) return;
+      var selected = quoteList.querySelectorAll("input[type=checkbox]:checked");
+      if (!selected.length) {
+        showQuoteMessage(quoteError, "Select at least one vendor.");
+        return;
+      }
+      var sendLabel = quoteSend.textContent;
+      function resetSend() {
+        quoteSend.disabled = false;
+        quoteSend.textContent = sendLabel;
+      }
+      quoteSend.disabled = true;
+      quoteSend.textContent = "Sending...";
+      showQuoteMessage(quoteError, "");
+      showQuoteMessage(quoteOk, "");
+      var body = new FormData();
+      selected.forEach(function (box) { body.append("vendor_ids", box.value); });
+      fetch(quoteUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+        body: body
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      }).then(function (result) {
+        resetSend();
+        if (!result.ok || !result.data.ok) {
+          showQuoteMessage(quoteError, (result.data && result.data.error) || "Could not send the email.");
+          return;
+        }
+        showQuoteMessage(quoteOk, result.data.message || "Price request is being sent.");
+      }).catch(function () {
+        resetSend();
+        showQuoteMessage(quoteError, "Could not send the email.");
+      });
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (infoModal && !infoModal.hidden) {
+      closeInfoModal();
+      return;
+    }
+    if (quoteModal && !quoteModal.hidden) {
+      closeQuote();
+      return;
+    }
+    if (lostModal && !lostModal.hidden) {
+      closeLost();
+      return;
+    }
+  });
+
+  var tipEl = null;
+  function hideTip() {
+    if (tipEl) tipEl.hidden = true;
+  }
+  document.addEventListener("mouseover", function (e) {
+    var target = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+    if (!target) {
+      hideTip();
+      return;
+    }
+    if (!tipEl) {
+      tipEl = document.createElement("div");
+      tipEl.className = "dash-tip";
+      tipEl.setAttribute("role", "tooltip");
+      document.body.appendChild(tipEl);
+    }
+    var rect = target.getBoundingClientRect();
+    tipEl.textContent = target.getAttribute("data-tip") || "";
+    tipEl.style.left = rect.left + rect.width / 2 + "px";
+    tipEl.style.top = rect.top + "px";
+    tipEl.hidden = false;
+  });
+  window.addEventListener("scroll", hideTip, true);
 })();
 </script>
 {% endblock %}

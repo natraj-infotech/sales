@@ -297,7 +297,7 @@
         </thead>
         <tbody>
           {% for s in object_list %}
-          <tr>
+          <tr id="subscription-{{ s.pk }}">
             <td class="col-check">
               <input type="checkbox" class="subscription-row-check" name="subscription_ids" value="{{ s.pk }}" aria-label="Select {{ s.client.name }} — {{ s.product.name }}">
             </td>
@@ -512,6 +512,17 @@
       }
     });
   }
+})();
+</script>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var focusId = params.get("focus");
+  if (!focusId || !/^\d+$/.test(focusId)) return;
+  var row = document.getElementById("subscription-" + focusId);
+  if (!row) return;
+  row.classList.add("notif-row-focus");
+  row.scrollIntoView({ block: "center" });
 })();
 </script>
 {% endblock %}

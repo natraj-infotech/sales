@@ -346,6 +346,17 @@
     }
     if (dashCount) dashCount.textContent = String(data.submission_count != null ? data.submission_count : (data.submission_rows || []).length);
     if (mailCount) mailCount.textContent = String(data.mail_count != null ? data.mail_count : (data.mail_rows || []).length);
+    highlightSubmission();
+  }
+
+  function highlightSubmission() {
+    var params = new URLSearchParams(window.location.search);
+    var id = params.get("submission");
+    if (!id || !/^\d+$/.test(id) || !dashBody) return;
+    var row = dashBody.querySelector('tr[data-submission-id="' + id + '"]');
+    if (!row) return;
+    row.classList.add("notif-row-focus");
+    row.scrollIntoView({ block: "center" });
   }
 
   function poll() {
@@ -386,6 +397,7 @@
       });
   }
 
+  highlightSubmission();
   setMeta("Live · auto-updating", false);
   window.setInterval(poll, POLL_MS);
   document.addEventListener("visibilitychange", function () {

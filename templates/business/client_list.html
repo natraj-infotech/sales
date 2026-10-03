@@ -29,6 +29,9 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  .tracker-table-pro td.col-address { min-width: 14rem; max-width: 22rem; white-space: normal; }
+</style>
 <div class="tracker-card tracker-card--flush-bottom">
   <div class="toolbar toolbar--in-card">
     <form method="get">
@@ -48,6 +51,9 @@
             </th>
             <th>Name</th>
             <th>GST number</th>
+            <th>PAN number</th>
+            <th>Tenant ID</th>
+            <th>Address</th>
             <th>Email 1</th>
             <th>Email 2</th>
             <th>Email 3</th>
@@ -66,6 +72,9 @@
             </td>
             <td>{{ c.name }}</td>
             <td>{{ c.gst_number|default:"—" }}</td>
+            <td>{{ c.pan_number|default:"—" }}</td>
+            <td>{{ c.tenant_id|default:"—" }}</td>
+            <td class="col-address">{{ c.address|default:"—"|linebreaksbr }}</td>
             <td>{{ c.email|default:"—" }}</td>
             <td>{{ c.email_2|default:"—" }}</td>
             <td>{{ c.email_3|default:"—" }}</td>
@@ -99,7 +108,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="11" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
+            <td colspan="14" class="muted" style="padding:1.25rem;text-align:center;background:#fff;">
               No clients. <a href="{% url 'client_add' %}">Add one</a>.
             </td>
           </tr>
