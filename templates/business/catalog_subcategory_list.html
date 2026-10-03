@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Subcategories{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <h1 class="sw-config-head-title">{{ category.name }}</h1>
+      <p class="sw-config-head-sub">{{ category.get_master_category_display }} · specification bands (e.g. Intel i5)</p>
+      {% include "includes/software_config_nav.html" with sw_config_tab="catalog" %}
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-toolbar">
+        <p class="sw-breadcrumb">
+          <a href="{% url 'catalog_hub' %}">Catalog</a> /
+          <a href="{% url 'catalog_category_list' category.master_category %}">{{ category.get_master_category_display }}</a> /
+          {{ category.name }}
+        </p>
+        <a class="btn-tracker-header" href="{% url 'catalog_subcategory_add' category.pk %}">Add subcategory</a>
+      </div>
+      <div class="sw-config-content-fill">
+        <div class="sw-config-panel sw-config-panel--fill">
+          <div class="sw-config-table-wrap sw-config-table-wrap--fill">
+            <table class="sw-config-table">
+              <thead>
+                <tr><th>Spec / subcategory</th><th style="width:8rem;">Brochure</th><th></th></tr>
+              </thead>
+              <tbody>
+                {% for s in subcategories %}
+                <tr>
+                  <td>
+                    <strong>{{ s.name }}</strong>
+                    {% if s.description %}<br><span style="color:var(--muted);font-size:0.8125rem;">{{ s.description }}</span>{% endif %}
+                  </td>
+                  <td>{% if s.brochure_pdf %}<span class="sw-badge sw-badge--ok">PDF</span>{% else %}—{% endif %}</td>
+                  <td>
+                    <div class="sw-config-actions" style="justify-content:flex-end;">
+                      <a href="{% url 'catalog_product_list' s.pk %}">Products</a>
+                      <a href="{% url 'catalog_subcategory_edit' category.pk s.pk %}">Edit</a>
+                    </div>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="3" style="padding:0;">
+                    <div class="sw-config-empty sw-config-empty--fill">
+                      <strong>No subcategories</strong>
+                      Add Intel i5, i7, Ryzen, etc.
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

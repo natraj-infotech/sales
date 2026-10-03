@@ -7,7 +7,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.core.exceptions import SuspiciousFileOperation
+from django.core.cache import cache
+from django.core.exceptions import SuspiciousFileOperation, ValidationError
+from django.core.paginator import Paginator
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -32,9 +34,11 @@ from accounts.permissions import (
 from .forms import (
     CaseLockProductForm,
     CaseLockPublicForm,
+    ClientBulkEmailForm,
     ClientForm,
     ClientSubscriptionForm,
     LeadForm,
+    LeadPublicForm,
     LeadStatusForm,
     RenewalConfirmLineFormSet,
     RenewalNewProductFormSet,
@@ -1921,6 +1925,397 @@ def client_bulk_delete(request):
     n, sub_count = _delete_clients(company, qs)
     _delete_success_message(request, n, sub_count, "client(s)")
     return redirect("client_list")
+
+
+CLIENT_BULK_EMAIL_THROTTLE_SECONDS = 20
+CLIENT_EMAIL_DEFAULT_PAGE_SIZE = 15
+CLIENT_EMAIL_MIN_PAGE_SIZE = 3
+CLIENT_EMAIL_MAX_PAGE_SIZE = 100
+
+
+def _client_email_page_number(params) -> int:
+    try:
+        return max(1, int((params.get("page") or "1").strip()))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _client_email_per_page(params) -> int:
+    raw = (params.get("per_page") or "").strip()
+    if not raw:
+        return CLIENT_EMAIL_DEFAULT_PAGE_SIZE
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return CLIENT_EMAIL_DEFAULT_PAGE_SIZE
+    return max(CLIENT_EMAIL_MIN_PAGE_SIZE, min(CLIENT_EMAIL_MAX_PAGE_SIZE, n))
+
+
+def _client_email_url(
+    filters: dict[str, str],
+    *,
+    page: int = 1,
+    per_page: int = CLIENT_EMAIL_DEFAULT_PAGE_SIZE,
+) -> str:
+    url = reverse("client_email")
+    parts = {key: value for key, value in filters.items() if value}
+    if page > 1:
+        parts["page"] = str(page)
+    if per_page != CLIENT_EMAIL_DEFAULT_PAGE_SIZE:
+        parts["per_page"] = str(per_page)
+    query = urlencode(parts)
+    return f"{url}?{query}" if query else url
+
+
+def _client_email_page_url(
+    filters: dict[str, str], page: int, per_page: int = CLIENT_EMAIL_DEFAULT_PAGE_SIZE
+) -> str:
+    return _client_email_url(filters, page=page, per_page=per_page)
+
+
+def _client_email_filter_values(params) -> dict[str, str]:
+    def _get(name: str) -> str:
+        return (params.get(name) or "").strip()
+
+    return {
+        "q": _get("q"),
+        "company_name": _get("company_name"),
+        "product": _get("product"),
+    }
+
+
+def _client_email_filter_querystring(filters: dict[str, str]) -> str:
+    return urlencode({key: value for key, value in filters.items() if value})
+
+
+def _client_email_subscription_client_ids(company, filters: dict[str, str]) -> list[int] | None:
+    """Return client ids with matching subscriptions, or None if no product filters."""
+    if not filters["product"] and not filters["company_name"]:
+        return None
+    sub_qs = company.subscriptions.all()
+    if filters["product"]:
+        sub_qs = sub_qs.filter(product_id=filters["product"])
+    if filters["company_name"]:
+        if filters["company_name"] == NO_COMPANY_VALUE:
+            sub_qs = sub_qs.filter(
+                Q(product__company_name="") | Q(product__company_name__isnull=True)
+            )
+        else:
+            sub_qs = sub_qs.filter(product__company_name__iexact=filters["company_name"])
+    return list(sub_qs.values_list("client_id", flat=True).distinct())
+
+
+def _client_email_queryset(company, filters: dict[str, str]):
+    qs = company.clients.all().order_by("name")
+    client_ids = _client_email_subscription_client_ids(company, filters)
+    if client_ids is not None:
+        qs = qs.filter(pk__in=client_ids)
+    q = filters.get("q") or ""
+    if q:
+        qs = qs.filter(
+            Q(name__icontains=q)
+            | Q(email__icontains=q)
+            | Q(email_2__icontains=q)
+            | Q(email_3__icontains=q)
+            | Q(gst_number__icontains=q)
+        )
+    return qs
+
+
+def _client_email_filter_options(company, filters: dict[str, str]):
+    base_subs = company.subscriptions.select_related("product")
+    company_names, has_blank_company = distinct_product_company_names(base_subs)
+    products = company.products.all().order_by("name")
+    if filters["company_name"]:
+        if filters["company_name"] == NO_COMPANY_VALUE:
+            products = products.filter(
+                Q(company_name="") | Q(company_name__isnull=True)
+            )
+        else:
+            products = products.filter(company_name__iexact=filters["company_name"])
+    return company_names, has_blank_company, products
+
+
+def _client_email_recipients(company, ids):
+    if not ids:
+        return []
+    return list(company.clients.filter(pk__in=ids).order_by("name").distinct())
+
+
+def _client_email_selected_ids(raw_ids) -> set[int]:
+    selected: set[int] = set()
+    for raw in raw_ids:
+        try:
+            selected.add(int(raw))
+        except (TypeError, ValueError):
+            continue
+    return selected
+
+
+def _render_client_email(
+    request,
+    company,
+    *,
+    form,
+    filters: dict[str, str] | None = None,
+    selected_ids: set[int] | None = None,
+    page_number: int = 1,
+    per_page: int = CLIENT_EMAIL_DEFAULT_PAGE_SIZE,
+):
+    from business.client_bulk_email import BULK_EMAIL_MERGE_TAGS
+
+    filters = filters or _client_email_filter_values({})
+    selected_ids = selected_ids or set()
+    company_names, has_blank_company, products = _client_email_filter_options(
+        company, filters
+    )
+    has_active_filters = any(filters.values())
+    all_clients = list(_client_email_queryset(company, filters))
+    all_client_ids = [c.pk for c in all_clients]
+    emailable_client_ids = [c.pk for c in all_clients if c.contact_emails()]
+    emailable_count = len(emailable_client_ids)
+    paginator = Paginator(all_clients, per_page)
+    page_obj = paginator.get_page(page_number)
+    pagination_pages = [
+        {
+            "num": num,
+            "url": _client_email_page_url(filters, num, per_page),
+            "current": num == page_obj.number,
+        }
+        for num in paginator.page_range
+    ]
+    prev_page_url = (
+        _client_email_page_url(filters, page_obj.number - 1, per_page)
+        if page_obj.number > 1
+        else ""
+    )
+    next_page_url = (
+        _client_email_page_url(filters, page_obj.number + 1, per_page)
+        if page_obj.number < paginator.num_pages
+        else ""
+    )
+    outgoing = (company.outgoing_email or "").strip()
+    smtp_ready = bool(outgoing and (company.outgoing_email_app_password or "").strip())
+    return render(
+        request,
+        "business/client_email.html",
+        {
+            "company": company,
+            "object_list": page_obj.object_list,
+            "page_obj": page_obj,
+            "shown_count": paginator.count,
+            "emailable_count": emailable_count,
+            "filters": filters,
+            "filter_pills": _client_email_filter_pills(company, filters, per_page),
+            "per_page": per_page,
+            "per_page_default": CLIENT_EMAIL_DEFAULT_PAGE_SIZE,
+            "has_active_filters": has_active_filters,
+            "selected_ids": selected_ids,
+            "selected_ids_json": list(selected_ids),
+            "all_client_ids_json": all_client_ids,
+            "emailable_client_ids_json": emailable_client_ids,
+            "form": form,
+            "merge_tags": BULK_EMAIL_MERGE_TAGS,
+            "company_names": company_names,
+            "has_blank_company": has_blank_company,
+            "no_company_value": NO_COMPANY_VALUE,
+            "no_company_label": NO_COMPANY_LABEL,
+            "products": products,
+            "smtp_ready": smtp_ready,
+            "outgoing_email": outgoing,
+            "pagination_pages": pagination_pages,
+            "prev_page_url": prev_page_url,
+            "next_page_url": next_page_url,
+        },
+    )
+
+
+def _client_email_redirect(
+    filters: dict[str, str], *, per_page: int = CLIENT_EMAIL_DEFAULT_PAGE_SIZE
+):
+    return redirect(_client_email_url(filters, page=1, per_page=per_page))
+
+
+def _client_email_filter_pills(
+    company, filters: dict[str, str], per_page: int = CLIENT_EMAIL_DEFAULT_PAGE_SIZE
+) -> list[dict[str, str]]:
+    pills: list[dict[str, str]] = []
+
+    def _pill_url(**overrides) -> str:
+        merged = {**filters, **overrides}
+        return _client_email_url(merged, page=1, per_page=per_page)
+
+    if filters["company_name"]:
+        if filters["company_name"] == NO_COMPANY_VALUE:
+            label = NO_COMPANY_LABEL
+        else:
+            label = filters["company_name"]
+        pills.append(
+            {
+                "label": label,
+                "url": _pill_url(company_name=""),
+            }
+        )
+    if filters["product"]:
+        product = company.products.filter(pk=filters["product"]).first()
+        label = product.name if product else f"Product #{filters['product']}"
+        pills.append(
+            {
+                "label": label,
+                "url": _pill_url(product=""),
+            }
+        )
+    if filters["q"]:
+        pills.append(
+            {
+                "label": f"Search: {filters['q']}",
+                "url": _pill_url(q=""),
+            }
+        )
+    return pills
+
+
+@sales_module_required
+@require_http_methods(["POST"])
+def client_email_preview(request):
+    company = _company(request)
+    try:
+        client_pk = int(request.POST.get("client_id") or "")
+    except (TypeError, ValueError):
+        return _json_error("Choose a client to preview.", status=400)
+    client = company.clients.filter(pk=client_pk).first()
+    if client is None:
+        return _json_error("Client not found.", status=404)
+    subject = (request.POST.get("subject") or "").strip()
+    body = request.POST.get("body") or ""
+    from business.client_bulk_email import preview_client_email
+
+    data = preview_client_email(company, client, subject, body)
+    if not data["to_emails"]:
+        return _json_error(
+            f"{data['client_name'] or 'This client'} has no email address on file.",
+            status=400,
+        )
+    return JsonResponse({"ok": True, **data})
+
+
+@sales_module_required
+@require_http_methods(["GET", "POST"])
+def client_email(request):
+    company = _company(request)
+    params = request.GET if request.method == "GET" else request.POST
+    filters = _client_email_filter_values(params)
+    page_number = _client_email_page_number(params)
+    per_page = _client_email_per_page(params)
+
+    if request.method == "GET":
+        return _render_client_email(
+            request,
+            company,
+            form=ClientBulkEmailForm(),
+            filters=filters,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    ids = request.POST.getlist("client_ids")
+    selected_ids = _client_email_selected_ids(ids)
+    clients = _client_email_recipients(company, ids)
+    form = ClientBulkEmailForm(request.POST)
+    page_number = _client_email_page_number(request.POST)
+
+    if not clients:
+        messages.warning(request, "Select at least one client to email.")
+        return _render_client_email(
+            request,
+            company,
+            form=form,
+            filters=filters,
+            selected_ids=selected_ids,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    if not form.is_valid():
+        return _render_client_email(
+            request,
+            company,
+            form=form,
+            filters=filters,
+            selected_ids=selected_ids,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    from business.client_bulk_email import collect_attachments, enqueue_client_bulk_emails
+
+    try:
+        attachments = collect_attachments(request.FILES.getlist("attachments"))
+    except ValidationError as exc:
+        messages.error(request, str(exc))
+        return _render_client_email(
+            request,
+            company,
+            form=form,
+            filters=filters,
+            selected_ids=selected_ids,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    throttle_key = f"client-bulk-email:{company.pk}"
+    if not cache.add(throttle_key, "1", CLIENT_BULK_EMAIL_THROTTLE_SECONDS):
+        messages.info(
+            request,
+            "That send was already submitted a moment ago. "
+            f"Wait {CLIENT_BULK_EMAIL_THROTTLE_SECONDS} seconds before sending again.",
+        )
+        return _render_client_email(
+            request,
+            company,
+            form=form,
+            filters=filters,
+            selected_ids=selected_ids,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    try:
+        enqueue_client_bulk_emails(
+            company,
+            clients,
+            form.cleaned_data["subject"],
+            form.cleaned_data["body"],
+            attachments=attachments,
+        )
+    except Exception:
+        logger.exception(
+            "Client bulk email queue failed company_id=%s client_count=%s",
+            company.pk,
+            len(clients),
+        )
+        cache.delete(throttle_key)
+        messages.error(
+            request,
+            "Could not queue bulk email. Ensure the background worker is running and try again.",
+        )
+        return _render_client_email(
+            request,
+            company,
+            form=form,
+            filters=filters,
+            selected_ids=selected_ids,
+            page_number=page_number,
+            per_page=per_page,
+        )
+
+    n = len(clients)
+    messages.success(
+        request,
+        f"Sending email to {n} client(s) in the background. "
+        "Clients without an email address are skipped automatically.",
+    )
+    return _client_email_redirect(filters, per_page=per_page)
 
 
 @sales_module_required
@@ -4014,6 +4409,78 @@ def caselock_public_form(request, invite_id):
         {
             "form": form,
             "invite": invite,
+            "company": company,
+            "public_page": True,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def lead_public_enquiry(request, token):
+    from business.lead_ingest import create_lead_from_whatsapp
+    from business.lead_public_tokens import unsign_lead_public_token
+
+    parsed = unsign_lead_public_token(token)
+    if parsed is None:
+        return render(
+            request,
+            "business/lead_public_invalid.html",
+            {"public_page": True},
+            status=400,
+        )
+
+    company = None
+    company_id = parsed.get("company_id")
+    if company_id is not None:
+        company = CompanyProfile.objects.filter(pk=company_id).first()
+        if company is None:
+            return render(
+                request,
+                "business/lead_public_invalid.html",
+                {"public_page": True},
+                status=404,
+            )
+
+    wa_id = parsed.get("whatsapp_wa_id") or ""
+    initial = {
+        "contact_name": parsed.get("contact_name") or "",
+        "phone": wa_id,
+    }
+
+    if request.method == "POST":
+        form = LeadPublicForm(request.POST, company=company)
+        if form.is_valid():
+            try:
+                create_lead_from_whatsapp(
+                    company=company,
+                    contact_name=form.cleaned_data["contact_name"],
+                    company_name=form.cleaned_data.get("company_name") or "",
+                    email=form.cleaned_data.get("email") or "",
+                    phone=form.cleaned_data.get("phone") or wa_id,
+                    requirement=form.cleaned_data.get("requirement") or "",
+                    product_ids=form.product_ids(),
+                    whatsapp_wa_id=wa_id,
+                    raw_payload={"public_form": True},
+                )
+            except ValueError as exc:
+                form.add_error(None, str(exc))
+            except Exception:
+                logger.exception("Public lead enquiry save failed company_id=%s", company_id)
+                form.add_error(None, "Could not save your enquiry. Please try again.")
+            else:
+                return render(
+                    request,
+                    "business/lead_public_thanks.html",
+                    {"company": company, "public_page": True},
+                )
+    else:
+        form = LeadPublicForm(initial=initial, company=company)
+
+    return render(
+        request,
+        "business/lead_public_form.html",
+        {
+            "form": form,
             "company": company,
             "public_page": True,
         },

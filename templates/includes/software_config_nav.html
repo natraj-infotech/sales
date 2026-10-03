@@ -1,0 +1,5 @@
+<nav class="sw-config-nav" aria-label="Software configuration">
+  <a href="{% url 'catalog_hub' %}" class="{% if sw_config_tab == 'catalog' %}is-active{% endif %}">WhatsApp catalog</a>
+  <a href="{% url 'company_integrations' %}" class="{% if sw_config_tab == 'integrations' %}is-active{% endif %}">Integrations</a>
+  <a href="{% url 'company_setup' %}">Company profile</a>
+</nav>

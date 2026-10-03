@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ master_label }} categories{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <div class="sw-config-head-row">
+        <div>
+          <h1 class="sw-config-head-title">
+            <svg aria-hidden="true"><use href="#i-layers"/></svg>
+            {{ master_label }}
+          </h1>
+          <p class="sw-config-head-sub">Categories under {{ master_label }} — e.g. Laptop, Desktop, Monitor.</p>
+        </div>
+      </div>
+      {% include "includes/software_config_nav.html" with sw_config_tab="catalog" %}
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-toolbar">
+        <p class="sw-breadcrumb">
+          <a href="{% url 'catalog_hub' %}">Catalog</a> / {{ master_label }}
+        </p>
+        <a class="btn-tracker-header" href="{% url 'catalog_category_add' %}?master={{ master_key }}">Add category</a>
+      </div>
+      <div class="sw-config-content-fill">
+        <div class="sw-config-panel sw-config-panel--fill">
+          <div class="sw-config-table-wrap sw-config-table-wrap--fill">
+            <table class="sw-config-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th style="width:6rem;">Order</th>
+                  <th style="width:8rem;">Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in categories %}
+                <tr>
+                  <td><strong>{{ c.name }}</strong></td>
+                  <td>{{ c.sort_order }}</td>
+                  <td>
+                    {% if c.is_active %}<span class="sw-badge sw-badge--ok">Active</span>
+                    {% else %}<span class="sw-badge sw-badge--off">Off</span>{% endif %}
+                  </td>
+                  <td>
+                    <div class="sw-config-actions" style="justify-content:flex-end;">
+                      <a href="{% url 'catalog_subcategory_list' c.pk %}">Subcategories</a>
+                      <a href="{% url 'catalog_category_edit' c.pk %}">Edit</a>
+                    </div>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="4" style="padding:0; height:100%;">
+                    <div class="sw-config-empty sw-config-empty--fill">
+                      <strong>No categories yet</strong>
+                      Add Laptop, Desktop, Monitor, etc. under {{ master_label }}.
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

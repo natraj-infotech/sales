@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp catalog{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <div class="sw-config-head-row">
+        <div>
+          <h1 class="sw-config-head-title">
+            <svg aria-hidden="true"><use href="#i-box"/></svg>
+            Software configuration
+          </h1>
+          <p class="sw-config-head-sub">
+            Build the WhatsApp procure menu: master type → category (Laptop, Desktop…) → spec (i5…) → products with optional prices and PDFs.
+          </p>
+        </div>
+      </div>
+      {% include "includes/software_config_nav.html" with sw_config_tab="catalog" %}
+    </header>
+
+    <div class="sw-config-body sw-config-body--fill">
+      <p class="sw-config-panel-intro" style="margin-top:0; flex-shrink:0;">
+        Customers see these options in WhatsApp under <strong>Procure products</strong>. Empty masters show a friendly “not configured” message in chat.
+      </p>
+      <div class="sw-master-grid">
+        {% for m in masters %}
+        <article class="sw-master-card">
+          <h2 class="sw-master-card__label">{{ m.label }}</h2>
+          <p class="sw-master-card__count">
+            <span>{{ m.category_count }}</span>
+            categor{{ m.category_count|pluralize:"y,ies" }}
+          </p>
+          <div class="sw-master-card__actions">
+            <a class="btn-tracker-header" href="{% url 'catalog_category_list' m.key %}">Manage</a>
+            <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'catalog_category_add' %}?master={{ m.key }}">Add category</a>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

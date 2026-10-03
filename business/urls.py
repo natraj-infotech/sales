@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import views_catalog
 from . import views_notifications
 from . import views_procurement
 
@@ -81,6 +82,11 @@ urlpatterns = [
         "caselock/fill/<uuid:invite_id>/",
         views.caselock_public_form,
         name="caselock_public_form",
+    ),
+    path(
+        "leads/enquiry/<str:token>/",
+        views.lead_public_enquiry,
+        name="lead_public_enquiry",
     ),
     path("caselock/inboxes/", views.caselock_inbox_list, name="caselock_inbox_list"),
     path(
@@ -184,6 +190,8 @@ urlpatterns = [
     path("vendors/<int:pk>/delete/", views.vendor_delete, name="vendor_delete"),
     path("clients/", views.client_list, name="client_list"),
     path("clients/bulk-delete/", views.client_bulk_delete, name="client_bulk_delete"),
+    path("email/", views.client_email, name="client_email"),
+    path("email/preview/", views.client_email_preview, name="client_email_preview"),
     path("clients/export/", views.client_export, name="client_export"),
     path("clients/import/", views.client_import, name="client_import"),
     path("clients/add/", views.client_add, name="client_add"),
@@ -296,5 +304,66 @@ urlpatterns = [
         "support/tickets/<int:pk>/update/",
         views.support_ticket_update,
         name="support_ticket_update",
+    ),
+    path("catalog/", views_catalog.catalog_hub, name="catalog_hub"),
+    path(
+        "catalog/<str:master_key>/",
+        views_catalog.catalog_category_list,
+        name="catalog_category_list",
+    ),
+    path(
+        "catalog/category/new/",
+        views_catalog.catalog_category_add,
+        name="catalog_category_add",
+    ),
+    path(
+        "catalog/category/<int:pk>/edit/",
+        views_catalog.catalog_category_edit,
+        name="catalog_category_edit",
+    ),
+    path(
+        "catalog/category/<int:pk>/delete/",
+        views_catalog.catalog_category_delete,
+        name="catalog_category_delete",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/",
+        views_catalog.catalog_subcategory_list,
+        name="catalog_subcategory_list",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/new/",
+        views_catalog.catalog_subcategory_add,
+        name="catalog_subcategory_add",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/<int:pk>/edit/",
+        views_catalog.catalog_subcategory_edit,
+        name="catalog_subcategory_edit",
+    ),
+    path(
+        "catalog/category/<int:category_pk>/subcategories/<int:pk>/delete/",
+        views_catalog.catalog_subcategory_delete,
+        name="catalog_subcategory_delete",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/",
+        views_catalog.catalog_product_list,
+        name="catalog_product_list",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/new/",
+        views_catalog.catalog_product_add,
+        name="catalog_product_add",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/<int:pk>/edit/",
+        views_catalog.catalog_product_edit,
+        name="catalog_product_edit",
+    ),
+    path(
+        "catalog/subcategory/<int:subcategory_pk>/products/<int:pk>/delete/",
+        views_catalog.catalog_product_delete,
+        name="catalog_product_delete",
     ),
 ]

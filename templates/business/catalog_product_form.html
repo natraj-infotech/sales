@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Catalog product{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <div class="sw-config-head-row">
+        <div>
+          <h1 class="sw-config-head-title">
+            {% if instance %}Edit product{% else %}Add product{% endif %}
+          </h1>
+          <p class="sw-config-head-sub">{{ subcategory.category.get_master_category_display }} → {{ subcategory.category.name }} → {{ subcategory.name }}</p>
+        </div>
+      </div>
+      {% include "includes/software_config_nav.html" with sw_config_tab="catalog" %}
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-toolbar">
+        <p class="sw-breadcrumb">
+          <a href="{% url 'catalog_product_list' subcategory.pk %}">← {{ subcategory.name }}</a>
+        </p>
+        <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'catalog_product_list' subcategory.pk %}">Cancel</a>
+      </div>
+      <form method="post" enctype="multipart/form-data" class="sw-config-panel sw-config-form-panel sw-config-form-panel--wide sw-config-content-fill">
+        <p class="sw-config-panel-intro" style="margin-top:0;">Leave unit price empty for “price on request” in WhatsApp auto-quotes.</p>
+        {% csrf_token %}
+        <div class="sw-config-form-grid sw-config-form-grid--4">
+          {% include "includes/form_field_tracker.html" with field=form.brand icon="id-card" %}
+          {% include "includes/form_field_tracker.html" with field=form.product_name icon="box" %}
+          {% include "includes/form_field_tracker.html" with field=form.model_number icon="key" %}
+          <div class="form-field-tracker form-field-tracker--compact">
+            <label class="tracker-field-label" for="{{ form.sort_order.id_for_label }}">
+              <svg class="tracker-field-icon" width="18" height="18" aria-hidden="true"><use href="#i-chart"/></svg>
+              <span>{{ form.sort_order.label }}</span>
+            </label>
+            {{ form.sort_order }}
+          </div>
+          {% include "includes/form_field_tracker.html" with field=form.unit_price icon="credit-card" %}
+          {% include "includes/form_field_tracker.html" with field=form.specs icon="doc" full_width=True %}
+          {% include "includes/form_field_tracker.html" with field=form.datasheet_pdf icon="upload" full_width=True %}
+          <div class="sw-config-check-row">
+            <div class="form-field-tracker form-field-tracker--check">
+              {{ form.is_active }}
+              <label for="{{ form.is_active.id_for_label }}">Active</label>
+            </div>
+            <div class="form-field-tracker form-field-tracker--check">
+              {{ form.is_whatsapp_visible }}
+              <label for="{{ form.is_whatsapp_visible.id_for_label }}">Show on WhatsApp</label>
+            </div>
+          </div>
+        </div>
+        <div class="sw-config-form-actions">
+          <button type="submit" class="btn-tracker-header">Save product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

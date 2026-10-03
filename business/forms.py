@@ -326,6 +326,43 @@ class ClientForm(forms.ModelForm):
         return (self.cleaned_data.get("tenant_id") or "").strip()
 
 
+class ClientBulkEmailForm(forms.Form):
+    subject = forms.CharField(
+        label="Subject",
+        max_length=998,
+        widget=forms.TextInput(
+            attrs={
+                "class": "input-inline",
+                "style": "width:100%;max-width:42rem;",
+                "placeholder": "Email subject",
+            }
+        ),
+    )
+    body = forms.CharField(
+        label="Message",
+        widget=forms.Textarea(
+            attrs={
+                "class": "input-inline",
+                "rows": 12,
+                "style": "width:100%;max-width:42rem;",
+                "placeholder": "Write your message…",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        tag_hint = ", ".join(f"{{{{{key}}}}}" for key, _ in self._merge_tag_choices())
+        self.fields["subject"].help_text = f"Optional merge tags: {tag_hint}"
+        self.fields["body"].help_text = f"Optional merge tags: {tag_hint}"
+
+    @staticmethod
+    def _merge_tag_choices():
+        from business.client_bulk_email import BULK_EMAIL_MERGE_TAGS
+
+        return BULK_EMAIL_MERGE_TAGS
+
+
 class ProductForm(forms.ModelForm):
     category = forms.ChoiceField(
         required=False,
@@ -988,6 +1025,44 @@ class LeadForm(forms.ModelForm):
         self.fields["company_name"].required = False
         self.fields["requirement"].required = False
         self.fields["notes"].required = False
+
+
+class LeadPublicForm(forms.Form):
+    """Guest lead enquiry (WhatsApp CTA and other public links)."""
+
+    contact_name = forms.CharField(max_length=255, label="Your name")
+    company_name = forms.CharField(
+        max_length=255, label="Company", required=False
+    )
+    email = forms.EmailField(required=False)
+    phone = forms.CharField(max_length=64, required=False, label="Phone")
+    requirement = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 4}),
+        required=False,
+        label="What do you need?",
+    )
+    products = forms.ModelMultipleChoiceField(
+        queryset=Product.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    website = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.company = company
+        if company is not None:
+            self.fields["products"].queryset = company.products.all().order_by("name")
+        else:
+            self.fields["products"].queryset = Product.objects.none()
+
+    def clean_website(self):
+        if (self.cleaned_data.get("website") or "").strip():
+            raise forms.ValidationError("Invalid submission.")
+        return ""
+
+    def product_ids(self) -> list[int]:
+        return [p.pk for p in self.cleaned_data.get("products") or []]
 
 
 class LeadStatusForm(forms.Form):

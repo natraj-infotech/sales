@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Thank you{% endblock %}
+
+{% block content_guest %}
+<div class="card" style="max-width: 480px; margin: 2rem auto; text-align: center;">
+  <h1 style="font-size: 1.35rem;">Thank you</h1>
+  <p style="color: #475569; line-height: 1.5;">
+    We received your enquiry{% if company %} for {{ company.company_name }}{% endif %}.
+    Our team will get back to you soon.
+  </p>
+  <p style="color: #94a3b8; font-size: 0.9rem; margin-top: 1.5rem;">
+    You can close this page and return to WhatsApp.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Subcategory{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <div class="sw-config-head-row">
+        <div>
+          <h1 class="sw-config-head-title">
+            {% if instance %}Edit subcategory{% else %}Add subcategory{% endif %}
+          </h1>
+          <p class="sw-config-head-sub">{{ category.get_master_category_display }} → {{ category.name }} · processor or spec band</p>
+        </div>
+      </div>
+      {% include "includes/software_config_nav.html" with sw_config_tab="catalog" %}
+    </header>
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-toolbar">
+        <p class="sw-breadcrumb">
+          <a href="{% url 'catalog_hub' %}">Catalog</a> /
+          <a href="{% url 'catalog_category_list' category.master_category %}">{{ category.get_master_category_display }}</a> /
+          <a href="{% url 'catalog_subcategory_list' category.pk %}">{{ category.name }}</a>
+        </p>
+        <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'catalog_subcategory_list' category.pk %}">Cancel</a>
+      </div>
+      <form method="post" enctype="multipart/form-data" class="sw-config-panel sw-config-form-panel sw-config-form-panel--wide sw-config-content-fill">
+        {% csrf_token %}
+        <div class="sw-config-form-grid sw-config-form-grid--3">
+          {% include "includes/form_field_tracker.html" with field=form.name icon="doc" %}
+          {% include "includes/form_field_tracker.html" with field=form.description icon="doc" %}
+          <div class="form-field-tracker form-field-tracker--compact">
+            <label class="tracker-field-label" for="{{ form.sort_order.id_for_label }}">
+              <svg class="tracker-field-icon" width="18" height="18" aria-hidden="true"><use href="#i-chart"/></svg>
+              <span>{{ form.sort_order.label }}</span>
+            </label>
+            {{ form.sort_order }}
+          </div>
+          {% include "includes/form_field_tracker.html" with field=form.brochure_pdf icon="upload" full_width=True %}
+          <div class="sw-config-check-row">
+            <div class="form-field-tracker form-field-tracker--check">
+              {{ form.is_active }}
+              <label for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+            </div>
+          </div>
+        </div>
+        <div class="sw-config-form-actions">
+          <button type="submit" class="btn-tracker-header">Save subcategory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

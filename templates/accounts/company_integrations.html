@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Integrations{% endblock %}
+{% block page_header %}{% endblock %}
+{% block extra_css %}{% include "includes/software_config_styles.html" %}{% endblock %}
+
+{% block content %}
+<div class="sw-config-shell">
+  <div class="sw-config-card">
+    <header class="sw-config-head">
+      <div class="sw-config-head-row">
+        <div>
+          <h1 class="sw-config-head-title">
+            <svg aria-hidden="true"><use href="#i-mail"/></svg>
+            Software configuration
+          </h1>
+          <p class="sw-config-head-sub">
+            Connect WhatsApp Cloud API for this company. Meta webhooks must point at your server using the phone number ID below.
+          </p>
+        </div>
+      </div>
+      {% include "includes/software_config_nav.html" with sw_config_tab="integrations" %}
+    </header>
+
+    <div class="sw-config-body sw-config-body--fill">
+      <div class="sw-config-grid">
+        <section class="sw-config-panel" aria-labelledby="wa-lines-heading">
+          <h2 id="wa-lines-heading" class="sw-config-panel-title">
+            <svg aria-hidden="true"><use href="#i-layers"/></svg>
+            WhatsApp lines
+          </h2>
+          <p class="sw-config-panel-intro">
+            One row per business phone number (Phone number ID from Meta → API Setup).
+          </p>
+
+          {% if accounts %}
+          <div class="sw-config-table-wrap">
+            <table class="sw-config-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Display</th>
+                  <th>Phone number ID</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for acc in accounts %}
+                <tr>
+                  <td><strong>{{ acc.label|default:"—" }}</strong></td>
+                  <td>{{ acc.display_phone|default:"—" }}</td>
+                  <td><code style="font-size:0.75rem;">{{ acc.phone_number_id }}</code></td>
+                  <td>
+                    {% if acc.is_active %}
+                    <span class="sw-badge sw-badge--ok">Active</span>
+                    {% else %}
+                    <span class="sw-badge sw-badge--off">Inactive</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="sw-config-actions">
+                      <a href="{% url 'company_integrations' %}?edit={{ acc.pk }}">Edit</a>
+                      <form method="post" onsubmit="return confirm('Remove this WhatsApp line?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="account_id" value="{{ acc.pk }}">
+                        <button type="submit" class="btn-link-danger">Remove</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="sw-config-empty">
+            <strong>No WhatsApp lines yet</strong>
+            Add your first line using the form → or configure server env vars
+            <code>WHATSAPP_ACCESS_TOKEN</code> and <code>WHATSAPP_DEFAULT_PHONE_NUMBER_ID</code>.
+          </div>
+          {% endif %}
+
+          {% if webhook_url %}
+          <div class="sw-config-hint">
+            <strong>Webhook callback URL</strong> (register in Meta App Dashboard):<br>
+            <code>{{ webhook_url }}</code>
+          </div>
+          {% endif %}
+        </section>
+
+        <section class="sw-config-panel sw-config-form-panel" aria-labelledby="wa-form-heading">
+          <h2 id="wa-form-heading" class="sw-config-panel-title">
+            <svg aria-hidden="true"><use href="#i-plus"/></svg>
+            {% if editing %}Edit line{% else %}Add WhatsApp line{% endif %}
+          </h2>
+          {% if editing %}
+          <p class="sw-config-panel-intro">Updating <strong>{{ editing.label|default:editing.phone_number_id }}</strong>.</p>
+          {% else %}
+          <p class="sw-config-panel-intro">Paste credentials from Meta Business → WhatsApp → API setup.</p>
+          {% endif %}
+
+          <form method="post">
+            {% csrf_token %}
+            {% if editing %}<input type="hidden" name="account_id" value="{{ editing.pk }}">{% endif %}
+            <div class="sw-config-form-grid">
+              {% include "includes/form_field_tracker.html" with field=form.label icon="doc" %}
+              {% include "includes/form_field_tracker.html" with field=form.display_phone icon="phone" %}
+              {% include "includes/form_field_tracker.html" with field=form.phone_number_id icon="key" full_width=True %}
+              {% include "includes/form_field_tracker.html" with field=form.waba_id icon="layers" full_width=True %}
+              {% include "includes/form_field_tracker.html" with field=form.access_token icon="lock" full_width=True %}
+              <div class="form-field-tracker form-field-tracker--check form-field-tracker--full">
+                {{ form.is_active }}
+                <label class="tracker-field-label" for="{{ form.is_active.id_for_label }}" style="display:inline;">
+                  {{ form.is_active.label }}
+                </label>
+              </div>
+            </div>
+            <div class="sw-config-form-actions">
+              <button type="submit" class="btn-tracker-header">Save line</button>
+              {% if editing %}
+              <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'company_integrations' %}">Cancel edit</a>
+              {% endif %}
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
