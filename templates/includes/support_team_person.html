@@ -1,0 +1,8 @@
+<li class="st-team-person" draggable="true" data-id="{{ p.id }}" data-search="{{ p.email|lower }} {{ p.name|lower }}">
+  <input type="checkbox" aria-label="Select {{ p.email }}">
+  <div class="who">
+    <strong>{% if p.name %}{{ p.name }}{% else %}{{ p.email }}{% endif %}</strong>
+    {% if p.name %}<span>{{ p.email }}</span>{% endif %}
+  </div>
+  <span class="load" title="Open tickets assigned">{{ p.open_tickets }} open</span>
+</li>

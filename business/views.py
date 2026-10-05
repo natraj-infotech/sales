@@ -11,7 +11,7 @@ from django.core.cache import cache
 from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,7 +25,6 @@ from accounts.models import CompanyProfile
 from accounts.permissions import (
     backup_access_required,
     company_owner_required,
-    company_users,
     get_company_for_user,
     sales_module_required,
     support_ticket_access_required,
@@ -53,6 +52,7 @@ from .forms import (
 )
 from . import helpdesk_bridge
 from .analytics import sales_dashboard_charts, ticket_charts_from_views
+from .support_team import assignable_users, get_support_team, team_picker_context
 from .models import (
     CaseLockInvite,
     CaseLockProduct,
@@ -3406,7 +3406,10 @@ def _support_ticket_list_data(
         "source": source,
         "counts": counts,
         "oem_counts": oem_counts,
-        "assignees": company_users(company),
+        "assignees": assignable_users(
+            company, include_ids={t.assignee_id for t in base}
+        ),
+        "auto_assign_enabled": get_support_team(company).auto_assign_enabled,
         "sla_settings": sla_settings,
         "charts": ticket_charts_from_views(internal_wrapped),
     }
@@ -3465,8 +3468,10 @@ def support_ticket_list(request):
             "counts": data["counts"],
             "oem_counts": data["oem_counts"],
             "assignees": data["assignees"],
+            "auto_assign_enabled": data["auto_assign_enabled"],
             "sla_settings": data["sla_settings"],
             "charts": data["charts"],
+            **team_picker_context(company),
         },
     )
 
@@ -3584,7 +3589,7 @@ def support_ticket_update(request, pk):
 
         raise Http404 from None
 
-    assignees = company_users(company)
+    assignees = assignable_users(company, include_ids={ticket.assigned_to_id})
     status = request.POST.get("status", "").strip()
     status_changed = False
     if status and status in dict(helpdesk_bridge.STATUS_CHOICES):
@@ -4092,6 +4097,57 @@ def support_sla_settings(request):
             "settings_obj": settings_obj,
         },
     )
+
+
+@support_ticket_access_required
+@require_http_methods(["GET", "POST"])
+def support_team_settings(request):
+    """Saves the support team modal; GET opens the ticket list with the modal shown."""
+    from business import support_team
+
+    url = reverse("support_ticket_list")
+    if request.method == "GET":
+        return redirect(f"{url}?team=1")
+
+    company = _company(request)
+    support_team.save_team(
+        company,
+        member_ids=request.POST.getlist("members"),
+        auto_assign_enabled=request.POST.get("auto_assign_enabled") == "on",
+    )
+    messages.success(request, "Support team saved.")
+    qs = QueryDict(request.POST.get("next_qs", "").strip(), mutable=True)
+    qs.pop("team", None)
+    if qs:
+        url = f"{url}?{qs.urlencode()}"
+    return redirect(url)
+
+
+@support_ticket_access_required
+@require_http_methods(["POST"])
+def support_team_auto_assign_toggle(request):
+    from business import support_team
+
+    company = _company(request)
+    enabled = request.POST.get("auto_assign_enabled") == "on"
+    support_team.set_auto_assign(company, enabled)
+    if enabled and not support_team.team_members(company).exists():
+        messages.warning(
+            request,
+            "Auto-assign is on, but the support team is empty. Add engineers so tickets can be assigned.",
+        )
+    else:
+        messages.success(
+            request,
+            "Auto-assign turned on. New tickets will go to a support engineer."
+            if enabled
+            else "Auto-assign turned off. Assign new tickets manually.",
+        )
+    url = reverse("support_ticket_list")
+    qs = request.POST.get("next_qs", "").strip()
+    if qs:
+        url = f"{url}?{qs}"
+    return redirect(url)
 
 
 @require_http_methods(["GET"])

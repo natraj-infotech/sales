@@ -403,6 +403,16 @@ def create_internal_ticket(
         priority_source=priority_source,
     )
     try:
+        from business.support_team import auto_assign_ticket
+
+        auto_assign_ticket(company, ticket)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Auto-assign failed for internal ticket_id=%s", ticket.pk
+        )
+    try:
         from business.team_notifications import notify_new_ticket
 
         notify_new_ticket(ticket)
@@ -540,7 +550,7 @@ def set_ticket_status(ticket: Ticket, ui_status: str, user=None) -> bool:
     return True
 
 
-def set_ticket_assignee(ticket: Ticket, assignee, user=None) -> bool:
+def set_ticket_assignee(ticket: Ticket, assignee, user=None, comment: str = "") -> bool:
     """
     Assign/unassign a ticket. Returns True if the assignee changed.
 
@@ -553,7 +563,7 @@ def set_ticket_assignee(ticket: Ticket, assignee, user=None) -> bool:
     update_ticket(
         user=user,
         ticket=ticket,
-        comment="",
+        comment=comment,
         public=False,
         owner=owner_id,
     )

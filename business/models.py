@@ -1572,6 +1572,41 @@ class SupportSLASettings(models.Model):
         return self.sla_mode in (self.SLAMode.RESOLVE, self.SLAMode.BOTH)
 
 
+class SupportTeam(models.Model):
+    """Per-company support engineers and the auto-assign toggle for new tickets."""
+
+    company = models.OneToOneField(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="support_team",
+    )
+    auto_assign_enabled = models.BooleanField(
+        default=False,
+        help_text="When on, new internal and email tickets go to the least-loaded engineer.",
+    )
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="support_teams",
+    )
+    last_assigned = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Used to rotate between engineers with the same open-ticket count.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "support team"
+        verbose_name_plural = "support teams"
+
+    def __str__(self):
+        return f"Support team for {self.company}"
+
+
 class TicketPriorityRule(models.Model):
     """Customisable subject keywords → priority for a company."""
 

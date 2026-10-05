@@ -19,6 +19,7 @@ from .models import (
     SupportTicketComment,
     SupportTicketMeta,
     SupportSLASettings,
+    SupportTeam,
     TicketPriorityRule,
     RenewalSLASettings,
     OemDiaryCompany,
@@ -266,6 +267,13 @@ class SupportSLASettingsAdmin(admin.ModelAdmin):
         "updated_at",
     )
     list_filter = ("sla_mode", "email_auto_priority")
+
+
+@admin.register(SupportTeam)
+class SupportTeamAdmin(admin.ModelAdmin):
+    list_display = ("company", "auto_assign_enabled", "last_assigned", "updated_at")
+    list_filter = ("auto_assign_enabled",)
+    filter_horizontal = ("members",)
 
 
 @admin.register(TicketPriorityRule)

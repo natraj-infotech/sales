@@ -4,6 +4,9 @@
 {% block extra_css %}
 {% include "includes/analytics_dash.css.html" %}
 {% include "includes/oem_tickets.css.html" %}
+<style>
+  .st-auto-assign-row { margin: 0 0 1rem; background: #f8fafc; }
+</style>
 {% endblock %}
 
 {% block page_header %}
@@ -19,6 +22,7 @@
     </div>
   </div>
   <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="#" data-open-support-team>Support team</a>
     <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'support_sla_settings' %}">SLA &amp; priority</a>
     {% if source == "oem" %}
     <a class="btn-tracker-header btn-tracker-ghost" href="#" data-open-oem-diary>Email Diary</a>
@@ -32,6 +36,7 @@
 {% endblock %}
 
 {% block content %}
+{% include "includes/support_team_modal.html" %}
 <div class="ticket360-page">
   <div class="oem-source-tabs">
     <a class="oem-source-tab {% if source != 'oem' %}is-active{% endif %}" href="{% url 'support_ticket_list' %}">
@@ -98,6 +103,21 @@
   </div>
   {% include "includes/oem_email_diary_modal.html" %}
   {% else %}
+  <form method="post" action="{% url 'support_team_auto_assign_toggle' %}" class="sla-toggle-row st-auto-assign-row">
+    {% csrf_token %}
+    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+    <div class="toggle-copy">
+      <strong>Auto-assign {% if auto_assign_enabled %}is on{% else %}is off{% endif %}</strong>
+      <p>
+        {% if auto_assign_enabled %}New tickets go to the support engineer with the fewest open tickets.{% else %}New tickets stay unassigned until you assign them.{% endif %}
+        <a href="#" data-open-support-team>Manage support team</a>
+      </p>
+    </div>
+    <label class="sla-switch" title="Auto-assign new tickets">
+      <input type="checkbox" name="auto_assign_enabled" {% if auto_assign_enabled %}checked{% endif %} onchange="this.form.submit()">
+      <span class="slider"></span>
+    </label>
+  </form>
   <div class="ticket360-stats">
     <div class="ticket360-stat is-active">
       <div class="num" id="st-count-total">{{ counts.total }}</div>

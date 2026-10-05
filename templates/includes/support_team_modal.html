@@ -1,0 +1,419 @@
+<style>
+  .st-team-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 80;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+  .st-team-backdrop.is-open { display: flex; }
+  .st-team-modal {
+    width: min(1040px, 100%);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+    overflow: hidden;
+  }
+  .st-team-modal form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .st-team-head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--header-blue);
+    color: #fff;
+    padding: 0.85rem 1.1rem;
+  }
+  .st-team-head strong { font-size: 1rem; }
+  .st-team-head span { display: block; font-size: 0.78rem; opacity: 0.85; }
+  .st-team-head button {
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .st-team-body {
+    padding: 1rem 1.25rem;
+    overflow: auto;
+    min-height: 0;
+  }
+  .st-team-body h3 {
+    margin: 1rem 0 0.25rem;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  .st-team-body .section-help {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .st-team-foot {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.8rem 1.25rem;
+    border-top: 1px solid var(--border);
+    background: #f8fafc;
+  }
+  .st-team-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 1rem;
+    align-items: stretch;
+  }
+  .st-team-panel {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    min-height: 18rem;
+  }
+  .st-team-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+    border-radius: 10px 10px 0 0;
+  }
+  .st-team-panel-head h4 { margin: 0; font-size: 0.88rem; color: var(--text); }
+  .st-team-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--header-blue);
+    background: #eff6ff;
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+  }
+  .st-team-search {
+    margin: 0.6rem 0.85rem 0.2rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .st-team-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.5rem;
+    flex: 1;
+    overflow-y: auto;
+    max-height: 40vh;
+  }
+  .st-team-list.is-drop-target {
+    background: #eff6ff;
+    outline: 2px dashed var(--header-blue);
+    outline-offset: -6px;
+    border-radius: 8px;
+  }
+  .st-team-person {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    cursor: grab;
+    user-select: none;
+  }
+  .st-team-person:hover { border-color: var(--header-blue); }
+  .st-team-person.is-selected { background: #eff6ff; border-color: var(--header-blue); }
+  .st-team-person.is-dragging { opacity: 0.45; }
+  .st-team-person .who { flex: 1; min-width: 0; }
+  .st-team-person .who strong {
+    display: block;
+    font-size: 0.84rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .st-team-person .who span { font-size: 0.74rem; color: var(--muted); }
+  .st-team-person .load { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  .st-team-empty {
+    padding: 1.5rem 0.75rem;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .st-team-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .st-team-actions button { min-width: 7.5rem; }
+  @media (max-width: 760px) {
+    .st-team-grid { grid-template-columns: 1fr; }
+    .st-team-actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  }
+</style>
+
+<div class="st-team-backdrop" id="st-team-modal">
+  <div class="st-team-modal" role="dialog" aria-modal="true" aria-labelledby="st-team-title">
+    <form method="post" action="{% url 'support_team_settings' %}" id="st-team-form">
+      {% csrf_token %}
+      <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+      <div class="st-team-head">
+        <div>
+          <strong id="st-team-title">Support team</strong>
+          <span>Choose the engineers who handle tickets and turn auto-assign on or off</span>
+        </div>
+        <button type="button" data-close-support-team aria-label="Close">&times;</button>
+      </div>
+
+      <div class="st-team-body">
+        <div class="sla-toggle-row">
+          <div class="toggle-copy">
+            <strong>Auto-assign new tickets</strong>
+            <p>When on, each new ticket (created here or received by email) goes to the support engineer with the fewest open tickets. When off, tickets stay unassigned until someone assigns them. OEM tickets are never auto-assigned.</p>
+          </div>
+          <label class="sla-switch" title="Auto-assign new tickets">
+            <input type="checkbox" name="auto_assign_enabled" {% if team.auto_assign_enabled %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <h3>Team members</h3>
+        <p class="section-help">Drag people between the lists, or tick them and use the buttons. Double-click also moves a person. Only support team members appear in the assignee dropdown once the team has people.</p>
+
+        <div class="st-team-grid">
+          <div class="st-team-panel">
+            <div class="st-team-panel-head">
+              <h4>Company team</h4>
+              <span class="st-team-count" data-count-for="available">{{ team_available|length }}</span>
+            </div>
+            <input type="search" class="st-team-search" data-search-for="available" placeholder="Search people" autocomplete="off">
+            <ul class="st-team-list" data-list="available">
+              {% for p in team_available %}
+              {% include "includes/support_team_person.html" %}
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="st-team-actions">
+            <button type="button" class="ticket360-btn" data-move="add">Add &rarr;</button>
+            <button type="button" class="ticket360-btn ticket360-btn--ghost" data-move="remove">&larr; Remove</button>
+            <button type="button" class="ticket360-btn ticket360-btn--ghost" data-move="add-all">Add all &raquo;</button>
+            <button type="button" class="ticket360-btn ticket360-btn--ghost" data-move="remove-all">&laquo; Remove all</button>
+          </div>
+
+          <div class="st-team-panel">
+            <div class="st-team-panel-head">
+              <h4>Support team</h4>
+              <span class="st-team-count" data-count-for="members">{{ team_members|length }}</span>
+            </div>
+            <input type="search" class="st-team-search" data-search-for="members" placeholder="Search support team" autocomplete="off">
+            <ul class="st-team-list" data-list="members">
+              {% for p in team_members %}
+              {% include "includes/support_team_person.html" %}
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <div id="st-member-inputs"></div>
+      </div>
+
+      <div class="st-team-foot">
+        <button type="button" class="ticket360-btn ticket360-btn--ghost" data-close-support-team>Cancel</button>
+        <button type="submit" class="ticket360-btn">Save support team</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById("st-team-modal");
+  if (!modal) return;
+  var form = document.getElementById("st-team-form");
+  var lists = {
+    available: modal.querySelector('[data-list="available"]'),
+    members: modal.querySelector('[data-list="members"]'),
+  };
+  var initialHtml = { available: lists.available.innerHTML, members: lists.members.innerHTML };
+  var initialToggle = form.elements.auto_assign_enabled.checked;
+  var dragged = null;
+
+  function openModal() {
+    modal.classList.add("is-open");
+    document.body.style.overflow = "hidden";
+  }
+  function closeModal() {
+    modal.classList.remove("is-open");
+    document.body.style.overflow = "";
+    lists.available.innerHTML = initialHtml.available;
+    lists.members.innerHTML = initialHtml.members;
+    form.elements.auto_assign_enabled.checked = initialToggle;
+    modal.querySelectorAll("[data-search-for]").forEach(function (i) { i.value = ""; });
+    refresh();
+  }
+
+  document.querySelectorAll("[data-open-support-team]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      openModal();
+    });
+  });
+  modal.querySelectorAll("[data-close-support-team]").forEach(function (btn) {
+    btn.addEventListener("click", closeModal);
+  });
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) closeModal();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal.classList.contains("is-open")) closeModal();
+  });
+
+  function people(list) {
+    return Array.prototype.slice.call(list.querySelectorAll(".st-team-person"));
+  }
+
+  function refresh() {
+    Object.keys(lists).forEach(function (key) {
+      var list = lists[key];
+      var items = people(list);
+      modal.querySelector('[data-count-for="' + key + '"]').textContent = items.length;
+      var empty = list.querySelector(".st-team-empty");
+      if (!items.length && !empty) {
+        empty = document.createElement("li");
+        empty.className = "st-team-empty";
+        empty.textContent = key === "members"
+          ? "No engineers yet. Drag people here."
+          : "Everyone is in the support team.";
+        list.appendChild(empty);
+      } else if (items.length && empty) {
+        empty.remove();
+      }
+    });
+  }
+
+  function setSelected(item, on) {
+    item.classList.toggle("is-selected", on);
+    item.querySelector("input[type=checkbox]").checked = on;
+  }
+
+  function moveTo(item, targetKey) {
+    setSelected(item, false);
+    item.hidden = false;
+    lists[targetKey].appendChild(item);
+  }
+
+  function moveSelected(fromKey, toKey, all) {
+    people(lists[fromKey]).forEach(function (item) {
+      if (all ? !item.hidden : item.classList.contains("is-selected")) {
+        moveTo(item, toKey);
+      }
+    });
+    refresh();
+  }
+
+  Object.keys(lists).forEach(function (key) {
+    var list = lists[key];
+    var other = key === "members" ? "available" : "members";
+
+    list.addEventListener("change", function (e) {
+      if (e.target.matches("input[type=checkbox]")) {
+        setSelected(e.target.closest(".st-team-person"), e.target.checked);
+      }
+    });
+    list.addEventListener("click", function (e) {
+      var item = e.target.closest(".st-team-person");
+      if (!item || e.target.matches("input")) return;
+      setSelected(item, !item.classList.contains("is-selected"));
+    });
+    list.addEventListener("dblclick", function (e) {
+      var item = e.target.closest(".st-team-person");
+      if (!item) return;
+      moveTo(item, other);
+      refresh();
+    });
+
+    list.addEventListener("dragstart", function (e) {
+      var item = e.target.closest(".st-team-person");
+      if (!item) return;
+      dragged = item;
+      item.classList.add("is-dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", item.dataset.id);
+    });
+    list.addEventListener("dragend", function () {
+      if (dragged) dragged.classList.remove("is-dragging");
+      dragged = null;
+      Object.keys(lists).forEach(function (k) { lists[k].classList.remove("is-drop-target"); });
+    });
+    list.addEventListener("dragover", function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      list.classList.add("is-drop-target");
+    });
+    list.addEventListener("dragleave", function (e) {
+      if (!list.contains(e.relatedTarget)) list.classList.remove("is-drop-target");
+    });
+    list.addEventListener("drop", function (e) {
+      e.preventDefault();
+      list.classList.remove("is-drop-target");
+      if (!dragged) return;
+      var group = dragged.classList.contains("is-selected")
+        ? people(dragged.parentNode).filter(function (i) { return i.classList.contains("is-selected"); })
+        : [dragged];
+      group.forEach(function (item) { moveTo(item, key); });
+      refresh();
+    });
+  });
+
+  modal.querySelectorAll("[data-move]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var action = btn.dataset.move;
+      if (action === "add") moveSelected("available", "members", false);
+      if (action === "remove") moveSelected("members", "available", false);
+      if (action === "add-all") moveSelected("available", "members", true);
+      if (action === "remove-all") moveSelected("members", "available", true);
+    });
+  });
+
+  modal.querySelectorAll("[data-search-for]").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var q = input.value.trim().toLowerCase();
+      people(lists[input.dataset.searchFor]).forEach(function (item) {
+        item.hidden = q && item.dataset.search.indexOf(q) === -1;
+      });
+    });
+  });
+
+  form.addEventListener("submit", function () {
+    var holder = document.getElementById("st-member-inputs");
+    holder.innerHTML = "";
+    people(lists.members).forEach(function (item) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "members";
+      input.value = item.dataset.id;
+      holder.appendChild(input);
+    });
+  });
+
+  refresh();
+  if (new URLSearchParams(window.location.search).get("team") === "1") openModal();
+})();
+</script>

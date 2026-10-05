@@ -57,6 +57,26 @@ def scrub_external_caution_from_ticket(sender, ticket, **kwargs):
 _EMAIL_TICKET_SENDERS = {"helpdesk_inbox", "create_object_from_email_message"}
 
 
+# Registered before the confirmation mail so it can show the assigned engineer.
+@receiver(new_ticket_done)
+def auto_assign_email_ticket(sender, ticket, **kwargs):
+    if sender not in _EMAIL_TICKET_SENDERS:
+        return
+    try:
+        from business.support_team import auto_assign_ticket
+        from business.team_notifications import company_for_ticket
+
+        company = company_for_ticket(ticket)
+        if company is None:
+            return
+        auto_assign_ticket(company, ticket)
+    except Exception:
+        logger.exception(
+            "Auto-assign failed for email ticket_id=%s",
+            getattr(ticket, "pk", None),
+        )
+
+
 @receiver(new_ticket_done)
 def email_sender_ticket_confirmation(sender, ticket, **kwargs):
     """Tell the person who emailed support that a ticket was created."""

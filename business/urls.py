@@ -291,6 +291,16 @@ urlpatterns = [
         name="support_sla_settings",
     ),
     path(
+        "support/team/",
+        views.support_team_settings,
+        name="support_team_settings",
+    ),
+    path(
+        "support/team/auto-assign/",
+        views.support_team_auto_assign_toggle,
+        name="support_team_auto_assign_toggle",
+    ),
+    path(
         "support/tickets/<int:pk>/transfer-oem/",
         views.support_ticket_transfer_oem,
         name="support_ticket_transfer_oem",
