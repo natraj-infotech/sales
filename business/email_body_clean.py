@@ -8,24 +8,40 @@ import re
 # Shown when the only content was an auto-injected mail-security banner.
 ASSIGN_NEEDED_MESSAGE = "This ticket needs to be assigned."
 
-# M365 / org gateways prepend something like:
+# Banner end: "...know the content is safe. Report any suspicious email ... IT Team."
+_BANNER_END = (
+    r"(?:know the content is safe\.(?:\s*Report any suspicious email[^.]*\.)?"
+    r"|Report any suspicious email[^.]*\."
+    r"|to IT Team\.)"
+)
+
+# M365 / org gateways inject something like:
 # "CAUTION: This email originated from outside of Acme. Do not click links..."
+# HTML-to-text can glue it to the previous word ("helloCAUTION:"), so no
+# leading whitespace is required.
 _EXTERNAL_CAUTION = re.compile(
     r"(?is)"
-    r"(?:^|\s)"
     r"(?:\*+\s*)?"
     r"(?:CAUTION|WARNING)\s*:?\s*"
     r"This email originated from outside\b"
     r".*?"
-    r"(?:Report any suspicious email[^.]*\.|to IT Team\.|$)"
+    r"(?:" + _BANNER_END + r"|\Z)"
+)
+
+# "CAUTION: <anything> Do not click links ... IT Team." without the origin line.
+_CAUTION_DO_NOT_CLICK = re.compile(
+    r"(?is)"
+    r"(?:\*+\s*)?"
+    r"(?:CAUTION|WARNING)\s*:\s*"
+    r"[^\n]{0,300}?Do not click links"
+    r".*?" + _BANNER_END
 )
 
 _EXTERNAL_ORIGIN_ONLY = re.compile(
-    r"(?is)"
-    r"(?:^|\s)"
-    r"This email originated from outside of .+?"
-    r"(?:Do not click links[^.]*\.)?"
-    r"(?:\s*Report any suspicious email[^.]*\.)?"
+    r"(?i)"
+    r"This email originated from outside of "
+    r"[^\n]*?"
+    r"(?:" + _BANNER_END + r"|(?=\n)|\Z)"
 )
 
 
@@ -48,6 +64,7 @@ def clean_inbound_email_body(
         .replace("&nbsp;", " ")
     )
     text = _EXTERNAL_CAUTION.sub(" ", text)
+    text = _CAUTION_DO_NOT_CLICK.sub(" ", text)
     text = _EXTERNAL_ORIGIN_ONLY.sub(" ", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
