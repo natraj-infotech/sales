@@ -6,6 +6,121 @@
 {% include "includes/oem_tickets.css.html" %}
 <style>
   .st-auto-assign-row { margin: 0 0 1rem; background: #f8fafc; }
+  #st-table tbody tr[data-detail-url] { cursor: pointer; }
+  #st-table tbody tr[data-detail-url]:hover { background: #eef4ff; }
+  #st-table tbody tr[data-detail-url] input[type="text"],
+  #st-table tbody tr[data-detail-url] textarea { cursor: text; }
+  .ticket360-summary-btn {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1e5bb8;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 0.22rem 0.6rem;
+    cursor: pointer;
+  }
+  .ticket360-summary-btn:hover { background: #dbeafe; }
+  .st-summary-modal { width: min(460px, 100%); }
+  .st-summary-modal .oem-diary-body { padding: 1.15rem 1.25rem 1.25rem; }
+  .st-summary-intro {
+    margin: 0 0 0.9rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+  }
+  .st-summary-channels {
+    display: flex;
+    gap: 0.25rem;
+    margin: 0 0 1.1rem;
+    padding: 0.25rem;
+    background: #f1f5f9;
+    border-radius: 10px;
+  }
+  .st-summary-channels button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0.48rem 0.6rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: #64748b;
+  }
+  .st-summary-channels button.is-active {
+    background: #fff;
+    color: var(--header-blue);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+  .st-summary-field { margin: 0 0 0.9rem; }
+  .st-summary-field label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--header-blue-deep);
+    margin-bottom: 0.35rem;
+  }
+  .st-summary-control {
+    display: flex;
+    align-items: center;
+    min-height: 46px;
+    padding: 0 0.9rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .st-summary-control:focus-within {
+    border-color: var(--header-blue);
+    box-shadow: 0 0 0 3px rgba(43, 111, 214, 0.15);
+  }
+  .st-summary-control input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0.7rem 0;
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    line-height: 1.3;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .st-summary-control input:focus {
+    outline: none;
+    border: 0;
+    box-shadow: none;
+  }
+  .st-summary-control input::placeholder { color: #94a3b8; }
+  .st-summary-status {
+    margin: 0 0 0.9rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    background: #ecfdf5;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+  }
+  .st-summary-status.is-error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-color: #fecaca;
+  }
+  .st-summary-actions { display: flex; justify-content: flex-end; }
+  .st-summary-actions .btn { min-height: 40px; padding: 0.5rem 1.05rem; }
+  .st-summary-actions .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .st-summary-note {
+    margin: 0 0 0.9rem;
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+  }
 </style>
 {% endblock %}
 
@@ -74,25 +189,29 @@
             <th>OEM Company</th>
             <th>OEM Email</th>
             <th>Subscription ID</th>
+            <th>Summary</th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody id="st-tbody">
           {% for t in object_list %}
-          <tr data-ticket-id="{{ t.pk }}" data-search="{{ t.reference }} {{ t.subject }} {{ t.oem_company_name }} {{ t.oem_to_email }} {{ t.subscription_id }}">
+          <tr data-ticket-id="{{ t.pk }}" data-detail-url="{% url 'support_ticket_detail' t.pk %}" data-search="{{ t.reference }} {{ t.subject }} {{ t.oem_company_name }} {{ t.oem_to_email }} {{ t.subscription_id }}">
             <td><span class="ticket-ref">{{ t.reference }}</span></td>
             <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
             <td>{{ t.subject }}</td>
             <td>{{ t.oem_company_name|default:"—" }}</td>
             <td>{{ t.oem_to_email|default:"—" }}</td>
             <td>{{ t.subscription_id|default:"—" }}</td>
+            <td>
+              <button type="button" class="ticket360-summary-btn" data-summary-ticket="{{ t.pk }}" data-summary-ref="{{ t.reference }}">Summary</button>
+            </td>
             <td class="col-actions">
               <a class="ticket360-view-link" href="{% url 'support_ticket_detail' t.pk %}">View →</a>
             </td>
           </tr>
           {% empty %}
           <tr class="st-empty-row">
-            <td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">
               No OEM tickets yet. <a href="{% url 'support_oem_ticket_add' %}">Create an OEM ticket</a>.
             </td>
           </tr>
@@ -103,13 +222,13 @@
   </div>
   {% include "includes/oem_email_diary_modal.html" %}
   {% else %}
-  <form method="post" action="{% url 'support_team_auto_assign_toggle' %}" class="sla-toggle-row st-auto-assign-row">
+  <form method="post" action="{% url 'support_team_auto_assign_toggle' %}" class="sla-toggle-row st-auto-assign-row" id="st-auto-assign-form">
     {% csrf_token %}
     <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
     <div class="toggle-copy">
-      <strong>Auto-assign {% if auto_assign_enabled %}is on{% else %}is off{% endif %}</strong>
+      <strong id="st-auto-assign-label">Auto-assign {% if auto_assign_enabled %}is on{% else %}is off{% endif %}</strong>
       <p>
-        {% if auto_assign_enabled %}New tickets go to the support engineer with the fewest open tickets.{% else %}New tickets stay unassigned until you assign them.{% endif %}
+        <span id="st-auto-assign-detail">{% if auto_assign_enabled %}New tickets go to the support engineer with the fewest open tickets.{% else %}New tickets stay unassigned until you assign them.{% endif %}</span>
         <a href="#" data-open-support-team>Manage support team</a>
       </p>
     </div>
@@ -260,12 +379,13 @@
             <th>Assign to</th>
             <th>Completed</th>
             <th>Remarks</th>
+            <th>Summary</th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody id="st-tbody">
           {% for t in object_list %}
-          <tr data-ticket-id="{{ t.pk }}" data-search="{{ t.reference }} {{ t.subject }} {{ t.source_sender|default:t.created_by.email }} {{ t.get_priority_display }}">
+          <tr data-ticket-id="{{ t.pk }}" data-detail-url="{% url 'support_ticket_detail' t.pk %}" data-search="{{ t.reference }} {{ t.subject }} {{ t.source_sender|default:t.created_by.email }} {{ t.get_priority_display }}">
             <td><span class="ticket-ref">{{ t.reference }}</span></td>
             <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
             <td>
@@ -332,6 +452,9 @@
                 <button type="submit" class="ticket360-mini-btn" title="Save">✓</button>
               </form>
             </td>
+            <td>
+              <button type="button" class="ticket360-summary-btn" data-summary-ticket="{{ t.pk }}" data-summary-ref="{{ t.reference }}">Summary</button>
+            </td>
             <td class="col-actions">
               <div class="ticket360-actions-cell">
                 <a class="ticket360-view-link" href="{% url 'support_ticket_detail' t.pk %}">View →</a>
@@ -350,7 +473,7 @@
           </tr>
           {% empty %}
           <tr class="st-empty-row">
-            <td colspan="14" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="15" class="muted" style="padding:1.25rem;text-align:center;">
               No tickets yet. <a href="{% url 'support_ticket_add' %}">Create a support ticket</a>.
             </td>
           </tr>
@@ -362,12 +485,53 @@
   {% endif %}
 </div>
 
+<div class="oem-diary-backdrop" id="st-summary-modal" hidden>
+  <div class="oem-diary-modal st-summary-modal" role="dialog" aria-labelledby="st-summary-title">
+    <div class="oem-diary-head">
+      <span id="st-summary-title">Send conversation</span>
+      <button type="button" id="st-summary-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="oem-diary-body">
+      <p class="st-summary-intro" id="st-summary-intro">Choose how to send this ticket's conversation.</p>
+      <div class="st-summary-channels">
+        <button type="button" class="is-active" data-summary-channel="email">Email</button>
+        <button type="button" data-summary-channel="whatsapp">WhatsApp</button>
+      </div>
+      <form id="st-summary-email-form">
+        <div class="st-summary-field">
+          <label for="st-summary-to">To</label>
+          <div class="st-summary-control">
+            <input type="email" id="st-summary-to" name="to" placeholder="name@example.com" autocomplete="off" required>
+          </div>
+        </div>
+        <p id="st-summary-status" class="st-summary-status" hidden></p>
+        <div class="st-summary-actions">
+          <button type="submit" class="btn btn-primary" id="st-summary-send">Send email</button>
+        </div>
+      </form>
+      <div id="st-summary-whatsapp" hidden>
+        <div class="st-summary-field">
+          <label for="st-summary-phone">WhatsApp number</label>
+          <div class="st-summary-control">
+            <input type="tel" id="st-summary-phone" placeholder="9198xxxxxxxx" autocomplete="off">
+          </div>
+        </div>
+        <p class="muted st-summary-note">WhatsApp sending is not available yet.</p>
+        <div class="st-summary-actions">
+          <button type="button" class="btn btn-primary" id="st-summary-wa-send" disabled>Send on WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{ charts|json_script:"ticket-charts-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 {% include "includes/adash_charts.js.html" %}
 <script>
 (function () {
   var LIVE_URL = "{% url 'support_ticket_live' %}";
+  var SUMMARY_URL_TMPL = "{% url 'support_ticket_summary_email' 999999 %}";
   var ADD_URL = "{% url 'support_ticket_add' %}";
   var OEM_ADD_URL = "{% url 'support_oem_ticket_add' %}";
   var POLL_MS = 20000;
@@ -536,13 +700,21 @@
   }
 
   function colCount() {
-    if (IS_OEM) return 7;
-    return 12 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
+    if (IS_OEM) return 8;
+    return 13 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
+  }
+
+  function summaryCell(r) {
+    return (
+      '<td><button type="button" class="ticket360-summary-btn" data-summary-ticket="' +
+        escapeHtml(r.id) + '" data-summary-ref="' + escapeHtml(r.reference) +
+      '">Summary</button></td>'
+    );
   }
 
   function oemRowHtml(r) {
     return (
-      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-search="' +
+      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-detail-url="' + escapeHtml(r.detail_url) + '" data-search="' +
         escapeHtml([r.reference, r.subject, r.oem_company, r.oem_email, r.subscription_id].join(" ")) + '">' +
         '<td><span class="ticket-ref">' + escapeHtml(r.reference) + "</span></td>" +
         "<td>" + escapeHtml(r.created_at) + "</td>" +
@@ -550,6 +722,7 @@
         "<td>" + escapeHtml(r.oem_company || "—") + "</td>" +
         "<td>" + escapeHtml(r.oem_email || "—") + "</td>" +
         "<td>" + escapeHtml(r.subscription_id || "—") + "</td>" +
+        summaryCell(r) +
         '<td class="col-actions"><a class="ticket360-view-link" href="' + escapeHtml(r.detail_url) + '">View →</a></td>' +
       "</tr>"
     );
@@ -579,7 +752,7 @@
     if (TRACKS_RESPONSE) dueCols += slaCell(r.response_due, r.response_label, r.response_status);
     if (TRACKS_RESOLVE) dueCols += slaCell(r.resolve_due, r.resolve_label, r.resolve_status);
     return (
-      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-search="' + searchBlob + '">' +
+      '<tr data-ticket-id="' + escapeHtml(r.id) + '" data-detail-url="' + escapeHtml(r.detail_url) + '" data-search="' + searchBlob + '">' +
         '<td><span class="ticket-ref">' + escapeHtml(r.reference) + "</span></td>" +
         "<td>" + escapeHtml(r.created_at) + "</td>" +
         "<td>" + escapeHtml(r.subject) + transferred + "</td>" +
@@ -617,6 +790,7 @@
             '<button type="submit" class="ticket360-mini-btn" title="Save">✓</button>' +
           "</form>" +
         "</td>" +
+        summaryCell(r) +
         '<td class="col-actions">' +
           '<div class="ticket360-actions-cell">' +
             '<a class="ticket360-view-link" href="' + escapeHtml(r.detail_url) + '">View →</a> ' +
@@ -632,7 +806,7 @@
     if (IS_OEM) {
       return (
         '<tr class="st-empty-row">' +
-          '<td colspan="7" class="muted" style="padding:1.25rem;text-align:center;">' +
+          '<td colspan="8" class="muted" style="padding:1.25rem;text-align:center;">' +
             'No OEM tickets yet. <a href="' + OEM_ADD_URL + '">Create an OEM ticket</a>.' +
           "</td>" +
         "</tr>"
@@ -763,9 +937,155 @@
       });
   }
 
+  var summaryModal = document.getElementById("st-summary-modal");
+  var summaryTicketId = "";
+
+  function setSummaryStatus(text, isError) {
+    var el = document.getElementById("st-summary-status");
+    if (!el) return;
+    el.classList.toggle("is-error", !!text && isError);
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  function setSummaryChannel(channel) {
+    var selected = channel === "whatsapp" ? "whatsapp" : "email";
+    document.querySelectorAll("[data-summary-channel]").forEach(function (btn) {
+      btn.classList.toggle("is-active", btn.getAttribute("data-summary-channel") === selected);
+    });
+    var emailForm = document.getElementById("st-summary-email-form");
+    var whatsappPanel = document.getElementById("st-summary-whatsapp");
+    if (emailForm) emailForm.hidden = selected !== "email";
+    if (whatsappPanel) whatsappPanel.hidden = selected !== "whatsapp";
+  }
+
+  function openSummary(id, ref) {
+    if (!summaryModal) return;
+    summaryTicketId = String(id || "");
+    var title = document.getElementById("st-summary-title");
+    if (title) title.textContent = ref ? ("Send conversation · " + ref) : "Send conversation";
+    var to = document.getElementById("st-summary-to");
+    if (to) to.value = "";
+    var phone = document.getElementById("st-summary-phone");
+    if (phone) phone.value = "";
+    var send = document.getElementById("st-summary-send");
+    if (send) {
+      send.disabled = false;
+      send.textContent = "Send email";
+    }
+    setSummaryStatus("", false);
+    setSummaryChannel("email");
+    summaryModal.hidden = false;
+    summaryModal.classList.add("is-open");
+    if (to) to.focus();
+  }
+
+  function closeSummary() {
+    if (!summaryModal) return;
+    summaryModal.hidden = true;
+    summaryModal.classList.remove("is-open");
+    summaryTicketId = "";
+  }
+
+  document.addEventListener("click", function (event) {
+    var openBtn = event.target.closest("[data-summary-ticket]");
+    if (openBtn) {
+      event.preventDefault();
+      openSummary(
+        openBtn.getAttribute("data-summary-ticket"),
+        openBtn.getAttribute("data-summary-ref")
+      );
+      return;
+    }
+    var channelBtn = event.target.closest("[data-summary-channel]");
+    if (channelBtn && summaryModal && summaryModal.contains(channelBtn)) {
+      setSummaryChannel(channelBtn.getAttribute("data-summary-channel"));
+    }
+  });
+
+  var summaryClose = document.getElementById("st-summary-close");
+  if (summaryClose) summaryClose.addEventListener("click", closeSummary);
+  if (summaryModal) {
+    summaryModal.addEventListener("click", function (event) {
+      if (event.target === summaryModal) closeSummary();
+    });
+  }
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && summaryModal && !summaryModal.hidden) closeSummary();
+  });
+
+  var summaryEmailForm = document.getElementById("st-summary-email-form");
+  if (summaryEmailForm) {
+    summaryEmailForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!summaryTicketId) return;
+      var to = document.getElementById("st-summary-to");
+      var address = ((to && to.value) || "").trim();
+      if (!address) {
+        setSummaryStatus("Enter an email address.", true);
+        return;
+      }
+      var send = document.getElementById("st-summary-send");
+      if (send) {
+        send.disabled = true;
+        send.textContent = "Sending…";
+      }
+      setSummaryStatus("", false);
+      var body = new FormData();
+      body.append("to", address);
+      fetch(SUMMARY_URL_TMPL.replace("999999", summaryTicketId), {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": CSRF,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+        body: body,
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && result.data && result.data.ok) {
+            setSummaryStatus(result.data.message || "Conversation sent.", false);
+            if (to) to.value = "";
+            return;
+          }
+          setSummaryStatus((result.data && result.data.error) || "Could not send the email.", true);
+        })
+        .catch(function () {
+          setSummaryStatus("Could not send the email.", true);
+        })
+        .finally(function () {
+          if (send) {
+            send.disabled = false;
+            send.textContent = "Send email";
+          }
+        });
+    });
+  }
+
   function start() {
     setMeta("Live · auto-updating", false);
     timer = window.setInterval(poll, POLL_MS);
+  }
+
+  if (tbody) {
+    tbody.addEventListener("click", function (event) {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.target.closest("a, button, input, select, textarea, label, form")) return;
+      var row = event.target.closest("tr[data-detail-url]");
+      if (!row || !tbody.contains(row)) return;
+      var url = row.getAttribute("data-detail-url");
+      if (url) window.location.href = url;
+    });
   }
 
   if (searchInput) {

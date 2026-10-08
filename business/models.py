@@ -1469,6 +1469,15 @@ class SupportTicketMeta(models.Model):
         default=True,
         help_text="True for tickets created in Ticket360 UI; False for email/IMAP.",
     )
+    email_conversation_id = models.CharField(
+        max_length=512,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Outlook conversation of the customer email that opened this ticket. "
+            "Later replies in that thread stay on this ticket until it is closed."
+        ),
+    )
     is_oem = models.BooleanField(
         default=False,
         help_text="True for External (OEM) tickets sent to a manufacturer.",

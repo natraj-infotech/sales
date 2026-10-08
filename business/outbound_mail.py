@@ -34,6 +34,7 @@ def send_via_microsoft_graph(
     html_body: str,
     cc_addresses: Sequence[str] | None = None,
     inline_images: Sequence[InlineImage] | None = None,
+    file_attachments: Sequence[Attachment] | None = None,
     *,
     read_receipt: bool = False,
 ) -> tuple[bool, str | None, str | None]:
@@ -75,6 +76,18 @@ def send_via_microsoft_graph(
                 "contentBytes": base64.b64encode(content).decode("ascii"),
                 "contentId": content_id,
                 "isInline": True,
+            }
+        )
+    for filename, content, mimetype in file_attachments or ():
+        if not content:
+            continue
+        attachments.append(
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": filename or "attachment",
+                "contentType": mimetype or "application/octet-stream",
+                "contentBytes": base64.b64encode(content).decode("ascii"),
+                "isInline": False,
             }
         )
     if attachments:

@@ -306,6 +306,16 @@ urlpatterns = [
         name="support_ticket_transfer_oem",
     ),
     path(
+        "support/tickets/<int:pk>/attachments/<int:attachment_id>/",
+        views.support_ticket_attachment,
+        name="support_ticket_attachment",
+    ),
+    path(
+        "support/tickets/<int:pk>/summary-email/",
+        views.support_ticket_summary_email,
+        name="support_ticket_summary_email",
+    ),
+    path(
         "support/tickets/<int:pk>/",
         views.support_ticket_detail,
         name="support_ticket_detail",

@@ -211,6 +211,31 @@ class SupportTeamSettingsViewTests(TestCase):
         )
         self.assertFalse(SupportTeam.objects.get(company=self.company).auto_assign_enabled)
 
+    def test_quick_toggle_from_modal_close_returns_json(self):
+        url = reverse("support_team_auto_assign_toggle")
+        response = self.client.post(
+            url,
+            {"auto_assign_enabled": "on"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["enabled"])
+        self.assertEqual(data["level"], "warning")
+        self.assertIn("support team is empty", data["message"])
+        self.assertTrue(SupportTeam.objects.get(company=self.company).auto_assign_enabled)
+        save_team(self.company, member_ids=[self.alice.pk], auto_assign_enabled=True)
+        response = self.client.post(
+            url,
+            {},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        data = response.json()
+        self.assertFalse(data["enabled"])
+        self.assertEqual(data["level"], "success")
+        self.assertFalse(SupportTeam.objects.get(company=self.company).auto_assign_enabled)
+
     def test_dropdown_shows_team_plus_current_assignees(self):
         self.assertEqual(
             set(assignable_users(self.company).values_list("pk", flat=True)),

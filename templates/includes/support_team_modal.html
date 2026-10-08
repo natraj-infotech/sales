@@ -253,19 +253,96 @@
   var initialHtml = { available: lists.available.innerHTML, members: lists.members.innerHTML };
   var initialToggle = form.elements.auto_assign_enabled.checked;
   var dragged = null;
+  var toggleUrl = "{% url 'support_team_auto_assign_toggle' %}";
+
+  function outsideToggle() {
+    var row = document.getElementById("st-auto-assign-form");
+    return row ? row.querySelector('input[name="auto_assign_enabled"]') : null;
+  }
+
+  function applyOutside(enabled) {
+    var outside = outsideToggle();
+    if (outside) outside.checked = enabled;
+    var label = document.getElementById("st-auto-assign-label");
+    var detail = document.getElementById("st-auto-assign-detail");
+    if (label) label.textContent = enabled ? "Auto-assign is on" : "Auto-assign is off";
+    if (detail) {
+      detail.textContent = enabled
+        ? "New tickets go to the support engineer with the fewest open tickets."
+        : "New tickets stay unassigned until you assign them.";
+    }
+  }
+
+  function showBanner(text, level) {
+    var main = document.querySelector("main.tracker-main");
+    if (!main || !text) return;
+    var banner = document.createElement("div");
+    banner.className = "messages-banner messages-banner--" + (level || "success");
+    var span = document.createElement("span");
+    span.className = "messages-banner-text";
+    span.textContent = text;
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "messages-banner-close";
+    close.setAttribute("aria-label", "Dismiss message");
+    close.textContent = "\u00d7";
+    close.addEventListener("click", function () { banner.remove(); });
+    banner.appendChild(span);
+    banner.appendChild(close);
+    main.insertBefore(banner, main.firstChild);
+    if (level !== "warning" && level !== "error") {
+      setTimeout(function () { banner.remove(); }, 5000);
+    }
+  }
+
+  function saveToggle(enabled) {
+    var body = new FormData();
+    var csrf = form.querySelector("[name=csrfmiddlewaretoken]");
+    if (csrf) body.append("csrfmiddlewaretoken", csrf.value);
+    if (enabled) body.append("auto_assign_enabled", "on");
+    return fetch(toggleUrl, {
+      method: "POST",
+      body: body,
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin",
+    }).then(function (response) {
+      if (!response.ok) throw new Error("save failed");
+      return response.json();
+    });
+  }
 
   function openModal() {
+    var outside = outsideToggle();
+    if (outside) form.elements.auto_assign_enabled.checked = outside.checked;
+    initialToggle = form.elements.auto_assign_enabled.checked;
     modal.classList.add("is-open");
     document.body.style.overflow = "hidden";
   }
   function closeModal() {
+    var enabled = form.elements.auto_assign_enabled.checked;
+    var changed = enabled !== initialToggle;
     modal.classList.remove("is-open");
     document.body.style.overflow = "";
     lists.available.innerHTML = initialHtml.available;
     lists.members.innerHTML = initialHtml.members;
-    form.elements.auto_assign_enabled.checked = initialToggle;
     modal.querySelectorAll("[data-search-for]").forEach(function (i) { i.value = ""; });
     refresh();
+    if (!changed) return;
+    applyOutside(enabled);
+    initialToggle = enabled;
+    saveToggle(enabled).then(function (data) {
+      var saved = !!data.enabled;
+      form.elements.auto_assign_enabled.checked = saved;
+      initialToggle = saved;
+      applyOutside(saved);
+      if (data.message) showBanner(data.message, data.level);
+    }).catch(function () {
+      var reverted = !enabled;
+      form.elements.auto_assign_enabled.checked = reverted;
+      initialToggle = reverted;
+      applyOutside(reverted);
+      showBanner("Could not update auto-assign. Try again.", "error");
+    });
   }
 
   document.querySelectorAll("[data-open-support-team]").forEach(function (btn) {

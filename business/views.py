@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from io import StringIO
@@ -3945,6 +3946,39 @@ def support_oem_subscription_lookup(request):
 
 
 @support_ticket_access_required
+@require_http_methods(["POST"])
+def support_ticket_summary_email(request, pk):
+    """Email this ticket's public conversation to an address the staff member types."""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+
+    from business.ticket_summary_mail import send_ticket_conversation_summary
+
+    company = _company(request)
+    try:
+        raw = helpdesk_bridge.get_company_ticket(company, pk)
+    except helpdesk_bridge.Ticket.DoesNotExist:
+        return _json_error("Ticket not found.", status=404)
+
+    to_email = (request.POST.get("to") or "").strip()
+    try:
+        validate_email(to_email)
+    except ValidationError:
+        return _json_error("Enter a valid email address.", status=400)
+
+    status, err = send_ticket_conversation_summary(
+        company=company,
+        ticket=raw,
+        to_email=to_email,
+    )
+    if status == "sent":
+        return JsonResponse(
+            {"ok": True, "message": f"Conversation sent to {to_email}."}
+        )
+    return _json_error(err or "Could not send the email.", status=400)
+
+
+@support_ticket_access_required
 @require_http_methods(["GET", "POST"])
 def support_ticket_detail(request, pk):
     from business.sla import get_or_create_sla_settings
@@ -4021,6 +4055,40 @@ def support_ticket_detail(request, pk):
             "priority_choices": helpdesk_bridge.PRIORITY_LABELS,
             "sla_settings": sla_settings,
         },
+    )
+
+
+@support_ticket_access_required
+@require_http_methods(["GET"])
+def support_ticket_attachment(request, pk, attachment_id):
+    """Serve a file that arrived on the customer email, for this company's ticket."""
+    from helpdesk.models import FollowUpAttachment
+
+    company = _company(request)
+    try:
+        raw = helpdesk_bridge.get_company_ticket(company, pk)
+    except helpdesk_bridge.Ticket.DoesNotExist:
+        raise Http404 from None
+    attachment = (
+        FollowUpAttachment.objects.filter(pk=attachment_id, followup__ticket=raw)
+        .only("file", "filename", "mime_type")
+        .first()
+    )
+    if attachment is None or not attachment.file:
+        raise Http404
+    mime = (attachment.mime_type or "application/octet-stream").split(";")[0].strip()
+    is_image = mime.startswith("image/") and "svg" not in mime
+    if not is_image and not mime.startswith(
+        ("application/pdf", "text/plain", "application/octet-stream")
+    ):
+        # Staff download other office files; never let the browser sniff HTML.
+        mime = "application/octet-stream"
+    name = os.path.basename(attachment.filename or "attachment") or "attachment"
+    return FileResponse(
+        attachment.file.open("rb"),
+        content_type=mime if is_image or mime == "application/pdf" else "application/octet-stream",
+        as_attachment=not is_image,
+        filename=name,
     )
 
 
@@ -4132,17 +4200,26 @@ def support_team_auto_assign_toggle(request):
     enabled = request.POST.get("auto_assign_enabled") == "on"
     support_team.set_auto_assign(company, enabled)
     if enabled and not support_team.team_members(company).exists():
-        messages.warning(
-            request,
-            "Auto-assign is on, but the support team is empty. Add engineers so tickets can be assigned.",
+        text = (
+            "Auto-assign is on, but the support team is empty. "
+            "Add engineers so tickets can be assigned."
         )
+        level = "warning"
     else:
-        messages.success(
-            request,
+        text = (
             "Auto-assign turned on. New tickets will go to a support engineer."
             if enabled
-            else "Auto-assign turned off. Assign new tickets manually.",
+            else "Auto-assign turned off. Assign new tickets manually."
         )
+        level = "success"
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": True, "enabled": enabled, "message": text, "level": level}
+        )
+    if level == "warning":
+        messages.warning(request, text)
+    else:
+        messages.success(request, text)
     url = reverse("support_ticket_list")
     qs = request.POST.get("next_qs", "").strip()
     if qs:

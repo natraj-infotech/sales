@@ -30,6 +30,24 @@
   .sla-badge { font-size: 0.8rem; font-weight: 600; }
   .sla-badge--ok, .sla-badge--met { color: #027a48; }
   .sla-badge--breached { color: #b42318; }
+  .ticket-mail-files { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.75rem; }
+  .ticket-mail-files a { display: inline-flex; }
+  .ticket-mail-files img {
+    max-width: 220px;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+  .ticket-mail-file {
+    align-items: center;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.8rem;
+  }
 </style>
 <div class="tracker-card ticket-detail-card">
   <dl class="ticket-detail-meta">
@@ -104,9 +122,21 @@
       <div class="ticket-comment-meta">
         <strong>{{ c.user.email }}</strong>
         <span>{{ c.created_at|date:"d M Y, H:i" }}</span>
+        {% if c.outbound %}<em>Sent</em>{% endif %}
         {% if c.internal_note %}<em>Internal note</em>{% endif %}
       </div>
-      <div class="ticket-comment-body">{{ c.body|linebreaks }}</div>
+      {% if c.body %}<div class="ticket-comment-body">{{ c.body|linebreaks }}</div>{% endif %}
+      {% if c.attachments %}
+      <div class="ticket-mail-files">
+        {% for a in c.attachments %}
+          {% if a.is_image %}
+          <a href="{{ a.url }}" target="_blank" rel="noopener"><img src="{{ a.url }}" alt="{{ a.name }}"></a>
+          {% else %}
+          <a class="ticket-mail-file" href="{{ a.url }}">{{ a.name }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% empty %}
     <p class="muted">No comments yet.</p>

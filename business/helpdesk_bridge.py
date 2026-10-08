@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 from django.conf import settings
 from django.db import transaction
@@ -144,15 +145,50 @@ def get_company_ticket(company: CompanyProfile, pk: int) -> Ticket:
 
 
 @dataclass
+class MailFileView:
+    name: str
+    url: str
+    is_image: bool
+
+
+@dataclass
 class CommentView:
     user_email: str
     body: str
     internal_note: bool
     created_at: timezone.datetime
+    attachments: list[MailFileView] = field(default_factory=list)
+    outbound: bool = False
+    # Raw files, loaded only when a caller asks to attach them to an email.
+    files: list[tuple[str, bytes, str]] = field(default_factory=list)
 
     @property
     def user(self):
         return type("U", (), {"email": self.user_email})()
+
+
+def _is_image_attachment(attachment) -> bool:
+    mime = (getattr(attachment, "mime_type", None) or "").lower()
+    return mime.startswith("image/") and "svg" not in mime
+
+
+def _mail_files(ticket_pk: int, followup) -> list[MailFileView]:
+    from django.urls import reverse
+
+    files: list[MailFileView] = []
+    for attachment in followup.followupattachment_set.all():
+        name = attachment.filename or "attachment"
+        files.append(
+            MailFileView(
+                name=name,
+                url=reverse(
+                    "support_ticket_attachment",
+                    args=[ticket_pk, attachment.pk],
+                ),
+                is_image=_is_image_attachment(attachment),
+            )
+        )
+    return files
 
 
 class TicketView:
@@ -599,13 +635,33 @@ def add_comment(
     return followup
 
 
-def followups_as_comments(ticket: Ticket) -> list[CommentView]:
+def _file_payloads(followup) -> list[tuple[str, bytes, str]]:
+    payloads: list[tuple[str, bytes, str]] = []
+    for attachment in followup.followupattachment_set.all():
+        if not attachment.file:
+            continue
+        try:
+            with attachment.file.open("rb") as handle:
+                content = handle.read()
+        except (OSError, ValueError):
+            continue
+        if not content:
+            continue
+        name = attachment.filename or "attachment"
+        mime = (attachment.mime_type or "application/octet-stream").split(";")[0].strip()
+        payloads.append((name, content, mime or "application/octet-stream"))
+    return payloads
+
+
+def followups_as_comments(
+    ticket: Ticket, *, load_files: bool = False
+) -> list[CommentView]:
     from business.email_body_clean import clean_inbound_email_body
 
     rows = (
         FollowUp.objects.filter(ticket=ticket)
-        .exclude(comment="")
         .select_related("user")
+        .prefetch_related("followupattachment_set")
         .order_by("date", "id")
     )
     comments: list[CommentView] = []
@@ -613,10 +669,15 @@ def followups_as_comments(ticket: Ticket) -> list[CommentView]:
         email = ""
         if fu.user_id and fu.user:
             email = fu.user.email
-        elif ticket.submitter_email:
-            email = ticket.submitter_email
+        else:
+            match = re.search(r"(?:from|by)\s+(\S+@\S+)", fu.title or "", re.I)
+            if match:
+                email = match.group(1).rstrip(".,;")
+            elif ticket.submitter_email:
+                email = ticket.submitter_email
         body = clean_inbound_email_body(fu.comment or "", empty_fallback="")
-        if not body:
+        attachments = _mail_files(ticket.pk, fu)
+        if not body and not attachments:
             continue
         comments.append(
             CommentView(
@@ -624,6 +685,9 @@ def followups_as_comments(ticket: Ticket) -> list[CommentView]:
                 body=body,
                 internal_note=not fu.public,
                 created_at=fu.date,
+                attachments=attachments,
+                outbound=(fu.title or "").lower().startswith("e-mail sent"),
+                files=_file_payloads(fu) if load_files and fu.public else [],
             )
         )
     return comments
