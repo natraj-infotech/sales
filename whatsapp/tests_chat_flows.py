@@ -6,7 +6,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from accounts.models import CompanyProfile
-from business.models import CaseLockProduct, Lead, SupportTicket
+from business.models import CaseLockProduct, Lead
+from helpdesk.models import Ticket
 from whatsapp.conversation_state import get_or_create_session, reset_session, start_flow
 from whatsapp.inbound_chat import handle_inbound_customer_message, parse_inbound_message
 from whatsapp.models import WhatsAppAccount, WhatsAppConversation
@@ -180,10 +181,8 @@ class SupportFlowTests(TestCase):
             flow="support",
             step="support_submit",
             draft={
-                "subject": "Billing issue",
+                "firm_name": "Acme Traders",
                 "description": "Invoice wrong",
-                "department": SupportTicket.Department.BILLING,
-                "priority": SupportTicket.Priority.HIGH,
             },
         )
         _create_support_ticket(
@@ -192,7 +191,26 @@ class SupportFlowTests(TestCase):
             session=self.session,
             to="919922233344",
         )
-        self.assertEqual(SupportTicket.objects.filter(company=self.company).count(), 1)
+        self.assertEqual(Ticket.objects.count(), 1)
+        ticket = Ticket.objects.get()
+        self.assertIn("Acme Traders", ticket.title)
+        meta = ticket.crm_meta
+        self.assertEqual(meta.customer_firm_name, "Acme Traders")
+        self.assertEqual(meta.customer_phone, "+919922233344")
+        self.assertEqual(meta.source_channel, "whatsapp")
+
+    def test_parse_inbound_image(self):
+        event = {
+            "message": {
+                "from": "919900000001",
+                "id": "wamid.img",
+                "type": "image",
+                "image": {"id": "media123", "mime_type": "image/jpeg"},
+            }
+        }
+        parsed = parse_inbound_message(event)
+        self.assertEqual(parsed["media_id"], "media123")
+        self.assertEqual(parsed["msg_type"], "image")
 
 
 class CaseLockFlowTests(TestCase):

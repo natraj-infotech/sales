@@ -267,6 +267,35 @@ class TicketView:
         return self._ticket.submitter_email or ""
 
     @property
+    def customer_phone(self):
+        return (self._meta.customer_phone if self._meta else "") or ""
+
+    @property
+    def customer_firm_name(self):
+        return (self._meta.customer_firm_name if self._meta else "") or ""
+
+    @property
+    def source_channel(self):
+        return (self._meta.source_channel if self._meta else "") or ""
+
+    def get_source_channel_display(self):
+        val = self.source_channel
+        if not val:
+            return ""
+        return dict(SupportTicketMeta.SourceChannel.choices).get(val, val.replace("_", " ").title())
+
+    @property
+    def contact_display(self):
+        """Email or mobile shown on the support dashboard."""
+        phone = self.customer_phone
+        if phone:
+            return phone
+        sender = self.source_sender
+        if sender:
+            return sender
+        return getattr(self.created_by, "email", "") or ""
+
+    @property
     def created_by(self):
         if self._meta and self._meta.created_by_id:
             return self._meta.created_by
@@ -365,6 +394,9 @@ def ensure_meta(
     oem_to_email: str = "",
     oem_cc_emails: str = "",
     subscription_id: str = "",
+    source_channel: str = "",
+    customer_phone: str = "",
+    customer_firm_name: str = "",
 ) -> SupportTicketMeta:
     meta, created = SupportTicketMeta.objects.get_or_create(
         ticket=ticket,
@@ -378,6 +410,9 @@ def ensure_meta(
             "oem_to_email": oem_to_email or "",
             "oem_cc_emails": oem_cc_emails or "",
             "subscription_id": subscription_id or "",
+            "source_channel": source_channel or "",
+            "customer_phone": customer_phone or "",
+            "customer_firm_name": customer_firm_name or "",
         },
     )
     if not created:

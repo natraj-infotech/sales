@@ -1442,6 +1442,11 @@ class SupportTicketComment(models.Model):
 class SupportTicketMeta(models.Model):
     """CRM extras for django-helpdesk Ticket rows (department, remarks, tenant flags)."""
 
+    class SourceChannel(models.TextChoices):
+        EMAIL = "email", "Email"
+        WHATSAPP = "whatsapp", "WhatsApp"
+        INTERNAL = "internal", "Internal"
+
     class PrioritySource(models.TextChoices):
         MANUAL = "manual", "Manual"
         RULE = "rule", "Keyword rule"
@@ -1465,6 +1470,23 @@ class SupportTicketMeta(models.Model):
         default=SupportTicket.Department.GENERAL,
     )
     remarks = models.CharField(max_length=255, blank=True)
+    source_channel = models.CharField(
+        max_length=20,
+        choices=SourceChannel.choices,
+        blank=True,
+        default="",
+        help_text="How the customer opened the ticket (email, WhatsApp, etc.).",
+    )
+    customer_phone = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Customer mobile for WhatsApp-originated tickets.",
+    )
+    customer_firm_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Customer or firm name from WhatsApp support intake.",
+    )
     is_internal = models.BooleanField(
         default=True,
         help_text="True for tickets created in Ticket360 UI; False for email/IMAP.",

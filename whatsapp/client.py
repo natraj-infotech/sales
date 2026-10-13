@@ -23,6 +23,67 @@ def _graph_url(phone_number_id: str, path: str = "messages") -> str:
     return f"https://graph.facebook.com/{version}/{phone_number_id}/{path}"
 
 
+def _graph_media_url(media_id: str) -> str:
+    version = getattr(settings, "WHATSAPP_API_VERSION", "v26.0")
+    return f"https://graph.facebook.com/{version}/{media_id}"
+
+
+_MIME_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+
+
+def download_media(
+    *,
+    account: WhatsAppAccountLike,
+    media_id: str,
+) -> tuple[bytes, str, str]:
+    """
+    Download inbound WhatsApp media. Returns (data, mime_type, filename).
+    """
+    token = account.resolved_access_token()
+    if not token:
+        raise WhatsAppClientError("WhatsApp access token not configured")
+    mid = (media_id or "").strip()
+    if not mid:
+        raise WhatsAppClientError("Media id is required")
+
+    meta_resp = requests.get(
+        _graph_media_url(mid),
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    try:
+        meta = meta_resp.json()
+    except ValueError:
+        meta = {"raw": meta_resp.text}
+    if meta_resp.status_code >= 400:
+        raise WhatsAppClientError(f"WhatsApp media meta error {meta_resp.status_code}: {meta}")
+
+    file_url = (meta.get("url") or "").strip()
+    mime = (meta.get("mime_type") or "image/jpeg").split(";")[0].strip().lower()
+    if not file_url:
+        raise WhatsAppClientError(f"WhatsApp media missing url: {meta}")
+
+    data_resp = requests.get(
+        file_url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=60,
+    )
+    if data_resp.status_code >= 400:
+        raise WhatsAppClientError(
+            f"WhatsApp media download error {data_resp.status_code}"
+        )
+    data = data_resp.content
+    ext = _MIME_EXT.get(mime, ".bin")
+    filename = f"whatsapp-{mid[:20]}{ext}"
+    return data, mime, filename
+
+
 def send_text_message(
     *,
     account: WhatsAppAccountLike,

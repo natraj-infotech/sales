@@ -3508,7 +3508,7 @@ def support_ticket_live(request):
         rows = []
         source = data["source"]
         for t in data["object_list"]:
-            email = t.source_sender or getattr(t.created_by, "email", "") or ""
+            email = t.contact_display
             done = t.status in ("resolved", "closed")
             sla = t.sla or {}
             row = {
