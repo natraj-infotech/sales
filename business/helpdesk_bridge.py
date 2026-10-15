@@ -67,6 +67,11 @@ def company_queue_slug(company: CompanyProfile) -> str:
     return f"c{company.pk}-{base}"[:50]
 
 
+def company_queue_slug_prefix(company: CompanyProfile) -> str:
+    """Stable prefix for all helpdesk queues belonging to one tenant."""
+    return f"c{company.pk}-"
+
+
 @transaction.atomic
 def sync_company_queue(company: CompanyProfile) -> Queue:
     """Ensure a helpdesk Queue exists for the company and IMAP settings match."""
@@ -106,7 +111,24 @@ def sync_company_queue(company: CompanyProfile) -> Queue:
         queue.allow_email_submission = False
 
     queue.save()
+    _consolidate_company_tickets(company, canonical_queue=queue)
     return queue
+
+
+def _consolidate_company_tickets(
+    company: CompanyProfile, *, canonical_queue: Queue
+) -> int:
+    """
+    Move tickets from older queues (e.g. after company rename changed slug)
+    onto the current canonical queue so the dashboard stays complete.
+    """
+    prefix = company_queue_slug_prefix(company)
+    stale_queues = Queue.objects.filter(slug__startswith=prefix).exclude(
+        pk=canonical_queue.pk
+    )
+    if not stale_queues.exists():
+        return 0
+    return Ticket.objects.filter(queue__in=stale_queues).update(queue=canonical_queue)
 
 
 def get_company_queue(company: CompanyProfile) -> Queue:
@@ -114,9 +136,10 @@ def get_company_queue(company: CompanyProfile) -> Queue:
 
 
 def tickets_for_company(company: CompanyProfile, *, oem: bool | None = None):
-    queue = get_company_queue(company)
+    get_company_queue(company)
+    prefix = company_queue_slug_prefix(company)
     qs = (
-        Ticket.objects.filter(queue=queue)
+        Ticket.objects.filter(queue__slug__startswith=prefix)
         .select_related(
             "assigned_to",
             "queue",
@@ -134,14 +157,15 @@ def tickets_for_company(company: CompanyProfile, *, oem: bool | None = None):
 
 
 def get_company_ticket(company: CompanyProfile, pk: int) -> Ticket:
-    queue = get_company_queue(company)
+    sync_company_queue(company)
+    prefix = company_queue_slug_prefix(company)
     return Ticket.objects.select_related(
         "assigned_to",
         "queue",
         "crm_meta",
         "crm_meta__created_by",
         "crm_meta__transferred_to",
-    ).get(pk=pk, queue=queue)
+    ).get(pk=pk, queue__slug__startswith=prefix)
 
 
 @dataclass
@@ -267,6 +291,35 @@ class TicketView:
         return self._ticket.submitter_email or ""
 
     @property
+    def customer_phone(self):
+        return (self._meta.customer_phone if self._meta else "") or ""
+
+    @property
+    def customer_firm_name(self):
+        return (self._meta.customer_firm_name if self._meta else "") or ""
+
+    @property
+    def source_channel(self):
+        return (self._meta.source_channel if self._meta else "") or ""
+
+    def get_source_channel_display(self):
+        val = self.source_channel
+        if not val:
+            return ""
+        return dict(SupportTicketMeta.SourceChannel.choices).get(val, val.replace("_", " ").title())
+
+    @property
+    def contact_display(self):
+        """Email or mobile shown on the support dashboard."""
+        phone = self.customer_phone
+        if phone:
+            return phone
+        sender = self.source_sender
+        if sender:
+            return sender
+        return getattr(self.created_by, "email", "") or ""
+
+    @property
     def created_by(self):
         if self._meta and self._meta.created_by_id:
             return self._meta.created_by
@@ -365,6 +418,9 @@ def ensure_meta(
     oem_to_email: str = "",
     oem_cc_emails: str = "",
     subscription_id: str = "",
+    source_channel: str = "",
+    customer_phone: str = "",
+    customer_firm_name: str = "",
 ) -> SupportTicketMeta:
     meta, created = SupportTicketMeta.objects.get_or_create(
         ticket=ticket,
@@ -378,6 +434,9 @@ def ensure_meta(
             "oem_to_email": oem_to_email or "",
             "oem_cc_emails": oem_cc_emails or "",
             "subscription_id": subscription_id or "",
+            "source_channel": source_channel or "",
+            "customer_phone": customer_phone or "",
+            "customer_firm_name": customer_firm_name or "",
         },
     )
     if not created:

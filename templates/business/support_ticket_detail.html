@@ -70,8 +70,16 @@
       </dd>
     </div>
     <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
-    {% if ticket.source_sender %}
+    {% if ticket.customer_firm_name %}
+    <div><dt>Firm</dt><dd>{{ ticket.customer_firm_name }}</dd></div>
+    {% endif %}
+    {% if ticket.customer_phone %}
+    <div><dt>Mobile</dt><dd>{{ ticket.customer_phone }}</dd></div>
+    {% elif ticket.source_sender %}
     <div><dt>From (email)</dt><dd>{{ ticket.source_sender }}</dd></div>
+    {% endif %}
+    {% if ticket.source_channel %}
+    <div><dt>Channel</dt><dd>{{ ticket.get_source_channel_display|default:ticket.source_channel }}</dd></div>
     {% endif %}
     {% if ticket.is_oem %}
     <div><dt>OEM company</dt><dd>{{ ticket.oem_company_name|default:"—" }}</dd></div>

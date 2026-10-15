@@ -97,11 +97,11 @@ def team_picker_context(company: CompanyProfile) -> dict:
 def open_ticket_counts(company: CompanyProfile, user_ids) -> dict[int, int]:
     from helpdesk.models import Ticket
 
-    from business.helpdesk_bridge import company_queue_slug
+    from business.helpdesk_bridge import company_queue_slug_prefix
 
     rows = (
         Ticket.objects.filter(
-            queue__slug=company_queue_slug(company),
+            queue__slug__startswith=company_queue_slug_prefix(company),
             assigned_to_id__in=user_ids,
             status__in=(Ticket.OPEN_STATUS, Ticket.REOPENED_STATUS),
         )

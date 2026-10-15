@@ -44,6 +44,9 @@ def parse_inbound_message(event: dict[str, Any]) -> dict[str, Any]:
     text = ""
     reply_id = ""
 
+    media_id = ""
+    media_mime = ""
+
     if msg_type == "text":
         text = ((message.get("text") or {}).get("body") or "").strip()
     elif msg_type == "interactive":
@@ -53,6 +56,11 @@ def parse_inbound_message(event: dict[str, Any]) -> dict[str, Any]:
             reply_id = ((interactive.get("button_reply") or {}).get("id") or "").strip()
         elif itype == "list_reply":
             reply_id = ((interactive.get("list_reply") or {}).get("id") or "").strip()
+    elif msg_type == "image":
+        image = message.get("image") or {}
+        media_id = (image.get("id") or "").strip()
+        media_mime = (image.get("mime_type") or "image/jpeg").strip()
+        text = (image.get("caption") or "").strip()
 
     return {
         "message": message,
@@ -61,6 +69,8 @@ def parse_inbound_message(event: dict[str, Any]) -> dict[str, Any]:
         "reply_id": reply_id,
         "wa_from": (message.get("from") or "").strip(),
         "message_id": (message.get("id") or "").strip(),
+        "media_id": media_id,
+        "media_mime": media_mime,
     }
 
 
@@ -149,6 +159,9 @@ def handle_inbound_customer_message(
                 contact_name=contact_name,
                 text=text,
                 reply_id=reply_id,
+                media_id=parsed.get("media_id") or "",
+                media_mime=parsed.get("media_mime") or "",
+                message_id=message_id,
             )
     except WhatsAppClientError:
         logger.exception("WhatsApp chat flow failed lead_id=%s", lead.pk)

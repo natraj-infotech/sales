@@ -353,7 +353,7 @@
             <th>Ticket ID</th>
             <th>Created</th>
             <th>Subject</th>
-            <th>Email</th>
+            <th>Contact</th>
             <th>Dept</th>
             <th>Priority</th>
             {% if sla_settings.tracks_response %}<th>Response due</th>{% endif %}
@@ -369,7 +369,7 @@
         </thead>
         <tbody id="st-tbody">
           {% for t in object_list %}
-          <tr data-ticket-id="{{ t.pk }}" data-detail-url="{% url 'support_ticket_detail' t.pk %}" data-search="{{ t.reference }} {{ t.subject }} {{ t.source_sender|default:t.created_by.email }} {{ t.get_priority_display }}">
+          <tr data-ticket-id="{{ t.pk }}" data-detail-url="{% url 'support_ticket_detail' t.pk %}" data-search="{{ t.reference }} {{ t.subject }} {{ t.contact_display }} {{ t.customer_firm_name }} {{ t.get_priority_display }}">
             <td><span class="ticket-ref">{{ t.reference }}</span></td>
             <td>{{ t.created_at|date:"d/m/Y H:i" }}</td>
             <td>
@@ -378,7 +378,7 @@
               <div class="oem-transferred">Transferred to <a href="{% url 'support_ticket_detail' t.transferred_to_id %}">{{ t.transferred_to_reference }}</a></div>
               {% endif %}
             </td>
-            <td>{{ t.source_sender|default:t.created_by.email }}</td>
+            <td>{{ t.contact_display }}</td>
             <td>{{ t.get_department_display }}</td>
             <td><span class="prio-pill prio-pill--{{ t.priority }}">{{ t.get_priority_display }}</span></td>
             {% if sla_settings.tracks_response %}

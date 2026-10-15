@@ -30,7 +30,6 @@ from business.models import (
     CaseLockProduct,
     CaseLockSubmission,
     Lead,
-    SupportTicket,
 )
 
 from .account_resolve import WhatsAppAccountLike, resolve_lead_company
@@ -43,7 +42,7 @@ from .chat_messaging import (
     send_flow_list,
     send_flow_prompt,
 )
-from .client import WhatsAppClientError, send_text_message
+from .client import WhatsAppClientError, download_media, send_text_message
 from .conversation_state import advance_step, reset_session, start_flow
 from .models import WhatsAppConversation
 
@@ -69,34 +68,21 @@ WELCOME_LIST_ROWS = [
     {"id": "caselock", "title": "Case lock", "description": "Submit case lock"},
 ]
 
-DEPT_LIST_ROWS = [
-    {"id": "dept_general", "title": "General", "description": ""},
-    {"id": "dept_billing", "title": "Billing", "description": ""},
-    {"id": "dept_technical", "title": "Technical", "description": ""},
-]
-
-PRIORITY_LIST_ROWS = [
-    {"id": "pri_low", "title": "Low", "description": ""},
-    {"id": "pri_medium", "title": "Medium", "description": ""},
-    {"id": "pri_high", "title": "High", "description": ""},
-]
-
 ADD_SUBMIT_BUTTONS = [
     {"id": "add_more", "title": "Add more products"},
     {"id": "submit_req", "title": "Submit requirement"},
 ]
 
-DEPT_BUTTONS = [
-    {"id": "dept_general", "title": "General"},
-    {"id": "dept_billing", "title": "Billing"},
-    {"id": "dept_technical", "title": "Technical"},
+SUPPORT_ATTACH_PROMPT_BUTTONS = [
+    {"id": "attach_yes", "title": "Yes, attach"},
+    {"id": "attach_no", "title": "No"},
 ]
 
-PRIORITY_BUTTONS = [
-    {"id": "pri_low", "title": "Low"},
-    {"id": "pri_medium", "title": "Medium"},
-    {"id": "pri_high", "title": "High"},
+SUPPORT_ATTACH_DONE_BUTTONS = [
+    {"id": "attach_done", "title": "Done"},
 ]
+
+MAX_SUPPORT_ATTACHMENTS = 5
 
 
 def send_main_welcome(*, account: WhatsAppAccountLike, to: str, body: str | None = None) -> None:
@@ -484,13 +470,37 @@ def _handle_procure(
     )
 
 
+def _download_support_attachments(
+    *,
+    account: WhatsAppAccountLike,
+    draft: dict,
+) -> list[tuple[str, bytes, str]]:
+    files: list[tuple[str, bytes, str]] = []
+    for item in draft.get("attachment_media") or []:
+        if not isinstance(item, dict):
+            continue
+        mid = (item.get("media_id") or "").strip()
+        if not mid:
+            continue
+        try:
+            data, mime, name = download_media(account=account, media_id=mid)
+        except WhatsAppClientError:
+            logger.exception("WhatsApp support attachment download failed media_id=%s", mid)
+            continue
+        files.append((name, data, mime))
+    return files
+
+
 def _create_support_ticket(
     *,
     account: WhatsAppAccountLike,
     lead: Lead,
     session: WhatsAppConversation,
     to: str,
+    message_id: str = "",
 ) -> None:
+    from business.helpdesk_whatsapp import create_helpdesk_ticket_from_whatsapp
+
     company = _company(account)
     owner = _owner_user(company)
     if company is None or owner is None:
@@ -502,24 +512,54 @@ def _create_support_ticket(
         reset_session(session)
         return
     draft = session.draft or {}
-    SupportTicket.objects.create(
+    firm = (draft.get("firm_name") or "").strip()
+    description = (draft.get("description") or "").strip()
+    attachments = _download_support_attachments(account=account, draft=draft)
+    ticket = create_helpdesk_ticket_from_whatsapp(
         company=company,
-        created_by=owner,
-        subject=(draft.get("subject") or "WhatsApp support")[:255],
-        description=(draft.get("description") or "")
-        + f"\n\n— Submitted via WhatsApp ({to})",
-        department=draft.get("department") or SupportTicket.Department.GENERAL,
-        priority=draft.get("priority") or SupportTicket.Priority.MEDIUM,
-        status=SupportTicket.Status.OPEN,
-        source_sender=to[:254],
+        firm_name=firm,
+        description=description,
+        phone_wa_id=to,
+        attachments=attachments,
+        message_id=message_id,
     )
+    lead_updates = []
+    if firm and lead.company_name != firm:
+        lead.company_name = firm[:255]
+        lead_updates.append("company_name")
+    if to and not lead.phone:
+        lead.phone = to[:64]
+        lead_updates.append("phone")
+    if lead_updates:
+        lead_updates.append("updated_at")
+        lead.save(update_fields=lead_updates)
+
+    ref = f"TK-{ticket.pk:05d}"
     send_text_message(
         account=account,
         to=to,
-        body=f"Support ticket created ({draft.get('subject', 'WhatsApp')}). We will follow up soon.",
+        body=f"Support ticket {ref} created. We will follow up soon.",
     )
     advance_step(session, step=END_STEP)
     _send_end_menu(account, to)
+
+
+def _submit_support_ticket(
+    *,
+    account: WhatsAppAccountLike,
+    lead: Lead,
+    session: WhatsAppConversation,
+    to: str,
+    message_id: str = "",
+) -> None:
+    advance_step(session, step="support_submit")
+    _create_support_ticket(
+        account=account,
+        lead=lead,
+        session=session,
+        to=to,
+        message_id=message_id,
+    )
 
 
 def _handle_support(
@@ -530,54 +570,87 @@ def _handle_support(
     to: str,
     text: str,
     reply_id: str,
+    media_id: str = "",
+    media_mime: str = "",
+    message_id: str = "",
 ) -> None:
-    if reply_id.startswith("dept_"):
-        dept_map = {
-            "dept_general": SupportTicket.Department.GENERAL,
-            "dept_billing": SupportTicket.Department.BILLING,
-            "dept_technical": SupportTicket.Department.TECHNICAL,
-        }
+    if reply_id == "attach_yes":
         advance_step(
             session,
-            step="support_priority",
-            draft_updates={"department": dept_map.get(reply_id, SupportTicket.Department.GENERAL)},
+            step="support_collect_images",
+            draft_updates={"attachment_media": []},
         )
-        send_flow_list(
+        send_flow_buttons(
             account=account,
             to=to,
-            body_text="Choose priority:",
-            button_label="Priority",
-            rows=PRIORITY_LIST_ROWS,
+            body_text="Send your image(s), then tap Done when finished.",
+            buttons=SUPPORT_ATTACH_DONE_BUTTONS,
         )
         return
 
-    if reply_id.startswith("pri_"):
-        pri_map = {
-            "pri_low": SupportTicket.Priority.LOW,
-            "pri_medium": SupportTicket.Priority.MEDIUM,
-            "pri_high": SupportTicket.Priority.HIGH,
-        }
+    if reply_id == "attach_no":
+        _submit_support_ticket(
+            account=account,
+            lead=lead,
+            session=session,
+            to=to,
+            message_id=message_id,
+        )
+        return
+
+    if reply_id == "attach_done" and session.step == "support_collect_images":
+        _submit_support_ticket(
+            account=account,
+            lead=lead,
+            session=session,
+            to=to,
+            message_id=message_id,
+        )
+        return
+
+    if session.step == "support_collect_images" and media_id:
+        draft = dict(session.draft or {})
+        items = list(draft.get("attachment_media") or [])
+        if len(items) >= MAX_SUPPORT_ATTACHMENTS:
+            send_flow_prompt(
+                account=account,
+                to=to,
+                body_text=(
+                    f"You can attach up to {MAX_SUPPORT_ATTACHMENTS} images. "
+                    "Tap Done to submit your ticket."
+                ),
+            )
+            return
+        items.append({"media_id": media_id, "mime_type": media_mime or "image/jpeg"})
+        advance_step(session, step="support_collect_images", draft_updates={"attachment_media": items})
+        send_flow_buttons(
+            account=account,
+            to=to,
+            body_text=f"Image received ({len(items)}/{MAX_SUPPORT_ATTACHMENTS}). Send more or tap Done.",
+            buttons=SUPPORT_ATTACH_DONE_BUTTONS,
+        )
+        return
+
+    if session.step == "support_firm_name" and text:
         advance_step(
             session,
-            step="support_submit",
-            draft_updates={"priority": pri_map.get(reply_id, SupportTicket.Priority.MEDIUM)},
+            step="support_description",
+            draft_updates={"firm_name": text.strip()[:255]},
         )
-        _create_support_ticket(account=account, lead=lead, session=session, to=to)
-        return
-
-    if session.step == "support_subject" and text:
-        advance_step(session, step="support_description", draft_updates={"subject": text.strip()[:255]})
         send_flow_prompt(account=account, to=to, body_text="Please describe the issue in detail:")
         return
 
     if session.step == "support_description" and text:
-        advance_step(session, step="support_department", draft_updates={"description": text.strip()})
-        send_flow_list(
+        advance_step(
+            session,
+            step="support_attach_prompt",
+            draft_updates={"description": text.strip()},
+        )
+        send_flow_buttons(
             account=account,
             to=to,
-            body_text="Choose department:",
-            button_label="Department",
-            rows=DEPT_LIST_ROWS,
+            body_text="Do you want to attach any images?",
+            buttons=SUPPORT_ATTACH_PROMPT_BUTTONS,
         )
         return
 
@@ -732,11 +805,11 @@ def start_flow_from_welcome(
         send_flow_prompt(account=account, to=to, body_text="Please enter your company name:")
         return
     if flow_id == "support":
-        start_flow(session, flow="support", step="support_subject", draft={})
+        start_flow(session, flow="support", step="support_firm_name", draft={})
         send_flow_prompt(
             account=account,
             to=to,
-            body_text="What is the subject of your support request?",
+            body_text="Please enter your customer or firm name:",
         )
         return
     if flow_id == "caselock":
@@ -758,6 +831,9 @@ def route_active_flow(
     contact_name: str,
     text: str,
     reply_id: str,
+    media_id: str = "",
+    media_mime: str = "",
+    message_id: str = "",
 ) -> None:
     if is_stop_intent(reply_id=reply_id, text=text):
         end_session(account=account, session=session, to=to)
@@ -792,6 +868,9 @@ def route_active_flow(
             to=to,
             text=text,
             reply_id=reply_id,
+            media_id=media_id,
+            media_mime=media_mime,
+            message_id=message_id,
         )
     elif flow == "caselock":
         _handle_caselock(

@@ -151,7 +151,11 @@ def notify_new_ticket(ticket) -> int:
     if company is None:
         return 0
     sender = (getattr(ticket, "submitter_email", None) or "").strip()
-    if sender:
+    if meta is not None and (meta.customer_phone or "").strip():
+        body = f"WhatsApp {meta.customer_phone.strip()}"
+        if (meta.customer_firm_name or "").strip():
+            body += f" ({meta.customer_firm_name.strip()})"
+    elif sender:
         body = f"From {sender}"
     elif meta is not None and meta.created_by_id:
         body = f"Added by {meta.created_by.email}"
