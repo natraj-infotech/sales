@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{% if ticket %}Close {{ ticket.reference }}{% else %}Close ticket{% endif %}{% endblock %}
+
+{% block content_guest %}
+<div class="card" style="max-width:720px;margin:1.5rem auto;">
+  {% if not ticket %}
+  <h2 style="margin-top:0;">This link is not valid</h2>
+  <p>This close link has expired, was changed, or the ticket is no longer assigned to that engineer.</p>
+  {% else %}
+  <h2 style="margin-top:0;">Close {{ ticket.reference }}</h2>
+  <p class="muted" style="margin-top:0;">{{ ticket.subject }}</p>
+  <dl class="ticket-detail-meta">
+    <div><dt>Ticket ID</dt><dd>{{ ticket.reference }}</dd></div>
+    <div><dt>Subject</dt><dd>{{ ticket.subject }}</dd></div>
+    <div><dt>Status</dt><dd>{{ ticket.get_status_display }}</dd></div>
+    <div><dt>Priority</dt><dd>{{ ticket.get_priority_display }}</dd></div>
+    <div><dt>Department</dt><dd>{{ ticket.get_department_display }}</dd></div>
+    <div><dt>Raised by</dt><dd>{{ ticket.created_by.email|default:"—" }}</dd></div>
+    <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
+    <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>
+  </dl>
+  <h3 style="margin-top:1.25rem;">Description</h3>
+  <div>{{ ticket.description|linebreaks }}</div>
+  {% if ticket.status == "closed" %}
+  <h3 style="margin-top:1.25rem;">Remarks</h3>
+  <div>{% if ticket.remarks %}{{ ticket.remarks }}{% else %}—{% endif %}</div>
+  <p class="muted" style="margin-top:1rem;">This ticket is already closed on the dashboard.</p>
+  {% else %}
+  <form method="post" style="margin-top:1.25rem;">
+    {% csrf_token %}
+    <div class="form-row">
+      <label for="close-remarks">Remarks</label>
+      <textarea id="close-remarks" name="remarks" rows="4" maxlength="255" placeholder="Add a remark before closing">{{ ticket.remarks }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Close ticket</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

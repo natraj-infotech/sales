@@ -4,6 +4,7 @@ from . import views
 from . import views_catalog
 from . import views_notifications
 from . import views_procurement
+from . import views_zoho_books
 
 urlpatterns = [
     path("notifications/", views_notifications.notification_list, name="notification_list"),
@@ -225,6 +226,51 @@ urlpatterns = [
     path("products/<int:pk>/edit/", views.product_edit, name="product_edit"),
     path("products/<int:pk>/delete/", views.product_delete, name="product_delete"),
     path("subscriptions/", views.subscription_list, name="subscription_list"),
+    path(
+        "subscriptions/zoho/",
+        views_zoho_books.subscription_zoho_import,
+        name="subscription_zoho_import",
+    ),
+    path(
+        "subscriptions/zoho/bills/",
+        views_zoho_books.subscription_zoho_bills,
+        name="subscription_zoho_bills",
+    ),
+    path(
+        "subscriptions/zoho/review/",
+        views_zoho_books.subscription_zoho_review,
+        name="subscription_zoho_review",
+    ),
+    path(
+        "subscriptions/zoho/sync/",
+        views_zoho_books.subscription_zoho_sync,
+        name="subscription_zoho_sync",
+    ),
+    path(
+        "subscriptions/zoho/data/",
+        views_zoho_books.subscription_zoho_invoice_data,
+        name="subscription_zoho_invoice_data",
+    ),
+    path(
+        "subscriptions/zoho/bills/data/",
+        views_zoho_books.subscription_zoho_bill_data,
+        name="subscription_zoho_bill_data",
+    ),
+    path(
+        "subscriptions/zoho/bills/<str:bill_id>/pdf/",
+        views_zoho_books.subscription_zoho_bill_pdf,
+        name="subscription_zoho_bill_pdf",
+    ),
+    path(
+        "subscriptions/zoho/<str:invoice_id>/pdf/",
+        views_zoho_books.subscription_zoho_pdf,
+        name="subscription_zoho_pdf",
+    ),
+    path(
+        "subscriptions/zoho/<str:invoice_id>/items/",
+        views_zoho_books.subscription_zoho_invoice_items,
+        name="subscription_zoho_invoice_items",
+    ),
     path("subscriptions/export/", views.subscription_export, name="subscription_export"),
     path(
         "subscriptions/bulk-delete/",
@@ -304,6 +350,26 @@ urlpatterns = [
         "support/tickets/<int:pk>/transfer-oem/",
         views.support_ticket_transfer_oem,
         name="support_ticket_transfer_oem",
+    ),
+    path(
+        "support/tickets/transfer/<str:token>/contacts/",
+        views.support_ticket_email_transfer_contacts,
+        name="support_ticket_email_transfer_contacts",
+    ),
+    path(
+        "support/tickets/transfer/<str:token>/subscription/",
+        views.support_ticket_email_transfer_subscription,
+        name="support_ticket_email_transfer_subscription",
+    ),
+    path(
+        "support/tickets/transfer/<str:token>/",
+        views.support_ticket_email_transfer,
+        name="support_ticket_email_transfer",
+    ),
+    path(
+        "support/tickets/close/<str:token>/",
+        views.support_ticket_email_close,
+        name="support_ticket_email_close",
     ),
     path(
         "support/tickets/<int:pk>/attachments/<int:attachment_id>/",

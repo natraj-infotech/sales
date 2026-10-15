@@ -311,13 +311,83 @@ def _branded_shell(
 """.strip()
 
 
+def public_base_from_request(request) -> str:
+    """Scheme and host of the browser that assigned the ticket."""
+    if request is None:
+        return ""
+    return request.build_absolute_uri("/").rstrip("/")
+
+
+def _public_base_url(explicit: str = "") -> str:
+    from django.conf import settings
+
+    base = (explicit or "").strip().rstrip("/")
+    if base:
+        return base
+    base = (getattr(settings, "PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+    if base:
+        return base
+    return "http://127.0.0.1:8000"
+
+
+def assignment_action_urls(ticket, public_base: str = "") -> tuple[str, str]:
+    """Absolute Close and Transfer links for the engineer assignment mail."""
+    from django.urls import reverse
+
+    from business.ticket_close_tokens import (
+        sign_ticket_close_token,
+        sign_ticket_transfer_token,
+    )
+
+    base = _public_base_url(public_base)
+    close_url = ""
+    transfer_url = ""
+    if getattr(ticket, "assigned_to_id", None):
+        close_token = sign_ticket_close_token(ticket.pk, ticket.assigned_to_id)
+        transfer_token = sign_ticket_transfer_token(ticket.pk, ticket.assigned_to_id)
+        close_url = (
+            f"{base}{reverse('support_ticket_email_close', kwargs={'token': close_token})}"
+        )
+        transfer_url = (
+            f"{base}{reverse('support_ticket_email_transfer', kwargs={'token': transfer_token})}"
+        )
+    return close_url, transfer_url
+
+
+def _assignment_action_buttons(close_url: str, transfer_url: str) -> str:
+    button = (
+        "display:inline-block;padding:10px 16px;border-radius:6px;"
+        f"font-family:{_FONT};font-size:14px;font-weight:700;text-decoration:none;"
+    )
+    return f"""
+            <p style="margin:8px 0 12px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
+              Ticket is opened. Use one of these actions:
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+              <tr>
+                <td style="padding:0 10px 0 0;">
+                  <a href="{escape(close_url)}" style="{button}background-color:{_HEADER_BG};color:#FFFFFF;">Close ticket</a>
+                </td>
+                <td>
+                  <a href="{escape(transfer_url)}" style="{button}background-color:#FFFFFF;color:{_BLUE};border:1px solid {_BLUE};">Transfer to OEM</a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
+              Please review and update the ticket at the earliest.
+            </p>
+    """
+
+
 def build_assignment_email_text(
     company: CompanyProfile,
     ticket,
     *,
     assigned_by,
     ticket_url: str = "",
+    public_base: str = "",
 ) -> str:
+    close_url, transfer_url = assignment_action_urls(ticket, public_base)
     lines = [
         "Hello,",
         "",
@@ -331,6 +401,9 @@ def build_assignment_email_text(
         [
             "",
             "Ticket is opened.",
+            "",
+            f"Close ticket: {close_url}",
+            f"Transfer to OEM: {transfer_url}",
             "",
             "Best regards,",
             company.company_name or "Support team",
@@ -346,9 +419,11 @@ def build_assignment_email_html(
     assigned_by,
     ticket_url: str = "",
     logo_cid: str = "",
+    public_base: str = "",
 ) -> str:
     ref = escape(_ticket_ref(ticket))
     subject = escape(ticket.title or "")
+    close_url, transfer_url = assignment_action_urls(ticket, public_base)
     intro = f"""
             <p style="margin:0 0 12px 0;font-size:15px;line-height:1.55;color:{_TEXT};font-family:{_FONT};">
               Hello,
@@ -358,14 +433,7 @@ def build_assignment_email_html(
               (<em>{subject}</em>) has been assigned to you.
             </p>
     """
-    body = f"""
-            <p style="margin:8px 0 16px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
-              Ticket is opened.
-            </p>
-            <p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
-              Please review and update the ticket at the earliest.
-            </p>
-    """
+    body = _assignment_action_buttons(close_url, transfer_url)
     return _branded_shell(
         company=company,
         logo_cid=logo_cid,
@@ -593,6 +661,7 @@ def send_assignment_email(
     ticket,
     assignee,
     assigned_by=None,
+    public_base: str = "",
 ) -> tuple[str, str | None]:
     """
     Send branded assignment mail to the engineer (assignee).
@@ -621,13 +690,14 @@ def send_assignment_email(
         recipient=recipient,
         subject=subject,
         text_body=build_assignment_email_text(
-            company, ticket, assigned_by=assigned_by
+            company, ticket, assigned_by=assigned_by, public_base=public_base
         ),
         html_body=build_assignment_email_html(
             company,
             ticket,
             assigned_by=assigned_by,
             logo_cid=logo_cid,
+            public_base=public_base,
         ),
         logo_inline=logo_inline,
     )
@@ -787,6 +857,7 @@ def queue_assignment_emails(
     ticket,
     assignee,
     assigned_by=None,
+    public_base: str = "",
 ) -> None:
     """Queue assignee + requester assignment mails without blocking the request."""
     from django.contrib.auth import get_user_model
@@ -796,6 +867,7 @@ def queue_assignment_emails(
     ticket_id = ticket.pk
     assignee_id = getattr(assignee, "pk", None)
     assigned_by_id = getattr(assigned_by, "pk", None)
+    base = (public_base or "").strip()
     User = get_user_model()
 
     def _send_assignee():
@@ -814,6 +886,7 @@ def queue_assignment_emails(
             ticket=ticket_obj,
             assignee=assignee_obj,
             assigned_by=by_obj,
+            public_base=base,
         )
 
     def _send_requester():

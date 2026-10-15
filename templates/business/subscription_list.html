@@ -168,6 +168,14 @@
       <svg aria-hidden="true"><use href="#i-upload"/></svg>
       Import
     </a>
+    <a class="btn-tracker-header" href="{% url 'subscription_zoho_import' %}">
+      <svg aria-hidden="true"><use href="#i-download"/></svg>
+      Zoho invoices
+    </a>
+    <a class="btn-tracker-header" href="{% url 'subscription_zoho_bills' %}">
+      <svg aria-hidden="true"><use href="#i-download"/></svg>
+      Zoho bills
+    </a>
     <button type="submit" form="subscription-bulk-form" class="btn-tracker-header btn-tracker-danger" onclick="return confirm('Delete the selected subscriptions?');">
       <svg aria-hidden="true"><use href="#i-trash"/></svg>
       Delete selected

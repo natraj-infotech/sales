@@ -3,7 +3,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from helpdesk.models import FollowUp, Queue, Ticket
@@ -416,6 +416,7 @@ class SupportDigestTests(TestCase):
                 submitter_email="client@example.com",
             )
 
+    @override_settings(PUBLIC_BASE_URL="https://tracker.example")
     def test_digest_lists_pending_tickets_with_excel_once_per_day(self):
         from business.support_digest import send_support_ticket_digest
 
@@ -437,6 +438,16 @@ class SupportDigestTests(TestCase):
             self.assertNotIn("Fixed laptop", text)
             self.assertNotIn("Old ticket", text)
         self.assertNotIn("SLA", html_body)
+        for title in ("Mail not working", "Teams issue"):
+            ticket = Ticket.objects.get(title=title)
+            detail_url = f"https://tracker.example{reverse('support_ticket_detail', args=[ticket.pk])}"
+            self.assertIn(detail_url, body)
+            self.assertIn(f'href="{detail_url}"', html_body)
+        closed = Ticket.objects.get(title="Old ticket")
+        self.assertNotIn(
+            reverse("support_ticket_detail", args=[closed.pk]),
+            html_body,
+        )
         name, data, _mime = send.call_args.kwargs["attachments"][0]
         self.assertTrue(name.endswith(".xlsx"))
         self.assertTrue(data.startswith(b"PK"))
@@ -504,6 +515,44 @@ class TicketCreatedConfirmationTests(TestCase):
         self.assertEqual(send.call_args.kwargs["to_addresses"], ["customer@example.com"])
         self.assertIn("We have generated a ticket", send.call_args.kwargs["subject"])
         self.assertIn(f"TK-{ticket.pk:05d}", send.call_args.kwargs["body"])
+
+    @override_settings(PUBLIC_BASE_URL="https://tracker.example")
+    def test_assignment_email_includes_close_and_transfer_links(self):
+        from business.helpdesk_assign_mail import (
+            build_assignment_email_html,
+            build_assignment_email_text,
+            build_requester_assignment_email_html,
+        )
+
+        ticket = self._ticket()
+        ticket.assigned_to = self.owner
+        ticket.save(update_fields=["assigned_to"])
+        html = build_assignment_email_html(
+            self.company,
+            ticket,
+            assigned_by=None,
+            public_base="https://support.example",
+        )
+        text = build_assignment_email_text(
+            self.company,
+            ticket,
+            assigned_by=None,
+            public_base="https://support.example",
+        )
+        self.assertIn("https://support.example/support/tickets/close/", html)
+        self.assertIn("https://support.example/support/tickets/transfer/", html)
+        self.assertNotIn("/transfer-oem/", html)
+        self.assertNotIn("127.0.0.1", html)
+        self.assertNotIn("localhost", html)
+        self.assertIn("Close ticket", html)
+        self.assertIn("Transfer to OEM", html)
+        self.assertIn("/support/tickets/close/", text)
+        self.assertIn("/support/tickets/transfer/", text)
+        requester = build_requester_assignment_email_html(
+            self.company, ticket, assigned_by=self.owner
+        )
+        self.assertNotIn("/support/tickets/close/", requester)
+        self.assertNotIn("/support/tickets/transfer/", requester)
 
     def test_support_mailbox_is_not_sent_a_confirmation(self):
         from business.helpdesk_assign_mail import send_ticket_created_email

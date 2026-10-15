@@ -135,7 +135,7 @@ def _is_oem(ticket) -> bool:
         return False
 
 
-def auto_assign_ticket(company: CompanyProfile, ticket):
+def auto_assign_ticket(company: CompanyProfile, ticket, public_base: str = ""):
     """
     Assign a new ticket to a support engineer if auto-assign is on.
 
@@ -175,7 +175,12 @@ def auto_assign_ticket(company: CompanyProfile, ticket):
     try:
         from business.helpdesk_assign_mail import queue_assignment_emails
 
-        queue_assignment_emails(company=company, ticket=ticket, assignee=engineer)
+        queue_assignment_emails(
+            company=company,
+            ticket=ticket,
+            assignee=engineer,
+            public_base=public_base,
+        )
     except Exception:
         logger.exception(
             "Assignment email failed for auto-assigned ticket_id=%s", ticket.pk

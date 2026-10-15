@@ -399,6 +399,7 @@ def create_internal_ticket(
     department: str = "general",
     priority: str = "medium",
     priority_source: str = "manual",
+    public_base: str = "",
 ) -> Ticket:
     from business.sla import apply_sla_to_ticket
 
@@ -441,7 +442,7 @@ def create_internal_ticket(
     try:
         from business.support_team import auto_assign_ticket
 
-        auto_assign_ticket(company, ticket)
+        auto_assign_ticket(company, ticket, public_base=public_base)
     except Exception:
         import logging
 

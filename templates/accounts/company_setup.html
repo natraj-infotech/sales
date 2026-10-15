@@ -464,10 +464,17 @@
 <div class="tracker-card" style="margin-top:1rem;">
   <h3 class="tracker-card-section-title" style="margin-top:0;">Zoho CRM</h3>
   <p class="tracker-helptext" style="margin-top:0;">
-    Connect Zoho CRM so you can create quotations from client renewal responses
-    (Client renewals → open response → Send quotation).
+    Connect Zoho so you can create quotations from client renewal responses
+    (Client renewals → open response → Send quotation), and import Zoho Books
+    sales invoices into subscriptions. Purchase bills can be listed from the
+    same connection.
   </p>
   {% if company.zoho_connected %}
+  <p class="tracker-helptext">
+    To read Zoho Books sales invoices and purchase bills, disconnect once and
+    connect again, then accept the Books invoice, bill, contact, and settings
+    permissions.
+  </p>
   <p style="margin:0.5rem 0 1rem;font-size:0.875rem;">
     <strong>Connected</strong>
     {% if company.zoho_connected_email %} as {{ company.zoho_connected_email }}{% endif %}

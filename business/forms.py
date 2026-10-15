@@ -1067,3 +1067,80 @@ class LeadPublicForm(forms.Form):
 
 class LeadStatusForm(forms.Form):
     status = forms.ChoiceField(choices=Lead.Status.choices)
+
+
+class ZohoSubscriptionLineForm(forms.Form):
+    include = forms.BooleanField(required=False, initial=True, label="Create this subscription")
+    zoho_invoice_id = forms.CharField(widget=forms.HiddenInput)
+    zoho_line_item_id = forms.CharField(widget=forms.HiddenInput)
+    client = forms.ModelChoiceField(queryset=Client.objects.none(), empty_label="---------")
+    category_filter = forms.ChoiceField(label="Category", required=False)
+    company_name_filter = forms.ChoiceField(label="Company name", required=False)
+    product = forms.ModelChoiceField(
+        queryset=Product.objects.none(), empty_label="Select product"
+    )
+    quantity = forms.IntegerField(min_value=1)
+    start_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        input_formats=["%Y-%m-%d"],
+    )
+    vendor = forms.ModelChoiceField(
+        queryset=Vendor.objects.none(), required=False, empty_label="---------"
+    )
+    billing_amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=0)
+    invoice_number = forms.CharField(max_length=128, required=False, label="Invoice number")
+    serial_number = forms.CharField(max_length=128, required=False)
+    subscription_code = forms.CharField(max_length=64, required=False, label="Subscription id")
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        clients = Client.objects.none()
+        products = Product.objects.none()
+        vendors = Vendor.objects.none()
+        categories = set()
+        company_names = []
+        if company is not None:
+            clients = company.clients.all().order_by("name")
+            products = company.products.all().order_by("name")
+            vendors = company.vendors.all().order_by("name")
+            for product in products:
+                if product.category:
+                    categories.add(product.category)
+                if product.asset_type:
+                    categories.add(product.asset_type)
+            categories.add("Hardware")
+            company_names = list(
+                products.exclude(company_name="")
+                .values_list("company_name", flat=True)
+                .distinct()
+                .order_by("company_name")
+            )
+        self.fields["client"].queryset = clients
+        self.fields["product"].queryset = products
+        self.fields["vendor"].queryset = vendors
+        self.fields["billing_amount"].label = "Price"
+        category_choices = [("", "---------")] + [
+            (name, name) for name in sorted(categories, key=str.lower)
+        ]
+        company_choices = [("", "Select company")] + [(name, name) for name in company_names]
+        initial_category = (self.initial.get("category_filter") or "").strip()
+        initial_company = (self.initial.get("company_name_filter") or "").strip()
+        if initial_category and initial_category not in categories:
+            category_choices.append((initial_category, initial_category))
+        if initial_company and initial_company not in company_names:
+            company_choices.append((initial_company, initial_company))
+        self.fields["category_filter"].choices = category_choices
+        self.fields["company_name_filter"].choices = company_choices
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("include"):
+            for field in list(self.errors):
+                if field != "include":
+                    del self.errors[field]
+        return cleaned

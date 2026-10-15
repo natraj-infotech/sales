@@ -313,6 +313,8 @@ class ClientSubscription(models.Model):
     )
     serial_number = models.CharField(max_length=128, blank=True)
     subscription_code = models.CharField("subscription id", max_length=64, blank=True)
+    zoho_invoice_id = models.CharField(max_length=64, blank=True)
+    zoho_line_item_id = models.CharField(max_length=64, blank=True)
     notes = models.TextField(blank=True)
     expiry_reminder_stopped_for_end_date = models.DateField(
         null=True,
@@ -330,6 +332,13 @@ class ClientSubscription(models.Model):
                 Lower(Trim("subscription_code")),
                 condition=models.Q(subscription_code__regex=r"\S"),
                 name="unique_company_normalized_subscription_code",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "zoho_invoice_id", "zoho_line_item_id"],
+                condition=(
+                    ~models.Q(zoho_invoice_id="") & ~models.Q(zoho_line_item_id="")
+                ),
+                name="unique_company_zoho_invoice_line",
             ),
         ]
 
@@ -2161,3 +2170,120 @@ class VendorPriceRequest(models.Model):
 
     def __str__(self):
         return f"{self.vendor} / {self.product_name}"
+
+
+class ZohoBooksSync(models.Model):
+    """Tracks a Zoho Books copy so later syncs only ask for changes."""
+
+    class Kind(models.TextChoices):
+        INVOICE = "invoice", "Sales invoice"
+        BILL = "bill", "Purchase bill"
+
+    class Mode(models.TextChoices):
+        IDLE = "idle", "Idle"
+        FULL = "full", "Full"
+        INCREMENTAL = "incremental", "Incremental"
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="zoho_books_syncs",
+    )
+    organization_id = models.CharField(max_length=64)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.IDLE)
+    next_page = models.PositiveIntegerField(default=1)
+    last_completed_at = models.DateTimeField(null=True, blank=True)
+    modified_after = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "organization_id", "kind"],
+                name="unique_zoho_books_sync",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.company_id} {self.kind}"
+
+
+class ZohoBooksDocument(models.Model):
+    """One saved Zoho Books sales invoice or purchase bill."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="zoho_books_documents",
+    )
+    organization_id = models.CharField(max_length=64)
+    kind = models.CharField(max_length=16, choices=ZohoBooksSync.Kind.choices)
+    zoho_id = models.CharField(max_length=64)
+    number = models.CharField(max_length=128, blank=True)
+    document_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    party_name = models.CharField(max_length=255, blank=True)
+    gst_no = models.CharField(max_length=32, blank=True)
+    status = models.CharField(max_length=32, blank=True)
+    currency_code = models.CharField(max_length=8, blank=True)
+    total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    last_modified_raw = models.CharField(max_length=40, blank=True)
+    synced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-document_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "organization_id", "kind", "zoho_id"],
+                name="unique_zoho_books_document",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["company", "organization_id", "kind", "document_date"],
+                name="zoho_doc_period_idx",
+            ),
+            models.Index(
+                fields=["company", "organization_id", "kind", "number"],
+                name="zoho_doc_number_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return self.number or self.zoho_id
+
+
+class ZohoBooksDocumentLine(models.Model):
+    """Product line saved with a Zoho invoice or bill."""
+
+    document = models.ForeignKey(
+        ZohoBooksDocument,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    line_id = models.CharField(max_length=64)
+    item_id = models.CharField(max_length=64, blank=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    sku = models.CharField(max_length=128, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    serial_number = models.CharField(max_length=128, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "line_id"],
+                name="unique_zoho_books_document_line",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["item_id"], name="zoho_line_item_idx"),
+        ]
+
+    def __str__(self):
+        return self.name

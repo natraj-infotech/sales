@@ -5,7 +5,6 @@
 {% include "includes/analytics_dash.css.html" %}
 {% include "includes/oem_tickets.css.html" %}
 <style>
-  .st-auto-assign-row { margin: 0 0 1rem; background: #f8fafc; }
   #st-table tbody tr[data-detail-url] { cursor: pointer; }
   #st-table tbody tr[data-detail-url]:hover { background: #eef4ff; }
   #st-table tbody tr[data-detail-url] input[type="text"],
@@ -222,21 +221,6 @@
   </div>
   {% include "includes/oem_email_diary_modal.html" %}
   {% else %}
-  <form method="post" action="{% url 'support_team_auto_assign_toggle' %}" class="sla-toggle-row st-auto-assign-row" id="st-auto-assign-form">
-    {% csrf_token %}
-    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-    <div class="toggle-copy">
-      <strong id="st-auto-assign-label">Auto-assign {% if auto_assign_enabled %}is on{% else %}is off{% endif %}</strong>
-      <p>
-        <span id="st-auto-assign-detail">{% if auto_assign_enabled %}New tickets go to the support engineer with the fewest open tickets.{% else %}New tickets stay unassigned until you assign them.{% endif %}</span>
-        <a href="#" data-open-support-team>Manage support team</a>
-      </p>
-    </div>
-    <label class="sla-switch" title="Auto-assign new tickets">
-      <input type="checkbox" name="auto_assign_enabled" {% if auto_assign_enabled %}checked{% endif %} onchange="this.form.submit()">
-      <span class="slider"></span>
-    </label>
-  </form>
   <div class="ticket360-stats">
     <div class="ticket360-stat is-active">
       <div class="num" id="st-count-total">{{ counts.total }}</div>

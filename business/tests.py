@@ -2354,6 +2354,125 @@ class OemTicketFeatureTests(TestCase):
         )
         self.assertIn("- photo.png", text_body)
 
+    def test_transfer_page_asks_for_oem_details(self):
+        from business.helpdesk_bridge import create_internal_ticket
+
+        source = create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Internal printer issue",
+            description="Won't print",
+        )
+        response = self.client.get(
+            reverse("support_ticket_transfer_oem", kwargs={"pk": source.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Subscription ID")
+        self.assertContains(response, 'id="oem-sub-id"')
+        self.assertContains(response, 'name="to_email"')
+        self.assertContains(response, 'name="oem_company"')
+        self.assertContains(response, 'name="subject"')
+        self.assertContains(response, 'name="description"')
+        self.assertContains(response, "Internal printer issue")
+
+    @patch("business.helpdesk_assign_mail.queue_ticket_closed_email")
+    def test_email_close_link_works_without_login(self, queued):
+        from django.test import Client
+        from helpdesk.models import Ticket
+
+        from business.helpdesk_bridge import create_internal_ticket
+        from business.ticket_close_tokens import sign_ticket_close_token
+
+        source = create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Need a close",
+            description="Customer cannot log in",
+        )
+        source.assigned_to = self.user
+        source.save(update_fields=["assigned_to"])
+        token = sign_ticket_close_token(source.pk, self.user.pk)
+        url = reverse("support_ticket_email_close", kwargs={"token": token})
+        guest = Client()
+        page = guest.get(url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Need a close")
+        self.assertContains(page, "Customer cannot log in")
+        self.assertContains(page, "Close ticket")
+        self.assertContains(page, 'name="remarks"')
+
+        response = guest.post(url, {"remarks": "Fixed on site"})
+        self.assertRedirects(response, url)
+        source.refresh_from_db()
+        self.assertEqual(source.status, Ticket.CLOSED_STATUS)
+        source.crm_meta.refresh_from_db()
+        self.assertEqual(source.crm_meta.remarks, "Fixed on site")
+        queued.assert_called_once()
+
+        closed = guest.get(url)
+        self.assertContains(closed, "already closed")
+        self.assertContains(closed, "Fixed on site")
+        self.assertNotContains(closed, 'name="remarks"')
+
+        other = get_user_model().objects.create_user(
+            email="other-engineer@example.com", password="pass12345"
+        )
+        wrong = reverse(
+            "support_ticket_email_close",
+            kwargs={"token": sign_ticket_close_token(source.pk, other.pk)},
+        )
+        self.assertContains(guest.get(wrong), "not valid")
+        self.assertContains(guest.get(reverse(
+            "support_ticket_email_close", kwargs={"token": "tampered"}
+        )), "not valid")
+
+    @patch("business.oem_tickets.send_outbound", return_value=(True, None))
+    def test_email_transfer_link_works_without_login(self, _send):
+        from django.test import Client
+
+        from business.helpdesk_bridge import create_internal_ticket
+        from business.ticket_close_tokens import sign_ticket_transfer_token
+
+        source = create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Need OEM",
+            description="Escalate this printer",
+        )
+        source.assigned_to = self.user
+        source.save(update_fields=["assigned_to"])
+        token = sign_ticket_transfer_token(source.pk, self.user.pk)
+        url = reverse("support_ticket_email_transfer", kwargs={"token": token})
+        guest = Client()
+        page = guest.get(url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Need OEM")
+        self.assertContains(page, "Subscription ID")
+        self.assertContains(page, 'name="to_email"')
+        self.assertContains(page, reverse(
+            "support_ticket_email_transfer_contacts", kwargs={"token": token}
+        ))
+
+        response = guest.post(
+            url,
+            {
+                "to_email": "oem@example.com",
+                "oem_company": "HP",
+                "subject": "Need OEM",
+                "description": "Escalate this printer",
+            },
+        )
+        self.assertRedirects(response, url)
+        source.crm_meta.refresh_from_db()
+        self.assertTrue(source.crm_meta.transferred_to_id)
+        done = guest.get(url)
+        self.assertContains(done, "Already transferred")
+
+        wrong = reverse(
+            "support_ticket_email_transfer", kwargs={"token": "tampered"}
+        )
+        self.assertContains(guest.get(wrong), "not valid")
+
     @patch("business.oem_tickets.send_outbound", return_value=(True, None))
     def test_transfer_marks_internal_ticket(self, _send):
         from business.helpdesk_bridge import create_internal_ticket

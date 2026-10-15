@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% block title %}Review Zoho subscriptions{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .zoho-view-invoice {
+    border: 1px solid #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .zoho-view-invoice:hover { background: #dbeafe; }
+  .zoho-invoice-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .zoho-invoice-modal[hidden] { display: none; }
+  .zoho-invoice-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+  }
+  .zoho-invoice-card {
+    position: relative;
+    width: min(52rem, calc(100vw - 2rem));
+    height: min(40rem, calc(100vh - 2rem));
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+    overflow: hidden;
+  }
+  .zoho-invoice-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .zoho-invoice-head h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+  }
+  .zoho-invoice-x {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .zoho-invoice-frame {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    background: #f8fafc;
+  }
+  .zoho-search-select { position: relative; }
+  .zoho-line-form .zoho-select-native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0);
+    border: 0 !important;
+    white-space: nowrap;
+  }
+  .zoho-search-menu {
+    position: fixed;
+    z-index: 90;
+    max-height: 14rem;
+    margin: 0;
+    padding: 0.25rem 0;
+    overflow: auto;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  }
+  .zoho-search-menu[hidden] { display: none; }
+  .zoho-search-menu li {
+    padding: 0.45rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #0f172a;
+  }
+  .zoho-search-menu li.is-active,
+  .zoho-search-menu li:hover { background: #dbeafe; }
+  .zoho-search-menu li.zoho-search-empty {
+    color: #64748b;
+    cursor: default;
+  }
+  .zoho-search-menu li.zoho-search-empty:hover { background: transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-mock-form-shell">
+  <form method="post" id="zoho-review-form" novalidate>
+    {% csrf_token %}
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+    <div class="tracker-mock-form-errors">{{ formset.non_form_errors }}</div>
+    {% endif %}
+
+    {% for form in formset %}
+    <div class="tracker-mock-form-card zoho-line-form" style="margin-bottom:1.25rem;">
+      <header class="tracker-mock-form-card-header">
+        <h1 class="tracker-mock-form-card-title">
+          {% if formset.forms|length > 1 %}Subscription {{ forloop.counter }}{% else %}Add subscription{% endif %}
+        </h1>
+        <p class="tracker-mock-form-card-subtitle">
+          {{ form.draft.invoice_number|default:invoice.invoice_number }}
+          — {{ form.draft.zoho_item_name|default:"Product line" }}
+        </p>
+      </header>
+      <div class="tracker-mock-form-body">
+        <p class="tracker-helptext" style="margin-top:0;">
+          {{ form.draft.customer_name }}
+          {% if form.draft.gst_no %} · GST {{ form.draft.gst_no }}{% endif %}
+          {% if form.draft.zoho_sku %} · SKU {{ form.draft.zoho_sku }}{% endif %}
+        </p>
+        <p class="tracker-helptext">{{ form.draft.client_note }} {{ form.draft.product_note }}</p>
+        {% if form.draft %}
+        <p style="margin:0 0 1rem;">
+          <button type="button" class="zoho-view-invoice" data-pdf-url="{% url 'subscription_zoho_pdf' form.draft.zoho_invoice_id %}">View invoice</button>
+        </p>
+        {% endif %}
+        {% if form.non_field_errors %}
+        <div class="tracker-mock-form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+        {{ form.zoho_invoice_id }}
+        {{ form.zoho_line_item_id }}
+        <label class="tracker-mock-label" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;">
+          {{ form.include }}
+          Create this subscription
+        </label>
+
+        <section class="tracker-mock-section" aria-labelledby="zoho-basic-{{ forloop.counter }}">
+          <h2 id="zoho-basic-{{ forloop.counter }}" class="tracker-mock-section-title">Basic Subscription Details</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.client %}
+            {% include "includes/form_field_mock.html" with field=form.category_filter %}
+            {% include "includes/form_field_mock.html" with field=form.company_name_filter %}
+            {% include "includes/form_field_mock.html" with field=form.product %}
+            {% include "includes/form_field_mock.html" with field=form.quantity extra_class="tracker-mock-field--qty" %}
+          </div>
+        </section>
+
+        <section class="tracker-mock-section" aria-labelledby="zoho-dates-{{ forloop.counter }}">
+          <h2 id="zoho-dates-{{ forloop.counter }}" class="tracker-mock-section-title">Date and Vendor Details</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.start_date %}
+            {% include "includes/form_field_mock.html" with field=form.end_date %}
+            {% include "includes/form_field_mock.html" with field=form.vendor %}
+            {% include "includes/form_field_mock.html" with field=form.billing_amount %}
+          </div>
+        </section>
+
+        <section class="tracker-mock-section" aria-labelledby="zoho-ids-{{ forloop.counter }}">
+          <h2 id="zoho-ids-{{ forloop.counter }}" class="tracker-mock-section-title">Identifiers</h2>
+          <div class="tracker-mock-grid">
+            {% include "includes/form_field_mock.html" with field=form.invoice_number %}
+            <div class="tracker-mock-field">
+              <span class="tracker-mock-label">Invoice PDF copy</span>
+              {% if form.draft %}
+              <button type="button" class="zoho-view-invoice" data-pdf-url="{% url 'subscription_zoho_pdf' form.draft.zoho_invoice_id %}">View invoice</button>
+              {% endif %}
+            </div>
+            {% include "includes/form_field_mock.html" with field=form.serial_number %}
+            {% include "includes/form_field_mock.html" with field=form.subscription_code extra_class="tracker-mock-field--qty" %}
+          </div>
+        </section>
+      </div>
+    </div>
+    {% empty %}
+    {% if not imported_rows %}
+    <div class="tracker-mock-form-card">
+      <div class="tracker-mock-form-body"><p>No product lines were found on this invoice.</p></div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if imported_rows %}
+    <div class="tracker-mock-form-card" style="margin-bottom:1.25rem;">
+      <div class="tracker-mock-form-body">
+        <h2 class="tracker-mock-section-title">Already imported</h2>
+        <p class="tracker-helptext">These product lines already have a subscription, so they will not be created again.</p>
+        <ul>
+          {% for row in imported_rows %}
+          <li>{{ row.invoice_number }} — {{ row.zoho_item_name }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="tracker-mock-form-actions">
+      {% if formset.forms %}
+      <button type="submit" class="btn-mock-save">Save</button>
+      {% endif %}
+      <a class="btn-mock-cancel" href="{% url 'subscription_zoho_import' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+<div id="zoho-invoice-modal" class="zoho-invoice-modal" hidden>
+  <div class="zoho-invoice-backdrop" data-close="1"></div>
+  <div class="zoho-invoice-card" role="dialog" aria-modal="true" aria-labelledby="zoho-invoice-title">
+    <div class="zoho-invoice-head">
+      <h2 id="zoho-invoice-title">Invoice</h2>
+      <button type="button" class="zoho-invoice-x" data-close="1" aria-label="Close">&times;</button>
+    </div>
+    <iframe class="zoho-invoice-frame" title="Invoice PDF" src="about:blank"></iframe>
+  </div>
+</div>
+{{ product_options|json_script:"subscription-product-options" }}
+<script>
+  (function () {
+    var optionsNode = document.getElementById("subscription-product-options");
+    var products = [];
+    try {
+      products = JSON.parse((optionsNode && optionsNode.textContent) || "[]");
+    } catch (err) {
+      products = [];
+    }
+
+    function normalize(value) {
+      return (value || "").trim().toLowerCase();
+    }
+
+    function attachSearch(select) {
+      if (!select || select.dataset.searchReady) return;
+      select.dataset.searchReady = "1";
+      select.classList.add("zoho-select-native");
+      var wrap = document.createElement("div");
+      wrap.className = "zoho-search-select";
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "zoho-search-input";
+      input.setAttribute("autocomplete", "off");
+      input.setAttribute("spellcheck", "false");
+      input.placeholder = "Type to search";
+      var menu = document.createElement("ul");
+      menu.className = "zoho-search-menu";
+      menu.hidden = true;
+      select.parentNode.insertBefore(wrap, select);
+      wrap.appendChild(input);
+      wrap.appendChild(select);
+      document.body.appendChild(menu);
+
+      function choices() {
+        return Array.prototype.filter.call(select.options, function (option) {
+          return option.value !== "";
+        });
+      }
+
+      function syncInput() {
+        var selected = select.options[select.selectedIndex];
+        input.value = selected && selected.value ? selected.textContent : "";
+      }
+
+      function placeMenu() {
+        var rect = input.getBoundingClientRect();
+        menu.style.left = rect.left + "px";
+        menu.style.top = (rect.bottom + 4) + "px";
+        menu.style.width = rect.width + "px";
+      }
+
+      function choose(option) {
+        select.value = option.value;
+        input.value = option.textContent;
+        menu.hidden = true;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      function render(query) {
+        var q = (query || "").trim().toLowerCase();
+        var matches = choices().filter(function (option) {
+          return !q || option.textContent.toLowerCase().indexOf(q) !== -1;
+        });
+        menu.innerHTML = "";
+        if (!matches.length) {
+          var empty = document.createElement("li");
+          empty.className = "zoho-search-empty";
+          empty.textContent = "No matches";
+          menu.appendChild(empty);
+        } else {
+          matches.forEach(function (option) {
+            var item = document.createElement("li");
+            item.textContent = option.textContent;
+            item.setAttribute("data-value", option.value);
+            item.addEventListener("mousedown", function (event) {
+              event.preventDefault();
+              choose(option);
+            });
+            menu.appendChild(item);
+          });
+        }
+        placeMenu();
+        menu.hidden = false;
+      }
+
+      input.addEventListener("focus", function () {
+        document.querySelectorAll(".zoho-search-menu").forEach(function (other) {
+          if (other !== menu) other.hidden = true;
+        });
+        render("");
+        input.select();
+      });
+      input.addEventListener("input", function () {
+        render(input.value);
+      });
+      input.addEventListener("keydown", function (event) {
+        var items = menu.querySelectorAll("li[data-value]");
+        var active = menu.querySelector("li.is-active");
+        var index = active ? Array.prototype.indexOf.call(items, active) : -1;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!items.length) return;
+          if (active) active.classList.remove("is-active");
+          index = event.key === "ArrowDown" ? Math.min(index + 1, items.length - 1) : Math.max(index - 1, 0);
+          items[index].classList.add("is-active");
+          items[index].scrollIntoView({ block: "nearest" });
+        } else if (event.key === "Enter") {
+          if (menu.hidden) return;
+          event.preventDefault();
+          var pick = menu.querySelector("li.is-active") || items[0];
+          if (!pick) return;
+          var option = Array.prototype.find.call(select.options, function (item) {
+            return item.value === pick.getAttribute("data-value");
+          });
+          if (option) choose(option);
+        } else if (event.key === "Escape") {
+          menu.hidden = true;
+          syncInput();
+        }
+      });
+      input.addEventListener("blur", function () {
+        window.setTimeout(function () {
+          menu.hidden = true;
+          if (!(input.value || "").trim()) {
+            if (select.value) {
+              select.value = "";
+              select.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          }
+          syncInput();
+        }, 120);
+      });
+      window.addEventListener("resize", function () {
+        if (!menu.hidden) placeMenu();
+      });
+      document.addEventListener("scroll", function () {
+        if (!menu.hidden) placeMenu();
+      }, true);
+      select._zohoSyncSearch = syncInput;
+      syncInput();
+    }
+
+    function matchesFilters(product, categoryValue, companyValue) {
+      var productCategory = normalize(product.category);
+      var productType = normalize(product.asset_type);
+      var productCompany = normalize(product.company_name);
+      var wantedCategory = normalize(categoryValue);
+      var wantedCompany = normalize(companyValue);
+      if (wantedCategory && productCategory !== wantedCategory && productType !== wantedCategory) {
+        return false;
+      }
+      if (wantedCompany && productCompany !== wantedCompany) {
+        return false;
+      }
+      return true;
+    }
+
+    document.querySelectorAll(".zoho-line-form").forEach(function (card) {
+      var productSelect = card.querySelector("[name$='-product']");
+      var categorySelect = card.querySelector("[name$='-category_filter']");
+      var companySelect = card.querySelector("[name$='-company_name_filter']");
+      if (!productSelect) return;
+
+      function rebuildProductOptions() {
+        var selectedValue = productSelect.value;
+        var categoryValue = categorySelect ? categorySelect.value : "";
+        var companyValue = companySelect ? companySelect.value : "";
+        var filtered = products.filter(function (product) {
+          return matchesFilters(product, categoryValue, companyValue);
+        });
+        productSelect.innerHTML = "";
+        var placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select product";
+        productSelect.appendChild(placeholder);
+        filtered.forEach(function (product) {
+          var option = document.createElement("option");
+          option.value = String(product.id);
+          option.textContent = product.name;
+          if (String(product.id) === String(selectedValue)) option.selected = true;
+          productSelect.appendChild(option);
+        });
+        if (!filtered.some(function (product) { return String(product.id) === String(selectedValue); })) {
+          productSelect.value = "";
+        }
+        if (productSelect._zohoSyncSearch) productSelect._zohoSyncSearch();
+      }
+
+      if (categorySelect) categorySelect.addEventListener("change", rebuildProductOptions);
+      if (companySelect) companySelect.addEventListener("change", rebuildProductOptions);
+      rebuildProductOptions();
+      card.querySelectorAll("select").forEach(attachSearch);
+    });
+
+    var modal = document.getElementById("zoho-invoice-modal");
+    var frame = modal ? modal.querySelector(".zoho-invoice-frame") : null;
+    function closeInvoice() {
+      if (!modal) return;
+      modal.hidden = true;
+      if (frame) frame.src = "about:blank";
+    }
+    document.querySelectorAll(".zoho-view-invoice").forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (!modal || !frame) return;
+        frame.src = button.getAttribute("data-pdf-url") || "about:blank";
+        modal.hidden = false;
+      });
+    });
+    if (modal) {
+      modal.addEventListener("click", function (event) {
+        if (event.target && event.target.getAttribute("data-close")) closeInvoice();
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeInvoice();
+      });
+    }
+  })();
+</script>
+{% endblock %}

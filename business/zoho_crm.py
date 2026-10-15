@@ -17,7 +17,12 @@ from business.models import SubscriptionRenewalInvite, SubscriptionRenewalInvite
 
 logger = logging.getLogger(__name__)
 
-ZOHO_SCOPES = "ZohoCRM.modules.ALL,ZohoCRM.settings.ALL,ZohoCRM.users.READ,offline_access"
+ZOHO_SCOPES = (
+    "ZohoCRM.modules.ALL,ZohoCRM.settings.ALL,ZohoCRM.users.READ,"
+    "ZohoBooks.invoices.READ,ZohoBooks.bills.READ,ZohoBooks.contacts.READ,"
+    "ZohoBooks.settings.READ,"
+    "offline_access"
+)
 
 
 def zoho_configured() -> bool:
@@ -188,6 +193,8 @@ def disconnect_zoho(company: CompanyProfile) -> None:
     company.zoho_accounts_domain = ""
     company.zoho_connected_email = ""
     company.zoho_connected_at = None
+    company.zoho_books_organization_id = ""
+    company.zoho_books_organization_name = ""
     company.save(
         update_fields=[
             "zoho_refresh_token",
@@ -197,6 +204,8 @@ def disconnect_zoho(company: CompanyProfile) -> None:
             "zoho_accounts_domain",
             "zoho_connected_email",
             "zoho_connected_at",
+            "zoho_books_organization_id",
+            "zoho_books_organization_name",
             "updated_at",
         ]
     )

@@ -6,6 +6,7 @@ import re
 from html import escape
 from io import BytesIO
 
+from django.urls import reverse
 from django.utils import timezone
 from openpyxl import Workbook
 
@@ -15,6 +16,7 @@ from business.expiry_notifications import (
     XLSX_MIME,
     _company_can_send_mail,
     _company_logo_inline,
+    _public_base_url,
     parse_extra_emails,
 )
 from business.outbound_mail import send_company_outbound
@@ -81,6 +83,34 @@ def _display_date(value) -> str:
     if not value:
         return "—"
     return timezone.localtime(value).strftime("%d-%m-%Y")
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+# The app is opened on the office LAN. Loopback links in mail do not open there.
+_LAN_DIGEST_BASE = "http://192.168.1.147:8000"
+
+
+def digest_link_base() -> str:
+    base = _public_base_url()
+    host = base.split("://", 1)[-1].split("/")[0].split(":")[0].lower()
+    if host in _LOOPBACK_HOSTS:
+        return _LAN_DIGEST_BASE
+    return base
+
+
+def ticket_detail_url(ticket) -> str:
+    """Public ticket page. Anyone with the digest link can open it without login."""
+    from business.team_notifications import company_for_ticket
+    from business.ticket_close_tokens import sign_ticket_view_token
+
+    raw = getattr(ticket, "_ticket", None) or ticket
+    company = company_for_ticket(raw)
+    if company is None:
+        path = reverse("support_ticket_detail", args=[ticket.pk])
+    else:
+        token = sign_ticket_view_token(ticket.pk, company.pk)
+        path = reverse("support_ticket_email_view", kwargs={"token": token})
+    return f"{digest_link_base()}{path}"
 
 
 def collect_ticket_summary(company: CompanyProfile, today) -> dict:
@@ -150,7 +180,7 @@ def support_digest_body(company: CompanyProfile, summary: dict, attachment_name:
             f"{ticket.reference} | {ticket.subject or '—'} | "
             f"{ticket.get_status_display()} | {ticket.get_priority_display()} | "
             f"{_assignee_label(ticket)} | {_display_date(ticket.created_at)} | "
-            f"{_days_open(ticket, today)} day(s) open"
+            f"{_days_open(ticket, today)} day(s) open | {ticket_detail_url(ticket)}"
         )
     lines.extend(["", "Manage tickets in Tracker365."])
     return "\n".join(lines)
@@ -179,10 +209,33 @@ def support_digest_html(
         "text-transform:uppercase;letter-spacing:0.3px;"
     )
     td = (
-        f"padding:10px 8px;border:1px solid {border};color:{text};"
+        f"padding:0;border:1px solid {border};color:{text};"
         f"font-family:{font};font-size:13px;line-height:1.4;"
         f"vertical-align:top;background-color:{card_bg};"
     )
+    link = (
+        f"display:block;padding:10px 8px;color:{text};text-decoration:none;"
+        f"font-family:{font};font-size:13px;line-height:1.4;"
+    )
+    id_link = (
+        f"display:block;padding:10px 8px;color:{blue};text-decoration:underline;"
+        f"font-family:{font};font-size:13px;line-height:1.4;font-weight:700;"
+    )
+
+    def linked_cell(
+        href: str,
+        inner: str,
+        *,
+        align: str = "left",
+        extra: str = "",
+        anchor: str = "",
+    ) -> str:
+        style = anchor or link
+        return (
+            f'<td style="{td}{extra}" align="{align}">'
+            f'<a href="{href}" style="{style}text-align:{align};">{inner}</a>'
+            f"</td>"
+        )
 
     stat_cards = [
         ("Pending", summary["pending_count"], "#DC2626"),
@@ -203,22 +256,36 @@ def support_digest_html(
     for ticket in summary["pending"]:
         days = _days_open(ticket, today)
         accent = "#DC2626" if days > 7 else ("#D97706" if days > 2 else "#16A34A")
+        href = escape(ticket_detail_url(ticket))
+        kind = "OEM" if ticket.is_oem else "Internal"
         rows.append(
-            f"<tr>"
-            f'<td style="{td}white-space:nowrap;"><strong>{escape(ticket.reference)}</strong><br>'
-            f'<span style="color:{muted};font-size:11px;">'
-            f'{"OEM" if ticket.is_oem else "Internal"}</span></td>'
-            f'<td style="{td}">{escape(ticket.subject or "—")}</td>'
-            f'<td style="{td}" align="center">{escape(ticket.get_status_display())}</td>'
-            f'<td style="{td}" align="center">{escape(ticket.get_priority_display())}</td>'
-            f'<td style="{td}">{escape(_assignee_label(ticket))}</td>'
-            f'<td style="{td}white-space:nowrap;" align="center">'
-            f"{escape(_display_date(ticket.created_at))}</td>"
-            f'<td style="{td}" align="center">'
-            f'<span style="display:inline-block;padding:4px 8px;border:1px solid {accent};'
-            f'border-radius:999px;color:{accent};white-space:nowrap;font-size:12px;">'
-            f"{days} day(s)</span></td>"
-            f"</tr>"
+            "<tr>"
+            + linked_cell(
+                href,
+                f"{escape(ticket.reference)}<br>"
+                f'<span style="color:{muted};font-size:11px;font-weight:400;'
+                f'text-decoration:none;">{kind}</span>',
+                extra="white-space:nowrap;",
+                anchor=id_link,
+            )
+            + linked_cell(href, escape(ticket.subject or "—"))
+            + linked_cell(href, escape(ticket.get_status_display()), align="center")
+            + linked_cell(href, escape(ticket.get_priority_display()), align="center")
+            + linked_cell(href, escape(_assignee_label(ticket)))
+            + linked_cell(
+                href,
+                escape(_display_date(ticket.created_at)),
+                align="center",
+                extra="white-space:nowrap;",
+            )
+            + linked_cell(
+                href,
+                f'<span style="display:inline-block;padding:4px 8px;border:1px solid {accent};'
+                f'border-radius:999px;color:{accent};white-space:nowrap;font-size:12px;">'
+                f"{days} day(s)</span>",
+                align="center",
+            )
+            + "</tr>"
         )
     if rows:
         table_html = (
@@ -354,3 +421,35 @@ def send_support_ticket_digest(
     if err:
         logs.append(err)
     return 0, logs
+
+
+def send_support_digest_test(company: CompanyProfile, to_email: str) -> tuple[bool, str | None]:
+    """Send today's digest to one address. Does not mark the daily digest as sent."""
+    today = timezone.localdate()
+    if not _company_can_send_mail(company):
+        return False, "Outgoing email is not configured."
+    recipient = (to_email or "").strip()
+    if not recipient:
+        return False, "Test recipient is missing."
+    summary = collect_ticket_summary(company, today)
+    attachment_name = support_digest_attachment_filename(company, today)
+    excel_bytes = build_support_digest_excel_bytes(summary)
+    logo_inline = _company_logo_inline(company)
+    subject = (
+        f"Pending support tickets ({summary['pending_count']}) — "
+        f"{company.company_name} — {today.isoformat()}"
+    )
+    return send_company_outbound(
+        company,
+        [recipient],
+        subject,
+        support_digest_body(company, summary, attachment_name),
+        html_body=support_digest_html(
+            company,
+            summary,
+            attachment_name,
+            logo_cid=logo_inline[0] if logo_inline else "",
+        ),
+        attachments=[(attachment_name, excel_bytes, XLSX_MIME)],
+        inline_images=[logo_inline] if logo_inline else None,
+    )

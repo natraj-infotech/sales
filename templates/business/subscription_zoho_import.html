@@ -1,0 +1,834 @@
+{% extends "base.html" %}
+{% block title %}{% if document_kind == "bill" %}Zoho purchase bills{% else %}Zoho Books invoices{% endif %}{% endblock %}
+
+{% block page_header %}
+<div class="tracker-page-header">
+  <div class="tracker-page-header-text">
+    <svg class="tracker-page-header-icon" aria-hidden="true"><use href="#i-download"/></svg>
+    <div>
+      <h1 class="tracker-page-title">{% if document_kind == "bill" %}Zoho purchase bills{% else %}Zoho Books invoices{% endif %}</h1>
+      <p class="tracker-page-subtitle">{% if document_kind == "bill" %}Bills saved from Zoho Books. Sync loads new and changed bills.{% else %}Open an invoice number. Each product on it becomes its own subscription.{% endif %}</p>
+    </div>
+  </div>
+  <div class="tracker-page-actions">
+    <a class="btn-tracker-header btn-tracker-ghost" href="{% url 'subscription_list' %}">Back to list</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .zoho-invoice-card { position: relative; min-height: 16rem; padding: 1rem 1.1rem 0.9rem; }
+  .zoho-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.9);
+    color: #334155;
+    text-align: center;
+  }
+  .zoho-loading-overlay[hidden] { display: none; }
+  .zoho-loading-overlay p { margin: 0; font-size: 0.9rem; font-weight: 600; }
+  .zoho-spinner {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 3px solid #dbeafe;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: zoho-spin 0.7s linear infinite;
+  }
+  .zoho-spinner[hidden] { display: none; }
+  @keyframes zoho-spin { to { transform: rotate(360deg); } }
+  .zoho-invoice-search {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+    margin-bottom: 0.75rem;
+  }
+  .zoho-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.45rem 0.55rem;
+  }
+  .zoho-invoice-search label {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+  }
+  .zoho-invoice-search input[type="text"] {
+    width: min(16rem, 100%);
+    padding: 0.38rem 0.55rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
+    background: #fff;
+  }
+  .zoho-product-filter {
+    position: relative;
+    flex: 0 1 16rem;
+    margin-top: 0;
+  }
+  .zoho-product-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.38rem 0.55rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .zoho-product-count { color: #1d4ed8; font-weight: 600; font-size: 0.75rem; }
+  .zoho-product-panel {
+    position: absolute;
+    z-index: 6;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    width: min(22rem, 70vw);
+    padding: 0.45rem 0.5rem 0.35rem;
+    background: #fff;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  }
+  .zoho-product-panel[hidden] { display: none; }
+  .zoho-product-hint {
+    margin: 0 0 0.35rem;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .zoho-product-filter input[type="text"] { width: 100%; margin-bottom: 0.35rem; }
+  .zoho-product-checks {
+    max-height: 7.5rem;
+    overflow: auto;
+    padding: 0.15rem 0.15rem 0;
+    background: #fff;
+  }
+  .zoho-invoice-search .zoho-product-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    flex: none;
+    width: 100%;
+    margin: 0;
+    padding: 0.2rem 0;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #1e293b;
+  }
+  .zoho-product-check[hidden] { display: none; }
+  .zoho-product-check input { margin-top: 0.15rem; }
+  .zoho-invoice-plus {
+    width: 1.45rem;
+    height: 1.45rem;
+    padding: 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #1e3a8a;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .zoho-invoice-plus[aria-expanded="true"] { background: #dbeafe; }
+  .zoho-invoice-open {
+    padding: 0;
+    border: none;
+    background: none;
+    color: #1d4ed8;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .zoho-invoice-open:hover { text-decoration: underline; }
+  .zoho-invoice-table tbody tr.zoho-invoice-detail td { background: #f8fafc; }
+  .zoho-invoice-detail[hidden] { display: none; }
+  .zoho-line-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .zoho-invoice-table .zoho-line-table th,
+  .zoho-invoice-table .zoho-line-table td {
+    padding: 0.28rem 0.45rem;
+    text-align: left;
+    background: transparent;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .zoho-invoice-table .zoho-line-table th { color: #64748b; font-weight: 600; }
+  .zoho-invoice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.65rem;
+  }
+  .zoho-invoice-actions--end { margin: 0.65rem 0 0; }
+  .zoho-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.38rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #153d8a;
+    background: #dbeafe;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .zoho-btn:hover { background: #bfdbfe; }
+  .zoho-btn--primary {
+    color: #fff;
+    background: #2563eb;
+  }
+  .zoho-btn--primary:hover { background: #1d4ed8; }
+  .zoho-invoice-card .tracker-table-scroll {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .zoho-invoice-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 0.78rem;
+  }
+  .zoho-invoice-table thead th,
+  .zoho-invoice-table tbody td {
+    padding: 0.45rem 0.5rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .zoho-invoice-table .col-check { width: 2.4rem; }
+  .zoho-invoice-table .zoho-line-table { table-layout: auto; }
+  .zoho-invoice-pages {
+    display: flex;
+    gap: 0.75rem;
+    margin: 0.65rem 0 0;
+    font-size: 0.8rem;
+  }
+  .zoho-period {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    flex: 0 1 auto;
+  }
+  .zoho-invoice-search .zoho-period label {
+    flex: none;
+    width: auto;
+  }
+  .zoho-period-select {
+    padding: 0.38rem 0.45rem;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    font-size: 0.84rem;
+    color: #1e293b;
+  }
+  .zoho-invoice-count {
+    flex: 1 1 100%;
+    margin: 0.1rem 0 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #1e3a8a;
+  }
+  .zoho-tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin: 0 0 0.75rem;
+  }
+  .zoho-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .zoho-tab.is-active { background: #1d4ed8; color: #fff; }
+  .zoho-sync-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0 0 0.75rem;
+  }
+  .zoho-synced {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #475569;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tracker-card zoho-invoice-card">
+  {% if not company.zoho_connected %}
+  <p style="margin-top:0;">Zoho is not connected for this company.</p>
+  <p>Open Company profile, choose Connect Zoho, and accept the Zoho Books read permissions.</p>
+  <a class="btn btn-primary" href="{% url 'company_setup' %}">Open Company profile</a>
+  {% elif error %}
+  <p style="margin-top:0;">{{ error }}</p>
+  {% if needs_reconnect %}
+  <a class="btn btn-primary" href="{% url 'company_setup' %}">Open Company profile</a>
+  {% endif %}
+  {% elif not organization %}
+  <p style="margin-top:0;">Choose the Zoho Books organization whose invoices should be imported.</p>
+  {% if organizations %}
+  <form method="post" class="tracker-sub-filter-form" style="max-width:36rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save_org">
+    <div class="tracker-sub-filter-field">
+      <label for="id_organization_id">Organization</label>
+      <select name="organization_id" id="id_organization_id" class="select-full" required>
+        <option value="">Select organization</option>
+        {% for org in organizations %}
+        <option value="{{ org.organization_id }}">{{ org.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="tracker-sub-filter-actions" style="margin-top:1rem;">
+      <button type="submit" class="btn-filter-apply">Use this organization</button>
+    </div>
+  </form>
+  {% else %}
+  <p>No Zoho Books organization was found for the connected account.</p>
+  {% endif %}
+  {% else %}
+  <div class="zoho-tabs">
+    <a class="zoho-tab{% if document_kind != 'bill' %} is-active{% endif %}" href="{% url 'subscription_zoho_import' %}">Sales invoices</a>
+    <a class="zoho-tab{% if document_kind == 'bill' %} is-active{% endif %}" href="{% url 'subscription_zoho_bills' %}">Purchase bills</a>
+  </div>
+  <div class="zoho-loading-overlay" id="zoho-loading" role="status" aria-live="polite">
+    <div class="zoho-spinner" id="zoho-spinner"></div>
+    <p id="zoho-loading-text">Loading saved {% if document_kind == "bill" %}bills{% else %}invoices{% endif %}…</p>
+  </div>
+  <div id="zoho-invoice-app" data-kind="{{ document_kind|default:'invoice' }}" data-load-url="{% if document_kind == 'bill' %}{% url 'subscription_zoho_bill_data' %}{% else %}{% url 'subscription_zoho_invoice_data' %}{% endif %}" data-sync-url="{% url 'subscription_zoho_sync' %}" data-pdf-url="{% if document_kind == 'bill' %}{% url 'subscription_zoho_bill_pdf' 'INVOICE_ID' %}{% else %}{% url 'subscription_zoho_pdf' 'INVOICE_ID' %}{% endif %}" hidden>
+  <form id="zoho-sync-form" hidden>{% csrf_token %}</form>
+  <div class="zoho-sync-row">
+    <button type="button" class="zoho-btn zoho-btn--primary" id="zoho-sync">Sync from Zoho</button>
+    <p class="zoho-synced" id="zoho-synced"></p>
+  </div>
+  <form method="get" class="zoho-invoice-search" id="zoho-invoice-search">
+    <label for="id_q">{% if document_kind == "bill" %}Bill number{% else %}Invoice number{% endif %}</label>
+    <input type="text" name="q" id="id_q" value="{{ query }}" placeholder="{% if document_kind == 'bill' %}Search bill number{% else %}Search invoice number{% endif %}">
+    <div class="zoho-filter-row">
+    <div class="zoho-period">
+      <label for="zoho-year">Year</label>
+      <select id="zoho-year" class="zoho-period-select">
+        <option value="">All years</option>
+        <option value="2028">2028</option>
+        <option value="2027">2027</option>
+        <option value="2026">2026</option>
+        <option value="2025">2025</option>
+        <option value="2024">2024</option>
+        <option value="2023">2023</option>
+        <option value="2022">2022</option>
+        <option value="2021">2021</option>
+        <option value="2020">2020</option>
+      </select>
+      <label for="zoho-month">Month</label>
+      <select id="zoho-month" class="zoho-period-select">
+        <option value="">All months</option>
+        <option value="1">January</option>
+        <option value="2">February</option>
+        <option value="3">March</option>
+        <option value="4">April</option>
+        <option value="5">May</option>
+        <option value="6">June</option>
+        <option value="7">July</option>
+        <option value="8">August</option>
+        <option value="9">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
+    </div>
+    <div class="zoho-product-filter">
+      <button type="button" class="zoho-product-toggle" id="zoho-product-toggle" aria-expanded="false" aria-controls="zoho-product-panel">
+        <span>Products</span>
+        <span class="zoho-product-count" id="zoho-product-count"></span>
+      </button>
+      <div class="zoho-product-panel" id="zoho-product-panel" hidden>
+        <p class="zoho-product-hint">Products saved from Zoho. Check any of them, then Search.</p>
+        <input type="text" id="zoho-product-find" placeholder="Find a product" autocomplete="off">
+        <div class="zoho-product-checks" id="zoho-product-checks"></div>
+      </div>
+    </div>
+    <button type="submit" class="zoho-btn">Search</button>
+    <button type="button" class="zoho-btn" id="zoho-filter-clear" hidden>Clear</button>
+    </div>
+    <p class="zoho-invoice-count" id="zoho-invoice-count"></p>
+  </form>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="review">
+    <div class="tracker-table-scroll">
+      <table class="tracker-table-subscriptions zoho-invoice-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            {% if document_kind == "bill" %}
+            <th>Bill no.</th>
+            <th>Date</th>
+            <th>Vendor</th>
+            <th>Status</th>
+            <th>Due</th>
+            <th>Total</th>
+            <th>Balance</th>
+            <th>Bill</th>
+            {% else %}
+            <th>Invoice no.</th>
+            <th>Date</th>
+            <th>Customer</th>
+            <th>Status</th>
+            <th>Subscription</th>
+            <th>Total</th>
+            <th>Invoice</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody id="zoho-invoice-rows"></tbody>
+      </table>
+    </div>
+  </form>
+  <p class="zoho-invoice-pages" id="zoho-invoice-pages"></p>
+  </div>
+  {% endif %}
+</div>
+<script>
+(function () {
+  var app = document.getElementById("zoho-invoice-app");
+  if (!app) return;
+  var overlay = document.getElementById("zoho-loading");
+  var spinner = document.getElementById("zoho-spinner");
+  var loadingText = document.getElementById("zoho-loading-text");
+  var rows = document.getElementById("zoho-invoice-rows");
+  var checks = document.getElementById("zoho-product-checks");
+  var countNode = document.getElementById("zoho-product-count");
+  var pages = document.getElementById("zoho-invoice-pages");
+  var searchForm = document.getElementById("zoho-invoice-search");
+  var queryInput = document.getElementById("id_q");
+  var clearButton = document.getElementById("zoho-filter-clear");
+  var yearSelect = document.getElementById("zoho-year");
+  var monthSelect = document.getElementById("zoho-month");
+  var invoiceCountNode = document.getElementById("zoho-invoice-count");
+  var find = document.getElementById("zoho-product-find");
+  var productToggle = document.getElementById("zoho-product-toggle");
+  var productPanel = document.getElementById("zoho-product-panel");
+  var pdfTemplate = app.getAttribute("data-pdf-url") || "";
+  var kind = app.getAttribute("data-kind") || "invoice";
+  var isBill = kind === "bill";
+  var noun = isBill ? "bill" : "invoice";
+  var colSpan = isBill ? 9 : 8;
+  var syncButton = document.getElementById("zoho-sync");
+  var syncedNode = document.getElementById("zoho-synced");
+  var csrfInput = document.querySelector("#zoho-sync-form input[name=csrfmiddlewaretoken]");
+  var state = { invoices: [], products: [], page: 1, hasMore: false, selected: {}, year: "", month: "", invoiceCount: null, everSynced: false, syncedAt: "" };
+  var monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  function showLoading(message) {
+    if (loadingText) loadingText.textContent = message;
+    if (spinner) spinner.hidden = false;
+    if (overlay) overlay.hidden = false;
+  }
+  function hideLoading() {
+    if (overlay) overlay.hidden = true;
+    app.hidden = false;
+  }
+  function showError(message) {
+    if (loadingText) loadingText.textContent = message;
+    if (spinner) spinner.hidden = true;
+    if (overlay) overlay.hidden = false;
+  }
+  function selectedIds() {
+    return Object.keys(state.selected).filter(function (id) { return state.selected[id]; });
+  }
+  function updateCount() {
+    if (!countNode) return;
+    var count = selectedIds().length;
+    countNode.textContent = count ? count + " selected" : "";
+    var periodOn = (yearSelect && yearSelect.value) || (monthSelect && monthSelect.value);
+    if (clearButton) clearButton.hidden = !(count || (queryInput && queryInput.value.trim()) || periodOn);
+  }
+  function selectedPeriod() {
+    return {
+      year: yearSelect ? yearSelect.value : "",
+      month: monthSelect ? monthSelect.value : ""
+    };
+  }
+  function renderInvoiceCount() {
+    if (!invoiceCountNode || state.invoiceCount == null) return;
+    var count = state.invoiceCount;
+    var label = count === 1 ? noun : noun + "s";
+    var period = "";
+    if (state.year && state.month) period = " in " + (monthNames[Number(state.month)] || "") + " " + state.year;
+    else if (state.month) period = " in " + (monthNames[Number(state.month)] || "");
+    else if (state.year) period = " in " + state.year;
+    invoiceCountNode.textContent = count + " " + label + period;
+  }
+  function cell(text) {
+    var td = document.createElement("td");
+    td.textContent = text == null ? "" : String(text);
+    return td;
+  }
+  function renderItems(body, invoice) {
+    body.textContent = "";
+    if (!invoice.items_loaded) {
+      body.textContent = "Could not load products for this " + noun + ".";
+      return;
+    }
+    var items = invoice.items || [];
+    if (!items.length) {
+      body.textContent = "This " + noun + " has no products.";
+      return;
+    }
+    var table = document.createElement("table");
+    table.className = "zoho-line-table";
+    var thead = document.createElement("thead");
+    var head = document.createElement("tr");
+    ["Product", "Qty", "Amount"].forEach(function (label) {
+      var th = document.createElement("th");
+      th.textContent = label;
+      head.appendChild(th);
+    });
+    thead.appendChild(head);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    var currency = invoice.currency_code ? invoice.currency_code + " " : "";
+    items.forEach(function (item) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(item.name));
+      tr.appendChild(cell(item.quantity));
+      tr.appendChild(cell(currency + item.amount));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+  }
+  function renderRows() {
+    rows.textContent = "";
+    var invoices = state.invoices;
+    if (!invoices.length) {
+      var empty = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = colSpan;
+      td.textContent = state.everSynced
+        ? "No " + noun + "s match this search."
+        : "No " + noun + "s saved yet. Click Sync from Zoho.";
+      empty.appendChild(td);
+      rows.appendChild(empty);
+      return;
+    }
+    invoices.forEach(function (invoice) {
+      var tr = document.createElement("tr");
+      tr.className = "zoho-invoice-row";
+      var plusCell = document.createElement("td");
+      plusCell.className = "col-check";
+      var plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "zoho-invoice-plus";
+      plus.textContent = "+";
+      plus.setAttribute("aria-expanded", "false");
+      plus.setAttribute("aria-label", "Show products for " + (invoice.number || invoice.invoice_number || noun));
+      plusCell.appendChild(plus);
+      tr.appendChild(plusCell);
+      var numberCell = document.createElement("td");
+      var number = invoice.number || invoice.invoice_number || "";
+      var zohoId = invoice.zoho_id || invoice.invoice_id || "";
+      if (!isBill && invoice.status !== "void") {
+        var open = document.createElement("button");
+        open.type = "submit";
+        open.className = "zoho-invoice-open";
+        open.name = "invoice_ids";
+        open.value = zohoId;
+        open.textContent = number;
+        numberCell.appendChild(open);
+      } else {
+        numberCell.textContent = number;
+      }
+      tr.appendChild(numberCell);
+      tr.appendChild(cell(invoice.date));
+      tr.appendChild(cell(invoice.party_name || invoice.customer_name));
+      tr.appendChild(cell(invoice.status));
+      if (isBill) {
+        tr.appendChild(cell(invoice.due_date));
+      } else {
+        var added = document.createElement("td");
+        if (invoice.subscription_added) {
+          var strong = document.createElement("strong");
+          strong.textContent = "Added";
+          added.appendChild(strong);
+        } else {
+          added.textContent = "Not added";
+        }
+        tr.appendChild(added);
+      }
+      var money = (invoice.currency_code ? invoice.currency_code + " " : "") + (invoice.total || "");
+      tr.appendChild(cell(money));
+      if (isBill) {
+        var balance = invoice.balance ? ((invoice.currency_code ? invoice.currency_code + " " : "") + invoice.balance) : "";
+        tr.appendChild(cell(balance));
+      }
+      var pdfCell = document.createElement("td");
+      var pdf = document.createElement("a");
+      pdf.href = pdfTemplate.replace("INVOICE_ID", encodeURIComponent(zohoId));
+      pdf.className = "zoho-invoice-pdf";
+      pdf.textContent = isBill ? "Bill" : "Invoice";
+      pdfCell.appendChild(pdf);
+      tr.appendChild(pdfCell);
+      rows.appendChild(tr);
+      var detail = document.createElement("tr");
+      detail.className = "zoho-invoice-detail";
+      detail.hidden = true;
+      var detailCell = document.createElement("td");
+      detailCell.colSpan = colSpan;
+      var body = document.createElement("div");
+      body.className = "zoho-invoice-detail-body";
+      detailCell.appendChild(body);
+      detail.appendChild(detailCell);
+      rows.appendChild(detail);
+      plus.addEventListener("click", function () {
+        var openRow = plus.getAttribute("aria-expanded") === "true";
+        if (openRow) {
+          plus.textContent = "+";
+          plus.setAttribute("aria-expanded", "false");
+          detail.hidden = true;
+          return;
+        }
+        plus.textContent = "\u2212";
+        plus.setAttribute("aria-expanded", "true");
+        detail.hidden = false;
+        renderItems(body, invoice);
+      });
+    });
+  }
+  function renderProducts() {
+    checks.textContent = "";
+    if (!state.products.length) {
+      var empty = document.createElement("p");
+      empty.className = "zoho-product-hint";
+      empty.textContent = "No products saved yet.";
+      checks.appendChild(empty);
+      updateCount();
+      return;
+    }
+    state.products.forEach(function (product) {
+      var label = document.createElement("label");
+      label.className = "zoho-product-check";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = product.item_id;
+      box.checked = Boolean(state.selected[product.item_id]);
+      box.addEventListener("change", function () {
+        state.selected[product.item_id] = box.checked;
+        updateCount();
+      });
+      var text = document.createElement("span");
+      text.textContent = product.sku ? product.name + " (" + product.sku + ")" : product.name;
+      label.appendChild(box);
+      label.appendChild(text);
+      checks.appendChild(label);
+    });
+    if (find && find.value.trim()) find.dispatchEvent(new Event("input"));
+    updateCount();
+  }
+  function renderPages() {
+    pages.textContent = "";
+    if (state.page > 1) {
+      var previous = document.createElement("button");
+      previous.type = "button";
+      previous.className = "zoho-btn";
+      previous.textContent = "Previous";
+      previous.addEventListener("click", function () { loadPage(state.page - 1); });
+      pages.appendChild(previous);
+    }
+    if (state.hasMore) {
+      var next = document.createElement("button");
+      next.type = "button";
+      next.className = "zoho-btn";
+      next.textContent = "Next";
+      next.addEventListener("click", function () { loadPage(state.page + 1); });
+      pages.appendChild(next);
+    }
+  }
+  function showSynced() {
+    if (!syncedNode) return;
+    syncedNode.textContent = state.syncedAt ? "Last sync " + state.syncedAt : "Not synced yet";
+  }
+  function loadPage(page) {
+    var period = selectedPeriod();
+    showLoading("Loading saved " + noun + "s\u2026");
+    var url = app.getAttribute("data-load-url") + "?page=" + page;
+    if (period.year) url += "&year=" + encodeURIComponent(period.year);
+    if (period.month) url += "&month=" + encodeURIComponent(period.month);
+    if (queryInput && queryInput.value.trim()) url += "&q=" + encodeURIComponent(queryInput.value.trim());
+    selectedIds().forEach(function (id) {
+      url += "&item_id=" + encodeURIComponent(id);
+    });
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) throw new Error(payload.error || "Could not load saved " + noun + "s.");
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        state.invoices = payload.documents || [];
+        state.products = payload.products || [];
+        state.page = payload.page || page;
+        state.hasMore = Boolean(payload.has_more_page);
+        state.year = period.year;
+        state.month = period.month;
+        state.invoiceCount = typeof payload.count === "number" ? payload.count : null;
+        state.everSynced = Boolean(payload.ever_synced);
+        state.syncedAt = payload.synced_at || "";
+        renderProducts();
+        renderRows();
+        renderPages();
+        renderInvoiceCount();
+        updateCount();
+        showSynced();
+        hideLoading();
+      })
+      .catch(function (error) {
+        showError(error.message || "Could not load saved " + noun + "s.");
+      });
+  }
+  function syncStep(start, seenFailed, steps) {
+    var body = new FormData();
+    body.append("kind", kind);
+    body.append("csrfmiddlewaretoken", csrfInput ? csrfInput.value : "");
+    if (start) body.append("start", "1");
+    fetch(app.getAttribute("data-sync-url"), {
+      method: "POST",
+      body: body,
+      headers: { "Accept": "application/json" }
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          if (!response.ok) throw new Error(payload.error || "Could not sync from Zoho.");
+          return payload;
+        });
+      })
+      .then(function (payload) {
+        var failed = seenFailed + (payload.failed || 0);
+        var saved = typeof payload.stored === "number" ? payload.stored : 0;
+        showLoading("Syncing from Zoho\u2026 " + saved + " saved");
+        if (payload.has_more && steps < 400) {
+          syncStep(false, failed, steps + 1);
+          return;
+        }
+        if (syncButton) syncButton.disabled = false;
+        if (failed) window.alert("Sync finished. " + failed + " " + noun + (failed === 1 ? "" : "s") + " could not load products. Sync again to retry those.");
+        loadPage(1);
+      })
+      .catch(function (error) {
+        if (syncButton) syncButton.disabled = false;
+        showError(error.message || "Could not sync from Zoho.");
+      });
+  }
+  if (productToggle && productPanel) {
+    productToggle.addEventListener("click", function () {
+      var open = productToggle.getAttribute("aria-expanded") === "true";
+      productToggle.setAttribute("aria-expanded", open ? "false" : "true");
+      productPanel.hidden = open;
+    });
+    document.addEventListener("click", function (event) {
+      if (productPanel.hidden) return;
+      if (event.target.closest(".zoho-product-filter")) return;
+      productPanel.hidden = true;
+      productToggle.setAttribute("aria-expanded", "false");
+    });
+  }
+  if (find) {
+    find.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") event.preventDefault();
+    });
+    find.addEventListener("input", function () {
+      var needle = find.value.trim().toLowerCase();
+      checks.querySelectorAll(".zoho-product-check").forEach(function (label) {
+        label.hidden = Boolean(needle) && label.textContent.toLowerCase().indexOf(needle) === -1;
+      });
+    });
+  }
+  if (searchForm) {
+    searchForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      loadPage(1);
+    });
+  }
+  if (clearButton) {
+    clearButton.addEventListener("click", function () {
+      state.selected = {};
+      if (queryInput) queryInput.value = "";
+      if (find) find.value = "";
+      if (yearSelect) yearSelect.value = "";
+      if (monthSelect) monthSelect.value = "";
+      loadPage(1);
+    });
+  }
+  if (syncButton) {
+    syncButton.addEventListener("click", function () {
+      syncButton.disabled = true;
+      showLoading("Syncing from Zoho\u2026");
+      syncStep(true, 0, 1);
+    });
+  }
+  if (queryInput) queryInput.addEventListener("input", updateCount);
+  rows.addEventListener("click", function (event) {
+    var link = event.target.closest(".zoho-invoice-pdf");
+    if (!link) return;
+    event.preventDefault();
+    var popup = window.open("", "_blank");
+    if (!popup) {
+      window.alert("Allow pop-ups to open the invoice.");
+      return;
+    }
+    popup.document.title = "Opening " + noun;
+    popup.document.body.innerHTML = "<p style=\"font-family:sans-serif;padding:1.5rem\">Opening " + noun + "\u2026</p>";
+    showLoading("Opening " + noun + "\u2026");
+    fetch(link.href)
+      .then(function (response) {
+        var type = response.headers.get("Content-Type") || "";
+        if (!response.ok || type.indexOf("pdf") === -1) throw new Error("Could not open the " + noun + ".");
+        return response.blob();
+      })
+      .then(function (blob) {
+        popup.location = URL.createObjectURL(blob);
+        hideLoading();
+      })
+      .catch(function (error) {
+        popup.close();
+        hideLoading();
+        window.alert(error.message || "Could not open the " + noun + ".");
+      });
+  });
+  loadPage(1);
+})();
+</script>
+{% endblock %}

@@ -168,6 +168,8 @@ class CompanyProfile(models.Model):
     zoho_accounts_domain = models.CharField(max_length=128, blank=True)
     zoho_connected_email = models.EmailField(blank=True)
     zoho_connected_at = models.DateTimeField(null=True, blank=True)
+    zoho_books_organization_id = models.CharField(max_length=64, blank=True)
+    zoho_books_organization_name = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

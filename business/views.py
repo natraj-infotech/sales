@@ -3606,7 +3606,10 @@ def support_ticket_update(request, pk):
             ticket, assignee, user=request.user
         )
         if changed:
-            from business.helpdesk_assign_mail import queue_assignment_emails
+            from business.helpdesk_assign_mail import (
+                public_base_from_request,
+                queue_assignment_emails,
+            )
 
             ticket.refresh_from_db()
             if assignee is None:
@@ -3625,6 +3628,7 @@ def support_ticket_update(request, pk):
                     ticket=ticket,
                     assignee=assignee,
                     assigned_by=request.user,
+                    public_base=public_base_from_request(request),
                 )
                 messages.success(
                     request,
@@ -3665,6 +3669,8 @@ def support_ticket_add(request):
     if request.method == "POST":
         form = SupportTicketForm(request.POST)
         if form.is_valid():
+            from business.helpdesk_assign_mail import public_base_from_request
+
             t = helpdesk_bridge.create_internal_ticket(
                 company=company,
                 user=request.user,
@@ -3673,6 +3679,7 @@ def support_ticket_add(request):
                 department=form.cleaned_data["department"],
                 priority=form.cleaned_data["priority"],
                 priority_source="manual",
+                public_base=public_base_from_request(request),
             )
             messages.success(
                 request,
@@ -3861,6 +3868,169 @@ def support_ticket_transfer_oem(request, pk):
             "oem_from": (company.oem_email or "").strip(),
         },
     )
+
+
+def _ticket_for_action_token(token: str, unsign):
+    """Return the ticket when the token matches the engineer it is assigned to."""
+    from helpdesk.models import Ticket
+
+    parsed = unsign(token)
+    if parsed is None:
+        return None
+    ticket_id, engineer_id = parsed
+    raw = (
+        Ticket.objects.select_related("assigned_to", "queue")
+        .filter(pk=ticket_id)
+        .first()
+    )
+    if raw is None or raw.assigned_to_id != engineer_id:
+        return None
+    return raw
+
+
+def _public_transfer_form(request, token, raw, company, ticket):
+    from django.core.exceptions import ValidationError
+
+    from business.oem_tickets import create_oem_ticket_and_send
+
+    blocked = ""
+    if ticket.is_oem:
+        blocked = "OEM tickets cannot be transferred again."
+    elif ticket.transferred_to_id:
+        blocked = f"Already transferred to {ticket.transferred_to_reference}."
+    form_data = _oem_compose_initial(raw)
+    if request.method == "POST" and not blocked:
+        form_data.update(
+            {
+                "to_email": request.POST.get("to_email", "").strip(),
+                "cc": request.POST.get("cc", "").strip(),
+                "oem_company": request.POST.get("oem_company", "").strip(),
+                "subject": request.POST.get("subject", "").strip(),
+                "description": request.POST.get("description", "").strip(),
+                "subscription_id": request.POST.get("subscription_id", "").strip(),
+            }
+        )
+        try:
+            oem_ticket = create_oem_ticket_and_send(
+                company=company,
+                user=raw.assigned_to,
+                subject=form_data["subject"],
+                description=form_data["description"],
+                to_email=form_data["to_email"],
+                oem_company_name=form_data["oem_company"],
+                cc_raw=form_data["cc"],
+                subscription_id=form_data["subscription_id"],
+                attachments=request.FILES.getlist("attachments"),
+                transferred_from=raw,
+                assignee=raw.assigned_to,
+            )
+            messages.success(
+                request,
+                f"Transferred to OEM TK-{oem_ticket.pk:05d}. Email sent. "
+                "The original ticket stays open on the dashboard.",
+            )
+            return redirect("support_ticket_email_transfer", token=token)
+        except ValidationError as exc:
+            messages.error(request, _validation_message(exc))
+        except Exception:
+            logger.exception(
+                "Public OEM transfer failed ticket_id=%s",
+                raw.pk,
+            )
+            messages.error(
+                request,
+                "Could not transfer this ticket to OEM. Check OEM email settings.",
+            )
+    return render(
+        request,
+        "business/support_oem_form.html",
+        {
+            "public_page": True,
+            "company": company,
+            "mode": "transfer",
+            "form_data": form_data,
+            "transfer_ticket": ticket,
+            "oem_from": (company.oem_email or "").strip(),
+            "contacts_url": reverse(
+                "support_ticket_email_transfer_contacts", kwargs={"token": token}
+            ),
+            "subscription_url": reverse(
+                "support_ticket_email_transfer_subscription", kwargs={"token": token}
+            ),
+            "transfer_blocked": blocked,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def support_ticket_email_transfer(request, token):
+    """Public OEM transfer page opened from the assignment email."""
+    from business.team_notifications import company_for_ticket
+    from business.ticket_close_tokens import unsign_ticket_transfer_token
+
+    raw = _ticket_for_action_token(token, unsign_ticket_transfer_token)
+    company = company_for_ticket(raw) if raw is not None else None
+    if raw is None or company is None:
+        return render(
+            request,
+            "business/support_oem_form.html",
+            {
+                "public_page": True,
+                "mode": "transfer",
+                "form_data": _oem_compose_initial(),
+                "transfer_ticket": None,
+                "oem_from": "",
+                "company": None,
+                "transfer_blocked": (
+                    "This link is not valid, has expired, or the ticket "
+                    "is no longer assigned to that engineer."
+                ),
+            },
+        )
+    ticket = helpdesk_bridge.wrap_ticket(raw)
+    return _public_transfer_form(request, token, raw, company, ticket)
+
+
+@require_http_methods(["GET"])
+def support_ticket_email_transfer_contacts(request, token):
+    from business.oem_tickets import contact_options
+    from business.team_notifications import company_for_ticket
+    from business.ticket_close_tokens import unsign_ticket_transfer_token
+
+    raw = _ticket_for_action_token(token, unsign_ticket_transfer_token)
+    company = company_for_ticket(raw) if raw is not None else None
+    if company is None:
+        return JsonResponse({"ok": False, "error": "Invalid link."}, status=404)
+    try:
+        return JsonResponse({"ok": True, "contacts": contact_options(company)})
+    except Exception:
+        logger.exception("Public OEM contacts failed ticket_id=%s", raw.pk)
+        return _json_error("Could not load OEM contacts.")
+
+
+@require_http_methods(["GET"])
+def support_ticket_email_transfer_subscription(request, token):
+    from business.oem_tickets import lookup_subscription, subscription_options
+    from business.team_notifications import company_for_ticket
+    from business.ticket_close_tokens import unsign_ticket_transfer_token
+
+    raw = _ticket_for_action_token(token, unsign_ticket_transfer_token)
+    company = company_for_ticket(raw) if raw is not None else None
+    if company is None:
+        return JsonResponse({"ok": False, "error": "Invalid link."}, status=404)
+    query = (request.GET.get("q") or request.GET.get("subscription_id") or "").strip()
+    try:
+        if not query:
+            return JsonResponse(
+                {"ok": True, "subscriptions": subscription_options(company)}
+            )
+        found = lookup_subscription(company, query)
+        if not found:
+            return JsonResponse({"ok": False, "error": "No subscription found."})
+        return JsonResponse({"ok": True, "subscription": found})
+    except Exception:
+        logger.exception("Public OEM subscription lookup failed ticket_id=%s", raw.pk)
+        return _json_error("Could not look up the subscription.")
 
 
 @support_ticket_access_required
@@ -4055,6 +4225,50 @@ def support_ticket_detail(request, pk):
             "priority_choices": helpdesk_bridge.PRIORITY_LABELS,
             "sla_settings": sla_settings,
         },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def support_ticket_email_close(request, token):
+    """Public close page. Anyone with the assignment-mail token can close the ticket."""
+    from business.ticket_close_tokens import unsign_ticket_close_token
+
+    raw = _ticket_for_action_token(token, unsign_ticket_close_token)
+    if raw is None:
+        return render(
+            request,
+            "business/support_ticket_email_close.html",
+            {"public_page": True, "ticket": None},
+        )
+
+    ticket = helpdesk_bridge.wrap_ticket(raw)
+    if request.method == "POST" and ticket.status != "closed":
+        helpdesk_bridge.set_ticket_remarks(
+            raw, request.POST.get("remarks", "").strip()
+        )
+        changed = helpdesk_bridge.set_ticket_status(
+            raw, "closed", user=raw.assigned_to
+        )
+        if changed:
+            from business.helpdesk_assign_mail import queue_ticket_closed_email
+            from business.team_notifications import company_for_ticket
+
+            raw.refresh_from_db()
+            company = company_for_ticket(raw)
+            if company is not None:
+                queue_ticket_closed_email(company=company, ticket=raw)
+            messages.success(
+                request,
+                "Ticket closed. It is closed on the dashboard as well.",
+            )
+        else:
+            messages.success(request, "Ticket closed.")
+        return redirect("support_ticket_email_close", token=token)
+
+    return render(
+        request,
+        "business/support_ticket_email_close.html",
+        {"public_page": True, "ticket": ticket},
     )
 
 
