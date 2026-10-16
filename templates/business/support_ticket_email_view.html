@@ -20,9 +20,26 @@
     <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>
   </dl>
   <h3 style="margin-top:1.25rem;">Description</h3>
-  <div>{% if ticket.description %}{{ ticket.description|linebreaks }}{% else %}—{% endif %}</div>
+  <div>{{ ticket.description|linebreaks }}</div>
+  {% if ticket.remarks %}
   <h3 style="margin-top:1.25rem;">Remarks</h3>
-  <div>{% if ticket.remarks %}{{ ticket.remarks }}{% else %}—{% endif %}</div>
+  <div>{{ ticket.remarks }}</div>
+  {% endif %}
+  <h3 style="margin-top:1.25rem;">Conversation</h3>
+  {% for c in comments %}
+  <div class="ticket-comment" style="margin-top:0.75rem;">
+    <div class="ticket-comment-meta">
+      <strong>{{ c.user.email }}</strong>
+      <span>{{ c.created_at|date:"d M Y, H:i" }}</span>
+    </div>
+    {% if c.body %}<div>{{ c.body|linebreaks }}</div>{% endif %}
+    {% if c.attachments %}
+    <p class="muted">Files: {% for a in c.attachments %}{{ a.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+  {% empty %}
+  <p class="muted">No comments yet.</p>
+  {% endfor %}
   {% endif %}
 </div>
 {% endblock %}
