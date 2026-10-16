@@ -1,0 +1,28 @@
+{% if page_obj.paginator.count %}
+<nav class="st-pagination" aria-label="Ticket pages">
+  <span>Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} tickets</span>
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="st-pagination-nums">
+    {% if page_prev_url %}
+    <a href="{{ page_prev_url }}" aria-label="Previous page">Previous</a>
+    {% else %}
+    <span class="is-disabled">Previous</span>
+    {% endif %}
+    {% for pg in pagination_pages %}
+      {% if pg.ellipsis %}
+      <span class="is-ellipsis" aria-hidden="true">…</span>
+      {% elif pg.current %}
+      <span class="is-current" aria-current="page">{{ pg.num }}</span>
+      {% else %}
+      <a href="{{ pg.url }}">{{ pg.num }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if page_next_url %}
+    <a href="{{ page_next_url }}" aria-label="Next page">Next</a>
+    {% else %}
+    <span class="is-disabled">Next</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</nav>
+{% endif %}
