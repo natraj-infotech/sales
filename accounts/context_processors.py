@@ -19,6 +19,7 @@ _PUBLIC_URL_NAMES = frozenset(
         "renewal_confirm_public",
         "renewal_confirm_public_legacy",
         "support_ticket_email_close",
+        "support_ticket_email_view",
         "support_ticket_email_transfer",
         "support_ticket_email_transfer_contacts",
         "support_ticket_email_transfer_subscription",

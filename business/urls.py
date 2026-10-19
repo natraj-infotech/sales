@@ -372,6 +372,11 @@ urlpatterns = [
         name="support_ticket_email_close",
     ),
     path(
+        "support/tickets/view/<str:token>/",
+        views.support_ticket_email_view,
+        name="support_ticket_email_view",
+    ),
+    path(
         "support/tickets/<int:pk>/attachments/<int:attachment_id>/",
         views.support_ticket_attachment,
         name="support_ticket_attachment",
