@@ -3360,201 +3360,64 @@ def subscription_edit(request, pk):
     )
 
 
-TICKET_PAGE_SIZE = 15
-
-
-def _ticket_status_counts(qs) -> dict:
-    """Status totals from the database. Does not load ticket bodies."""
-    rows = {
-        row["status"]: row["n"]
-        for row in qs.order_by().values("status").annotate(n=Count("id"))
-    }
-    hd = helpdesk_bridge.STATUS_UI_TO_HD
-    open_n = int(rows.get(hd["open"], 0))
-    progress = int(rows.get(hd["in_progress"], 0))
-    resolved = int(rows.get(hd["resolved"], 0))
-    closed = int(rows.get(hd["closed"], 0))
-    total = sum(int(n) for n in rows.values())
-    return {
-        "total": total,
-        "closed": closed,
-        "pending": open_n + progress,
-        "under_observation": resolved,
-        "open": open_n + progress,
-        "active": max(total - closed, 0),
-    }
-
-
-def _ticket_matches_query(ticket, query: str) -> bool:
-    blob = " ".join(
-        [
-            str(ticket.reference or ""),
-            str(ticket.subject or ""),
-            str(ticket.contact_display or ""),
-            str(ticket.oem_company_name or ""),
-            str(ticket.oem_to_email or ""),
-            str(ticket.subscription_id or ""),
-        ]
-    ).lower()
-    return query.lower() in blob
-
-
-def _ticket_pagination_pages(page_obj, source: str, status_filter: str, query: str = ""):
-    """Page links around the current page, with gaps marked as ellipsis."""
-    total = page_obj.paginator.num_pages
-    current = page_obj.number
-    if total <= 1:
-        return []
-    if total <= 7:
-        numbers = list(range(1, total + 1))
-    else:
-        wanted = {1, total}
-        for offset in range(-2, 3):
-            number = current + offset
-            if 1 <= number <= total:
-                wanted.add(number)
-        numbers = sorted(wanted)
-    pages = []
-    previous = 0
-    for number in numbers:
-        if previous and number - previous > 1:
-            pages.append({"ellipsis": True, "num": None, "url": "", "current": False})
-        pages.append(
-            {
-                "ellipsis": False,
-                "num": number,
-                "url": _ticket_list_page_url(source, status_filter, number, query),
-                "current": number == current,
-            }
-        )
-        previous = number
-    return pages
-
-
-def _ticket_list_page_url(source: str, status_filter: str, page: int, query: str = "") -> str:
-    params = {}
-    if source == "oem":
-        params["source"] = "oem"
-    if status_filter:
-        params["status"] = status_filter
-    if query:
-        params["q"] = query
-    if page and page > 1:
-        params["page"] = page
-    base = reverse("support_ticket_list")
-    if not params:
-        return base
-    return f"{base}?{urlencode(params)}"
-
-
 def _support_ticket_list_data(
-    company,
-    *,
-    status_filter: str = "",
-    source: str = "internal",
-    page: int = 1,
-    query: str = "",
+    company, *, status_filter: str = "", source: str = "internal"
 ):
-    """Shared ticket list payload for HTML page and live JSON poll.
-
-    Loads only the open tab into memory. The other tab is a count query.
-    """
+    """Shared ticket list payload for HTML page and live JSON poll."""
     from business.sla import get_or_create_sla_settings
 
     status_filter = (status_filter or "").strip()
-    query = (query or "").strip()
     source = "oem" if source == "oem" else "internal"
-    if status_filter not in dict(helpdesk_bridge.STATUS_CHOICES):
-        status_filter = ""
     sla_settings = get_or_create_sla_settings(company)
 
-    internal_qs = helpdesk_bridge.tickets_for_company(company, oem=False)
-    oem_qs = helpdesk_bridge.tickets_for_company(company, oem=True)
-    if source == "oem":
-        wrapped = helpdesk_bridge.wrap_tickets(list(oem_qs), sla_settings=sla_settings)
-        internal_counts = _ticket_status_counts(internal_qs)
-        charts = {}
-        sla_breached = 0
-        oem_counts = {
-            "total": len(wrapped),
-            "active": sum(1 for t in wrapped if t.status != "closed"),
-            "open": sum(1 for t in wrapped if t.status in ("open", "in_progress")),
-            "closed": sum(1 for t in wrapped if t.status == "closed"),
-        }
-    else:
-        wrapped = helpdesk_bridge.wrap_tickets(
-            list(internal_qs), sla_settings=sla_settings
-        )
-        internal_counts = {
-            "total": len(wrapped),
-            "closed": sum(1 for t in wrapped if t.status == "closed"),
-            "pending": sum(1 for t in wrapped if t.status in ("open", "in_progress")),
-            "under_observation": sum(1 for t in wrapped if t.status == "resolved"),
-        }
-        sla_breached = sum(1 for t in wrapped if t.sla and t.sla.get("any_breached"))
-        charts = ticket_charts_from_views(wrapped)
-        oem_sql = _ticket_status_counts(oem_qs)
-        oem_counts = {
-            "total": oem_sql["total"],
-            "active": oem_sql["active"],
-            "open": oem_sql["open"],
-            "closed": oem_sql["closed"],
-        }
+    internal_wrapped = helpdesk_bridge.wrap_tickets(
+        helpdesk_bridge.tickets_for_company(company, oem=False),
+        sla_settings=sla_settings,
+    )
+    oem_wrapped = helpdesk_bridge.wrap_tickets(
+        helpdesk_bridge.tickets_for_company(company, oem=True),
+        sla_settings=sla_settings,
+    )
+    base = oem_wrapped if source == "oem" else internal_wrapped
 
-    visible = wrapped
-    if status_filter:
-        visible = [t for t in visible if t.status == status_filter]
-    if query:
-        visible = [t for t in visible if _ticket_matches_query(t, query)]
-    paginator = Paginator(visible, TICKET_PAGE_SIZE)
-    page_obj = paginator.get_page(page)
-    object_list = list(page_obj.object_list)
+    if status_filter in dict(helpdesk_bridge.STATUS_CHOICES):
+        qs = [t for t in base if t.status == status_filter]
+    else:
+        status_filter = ""
+        qs = base
+
     counts = {
-        "total": internal_counts["total"],
-        "closed": internal_counts["closed"],
-        "pending": internal_counts["pending"],
-        "under_observation": internal_counts["under_observation"],
-        "sla_breached": sla_breached,
+        "total": len(internal_wrapped),
+        "closed": sum(1 for t in internal_wrapped if t.status == "closed"),
+        "pending": sum(1 for t in internal_wrapped if t.status in ("open", "in_progress")),
+        "under_observation": sum(1 for t in internal_wrapped if t.status == "resolved"),
+        "sla_breached": sum(
+            1 for t in internal_wrapped if t.sla and t.sla.get("any_breached")
+        ),
+    }
+    oem_counts = {
+        "total": len(oem_wrapped),
+        "active": sum(1 for t in oem_wrapped if t.status != "closed"),
+        "open": sum(1 for t in oem_wrapped if t.status in ("open", "in_progress")),
+        "closed": sum(1 for t in oem_wrapped if t.status == "closed"),
     }
     return {
-        "object_list": object_list,
-        "page_obj": page_obj,
-        "query": query,
+        "object_list": qs,
         "status_filter": status_filter,
         "source": source,
         "counts": counts,
         "oem_counts": oem_counts,
         "assignees": assignable_users(
-            company, include_ids={t.assignee_id for t in object_list if t.assignee_id}
+            company, include_ids={t.assignee_id for t in base}
         ),
         "auto_assign_enabled": get_support_team(company).auto_assign_enabled,
         "sla_settings": sla_settings,
-        "charts": charts,
-        "page_prev_url": (
-            _ticket_list_page_url(source, status_filter, page_obj.previous_page_number(), query)
-            if page_obj.has_previous()
-            else ""
-        ),
-        "page_next_url": (
-            _ticket_list_page_url(source, status_filter, page_obj.next_page_number(), query)
-            if page_obj.has_next()
-            else ""
-        ),
-        "pagination_pages": _ticket_pagination_pages(
-            page_obj, source, status_filter, query
-        ),
+        "charts": ticket_charts_from_views(internal_wrapped),
     }
 
 
 def _ticket_list_source(request) -> str:
     return "oem" if request.GET.get("source") == "oem" else "internal"
-
-
-def _ticket_list_page(request) -> int:
-    try:
-        return max(int(request.GET.get("page") or 1), 1)
-    except (TypeError, ValueError):
-        return 1
 
 
 def _validation_message(exc) -> str:
@@ -3572,14 +3435,26 @@ def _format_ticket_dt(value, fmt: str) -> str:
 
 @support_ticket_access_required
 def support_ticket_list(request):
-    """Ticket list from the database. Inbox import runs in the background."""
     company = _company(request)
+    helpdesk_bridge.sync_company_queue(company)
+
+    # runserver-only: refresh page → poll mailbox → new tickets appear
+    if request.method == "GET":
+        from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
+
+        result = maybe_fetch_on_dashboard(company)
+        if result and int(result.get("created") or 0) > 0:
+            messages.success(
+                request,
+                f"Imported {result['created']} new support ticket(s) from email.",
+            )
+        for line in inbox_error_logs(result):
+            messages.error(request, line)
+
     data = _support_ticket_list_data(
         company,
         status_filter=request.GET.get("status", ""),
         source=_ticket_list_source(request),
-        page=_ticket_list_page(request),
-        query=request.GET.get("q", ""),
     )
 
     return render(
@@ -3588,11 +3463,6 @@ def support_ticket_list(request):
         {
             "company": company,
             "object_list": data["object_list"],
-            "page_obj": data["page_obj"],
-            "query": data["query"],
-            "page_prev_url": data["page_prev_url"],
-            "page_next_url": data["page_next_url"],
-            "pagination_pages": data["pagination_pages"],
             "status_filter": data["status_filter"],
             "source": data["source"],
             "status_choices": helpdesk_bridge.STATUS_CHOICES,
@@ -3609,18 +3479,22 @@ def support_ticket_list(request):
 
 @support_ticket_access_required
 def support_ticket_live(request):
-    """Return the current ticket page from the database. Does not read the inbox."""
+    """Poll mailbox (throttled) and return current ticket list as JSON."""
     company = _company(request)
     try:
+        helpdesk_bridge.sync_company_queue(company)
+
+        from business.helpdesk_inbox import inbox_error_logs, maybe_fetch_on_dashboard
+
+        fetch_result = maybe_fetch_on_dashboard(company) or {}
+        created = int(fetch_result.get("created") or 0)
+        inbox_errors = inbox_error_logs(fetch_result)
+
         data = _support_ticket_list_data(
             company,
             status_filter=request.GET.get("status", ""),
             source=_ticket_list_source(request),
-            page=_ticket_list_page(request),
-            query=request.GET.get("q", ""),
         )
-        created = 0
-        inbox_errors = []
         next_qs = request.GET.urlencode()
         status_choices = [
             {"value": value, "label": label}

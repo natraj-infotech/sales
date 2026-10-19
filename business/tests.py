@@ -2245,31 +2245,6 @@ class OemTicketFeatureTests(TestCase):
         self.assertContains(oem, "+ OEM ticket")
         self.assertNotContains(oem, "Serial Number")
 
-    def test_ticket_list_paginates_and_keeps_filters(self):
-        from business.helpdesk_bridge import create_internal_ticket
-
-        for index in range(3):
-            create_internal_ticket(
-                company=self.company,
-                user=self.user,
-                subject=f"Paged ticket {index}",
-                description="body",
-            )
-        with patch("business.views.TICKET_PAGE_SIZE", 2):
-            first = self.client.get(reverse("support_ticket_list"))
-            second = self.client.get(
-                reverse("support_ticket_list") + "?page=2&status=open&q=Paged"
-            )
-        self.assertContains(first, "Showing 1–2 of 3 tickets")
-        self.assertContains(first, 'aria-label="Ticket pages"')
-        self.assertContains(first, "page=2")
-        self.assertEqual(len(first.context["object_list"]), 2)
-        self.assertContains(second, "Showing 3–3 of 3 tickets")
-        self.assertContains(second, "status=open")
-        self.assertContains(second, "q=Paged")
-        self.assertEqual(second.context["page_obj"].number, 2)
-        self.assertEqual(len(second.context["object_list"]), 1)
-
     def test_diary_add_company_and_extra_email(self):
         response = self.client.post(
             reverse("support_oem_diary"),

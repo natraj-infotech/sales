@@ -120,57 +120,6 @@
     color: var(--text-secondary);
     font-size: 0.84rem;
   }
-  .st-pagination {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.85rem 1rem;
-    border-top: 1px solid #e2e8f0;
-    background: #fff;
-    font-size: 0.8125rem;
-    color: #64748b;
-    font-weight: 600;
-  }
-  .st-pagination-nums {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .st-pagination-nums a,
-  .st-pagination-nums span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.55rem;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    text-decoration: none;
-    color: #334155;
-    font-weight: 700;
-  }
-  .st-pagination-nums a:hover {
-    background: #eff6ff;
-    border-color: #bfdbfe;
-    color: #1d4ed8;
-  }
-  .st-pagination-nums .is-current {
-    background: #2563eb;
-    border-color: #2563eb;
-    color: #fff;
-  }
-  .st-pagination-nums .is-disabled {
-    color: #cbd5e1;
-  }
-  .st-pagination-nums .is-ellipsis {
-    min-width: 1.25rem;
-    padding: 0;
-    color: #94a3b8;
-  }
 </style>
 {% endblock %}
 
@@ -269,7 +218,6 @@
         </tbody>
       </table>
     </div>
-    {% include "includes/support_ticket_pagination.html" %}
   </div>
   {% include "includes/oem_email_diary_modal.html" %}
   {% else %}
@@ -517,7 +465,6 @@
         </tbody>
       </table>
     </div>
-    {% include "includes/support_ticket_pagination.html" %}
   </div>
   {% endif %}
 </div>
@@ -575,7 +522,6 @@
   var CSRF = "{{ csrf_token }}";
   var STATUS = "{{ status_filter|escapejs }}";
   var SOURCE = "{{ source|escapejs }}";
-  var PAGE = "{{ page_obj.number|default:1 }}";
   var IS_OEM = SOURCE === "oem";
   var TRACKS_RESPONSE = {% if sla_settings.tracks_response %}true{% else %}false{% endif %};
   var TRACKS_RESOLVE = {% if sla_settings.tracks_resolve %}true{% else %}false{% endif %};
@@ -636,9 +582,6 @@
     var params = new URLSearchParams();
     if (STATUS) params.set("status", STATUS);
     if (IS_OEM) params.set("source", "oem");
-    if (PAGE && Number(PAGE) > 1) params.set("page", PAGE);
-    var typed = searchInput ? (searchInput.value || "").trim() : "";
-    if (typed) params.set("q", typed);
     var q = params.toString();
     return q ? ("?" + q) : "";
   }
