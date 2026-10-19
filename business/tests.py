@@ -2426,54 +2426,6 @@ class OemTicketFeatureTests(TestCase):
             "support_ticket_email_close", kwargs={"token": "tampered"}
         )), "not valid")
 
-    def test_email_view_link_is_read_only_without_login(self):
-        from django.test import Client
-
-        from business.helpdesk_bridge import add_comment, create_internal_ticket
-        from business.ticket_close_tokens import sign_ticket_view_token
-
-        source = create_internal_ticket(
-            company=self.company,
-            user=self.user,
-            subject="Digest ticket",
-            description="Shown from the daily mail",
-        )
-        add_comment(
-            ticket=source,
-            user=self.user,
-            body="Customer can see this",
-            internal_note=False,
-        )
-        add_comment(
-            ticket=source,
-            user=self.user,
-            body="Staff only note",
-            internal_note=True,
-        )
-        token = sign_ticket_view_token(source.pk, self.company.pk)
-        url = reverse("support_ticket_email_view", kwargs={"token": token})
-        guest = Client()
-        page = guest.get(url)
-        self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "Digest ticket")
-        self.assertContains(page, "Shown from the daily mail")
-        self.assertContains(page, "Customer can see this")
-        self.assertNotContains(page, "Staff only note")
-        self.assertNotContains(page, "Mark as closed")
-        self.assertNotContains(page, 'name="remarks"')
-
-        wrong_company = reverse(
-            "support_ticket_email_view",
-            kwargs={"token": sign_ticket_view_token(source.pk, self.company.pk + 99)},
-        )
-        self.assertContains(guest.get(wrong_company), "not valid")
-        self.assertContains(
-            guest.get(
-                reverse("support_ticket_email_view", kwargs={"token": "tampered"})
-            ),
-            "not valid",
-        )
-
     @patch("business.oem_tickets.send_outbound", return_value=(True, None))
     def test_email_transfer_link_works_without_login(self, _send):
         from django.test import Client

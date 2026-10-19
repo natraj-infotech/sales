@@ -438,19 +438,11 @@ class SupportDigestTests(TestCase):
             self.assertNotIn("Fixed laptop", text)
             self.assertNotIn("Old ticket", text)
         self.assertNotIn("SLA", html_body)
-        from business.support_digest import ticket_detail_url
-
         for title in ("Mail not working", "Teams issue"):
             ticket = Ticket.objects.get(title=title)
-            detail_url = ticket_detail_url(ticket)
-            self.assertIn("/support/tickets/view/", detail_url)
-            self.assertTrue(detail_url.startswith("https://tracker.example"))
+            detail_url = f"https://tracker.example{reverse('support_ticket_detail', args=[ticket.pk])}"
             self.assertIn(detail_url, body)
             self.assertIn(f'href="{detail_url}"', html_body)
-            self.assertNotIn(
-                reverse("support_ticket_detail", args=[ticket.pk]),
-                body,
-            )
         closed = Ticket.objects.get(title="Old ticket")
         self.assertNotIn(
             reverse("support_ticket_detail", args=[closed.pk]),

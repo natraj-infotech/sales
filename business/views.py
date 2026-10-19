@@ -3870,35 +3870,6 @@ def support_ticket_transfer_oem(request, pk):
     )
 
 
-def _ticket_for_view_token(token: str):
-    """Return the ticket when the digest link matches that ticket's company."""
-    from helpdesk.models import Ticket
-
-    from business.team_notifications import company_for_ticket
-    from business.ticket_close_tokens import unsign_ticket_view_token
-
-    parsed = unsign_ticket_view_token(token)
-    if parsed is None:
-        return None
-    ticket_id, company_id = parsed
-    raw = (
-        Ticket.objects.select_related(
-            "assigned_to",
-            "queue",
-            "crm_meta",
-            "crm_meta__created_by",
-        )
-        .filter(pk=ticket_id)
-        .first()
-    )
-    if raw is None:
-        return None
-    company = company_for_ticket(raw)
-    if company is None or company.pk != company_id:
-        return None
-    return raw
-
-
 def _ticket_for_action_token(token: str, unsign):
     """Return the ticket when the token matches the engineer it is assigned to."""
     from helpdesk.models import Ticket
@@ -4253,32 +4224,6 @@ def support_ticket_detail(request, pk):
             "comment_form": comment_form,
             "priority_choices": helpdesk_bridge.PRIORITY_LABELS,
             "sla_settings": sla_settings,
-        },
-    )
-
-
-@require_http_methods(["GET"])
-def support_ticket_email_view(request, token):
-    """Public read-only ticket page. Anyone with the digest link can open it."""
-    raw = _ticket_for_view_token(token)
-    if raw is None:
-        return render(
-            request,
-            "business/support_ticket_email_view.html",
-            {"public_page": True, "ticket": None, "comments": []},
-        )
-    comments = [
-        comment
-        for comment in helpdesk_bridge.followups_as_comments(raw)
-        if not comment.internal_note
-    ]
-    return render(
-        request,
-        "business/support_ticket_email_view.html",
-        {
-            "public_page": True,
-            "ticket": helpdesk_bridge.wrap_ticket(raw),
-            "comments": comments,
         },
     )
 
