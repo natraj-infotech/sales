@@ -2934,9 +2934,26 @@ Note: {{ warn }}
         collapsed ? "Expand sidebar" : "Collapse sidebar"
       );
     }
+    var suppressHoverOpen = false;
     setCollapsed(true);
+    sidebar.addEventListener("mouseenter", function () {
+      if (suppressHoverOpen) return;
+      if (layout.classList.contains("sidebar-collapsed")) {
+        setCollapsed(false);
+      }
+    });
+    sidebar.addEventListener("mouseleave", function () {
+      suppressHoverOpen = false;
+    });
     toggleBtn.addEventListener("click", function () {
-      setCollapsed(!layout.classList.contains("sidebar-collapsed"));
+      var collapsed = layout.classList.contains("sidebar-collapsed");
+      if (!collapsed) {
+        suppressHoverOpen = true;
+        setCollapsed(true);
+        return;
+      }
+      suppressHoverOpen = false;
+      setCollapsed(false);
     });
   })();
   </script>
