@@ -122,28 +122,6 @@ class ZohoBooksDraftTests(TestCase):
         self.assertEqual(rows[1]["start_date"], date(2026, 10, 8))
         self.assertEqual(rows[1]["end_date"], date(2027, 10, 8))
 
-    def test_serial_in_description_fills_serial_number(self):
-        invoice = _invoice()
-        invoice["line_items"][0]["description"] = (
-            "HP WORKSTATION Z2 TWR\n"
-            "I9 14900K/32 GB\n"
-            "S/N : HPWS 22G9\n"
-            "SKU: HPWS 22G9"
-        )
-        invoice["line_items"][1]["description"] = (
-            "NVIDIA RTX 2000 ADA 16GB GRAPHIC CARD\n"
-            "S/N:- 1421826001569\n"
-            "SKU: RTX 2000 ADA"
-        )
-        invoice["line_items"][1]["serial_numbers"] = ["API-SN"]
-        invoice["line_items"][2]["description"] = "No serial written here."
-
-        rows = build_review_rows(self.company, [invoice])
-
-        self.assertEqual(rows[0]["serial_number"], "HPWS 22G9")
-        self.assertEqual(rows[1]["serial_number"], "1421826001569")
-        self.assertEqual(rows[2]["serial_number"], "SN-9")
-
     def test_imported_line_is_marked(self):
         ClientSubscription.objects.create(
             company=self.company,

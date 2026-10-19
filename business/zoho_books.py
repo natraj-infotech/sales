@@ -457,10 +457,6 @@ _DURATION_RE = re.compile(
     r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
     re.IGNORECASE,
 )
-_SERIAL_IN_DESCRIPTION_RE = re.compile(
-    r"S\s*/\s*N\s*:\s*-?\s*([^\r\n]+)",
-    re.IGNORECASE,
-)
 
 
 def _parse_dmy(value: str):
@@ -502,20 +498,7 @@ def _quantity(value) -> int:
     return max(qty, 1)
 
 
-def _serial_from_description(text: str) -> str:
-    """Serial written in the product description as S/N: value."""
-    parts = []
-    for match in _SERIAL_IN_DESCRIPTION_RE.finditer(text or ""):
-        serial = match.group(1).strip()
-        if serial:
-            parts.append(serial)
-    return ", ".join(parts)[:128]
-
-
 def _serial_number(line: dict) -> str:
-    from_description = _serial_from_description(line.get("description") or "")
-    if from_description:
-        return from_description
     raw = line.get("serial_numbers") or []
     if isinstance(raw, str):
         raw = [raw]
