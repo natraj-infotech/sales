@@ -2807,11 +2807,11 @@
           <span class="nav-text">Dashboard</span>
         </a>
         <a href="{% url 'subscription_list' %}" title="Client subscriptions">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-credit-card"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-calendar"/></svg>
           <span class="nav-text">Client subscriptions</span>
         </a>
         <a href="{% url 'client_renewal_list' %}" title="Client renewals">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-mail"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-refresh"/></svg>
           <span class="nav-text">Client renewals</span>
         </a>
         <a href="{% url 'lead_list' %}" title="Leads">
@@ -2819,15 +2819,15 @@
           <span class="nav-text">Leads</span>
         </a>
         <a href="{% url 'vendor_list' %}" title="Vendors">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-id-card"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-store"/></svg>
           <span class="nav-text">Vendors</span>
         </a>
         <a href="{% url 'procurement_list' %}" title="Procurement">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-truck"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-clipboard"/></svg>
           <span class="nav-text">Procurement</span>
         </a>
         <a href="{% url 'catalog_hub' %}" title="WhatsApp catalog">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-chart"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-layout-grid"/></svg>
           <span class="nav-text">WA catalog</span>
         </a>
         <a href="{% url 'client_list' %}" title="Clients">
@@ -2835,7 +2835,7 @@
           <span class="nav-text">Clients</span>
         </a>
         <a href="{% url 'client_email' %}" title="Email clients">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-user-list"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-mail"/></svg>
           <span class="nav-text">Email clients</span>
         </a>
         <a href="{% url 'product_list' %}" title="Products">
@@ -2851,17 +2851,17 @@
         {% endif %}
         {% if user_can_manage_backups %}
         <a href="{% url 'backup_list' %}" title="Backups">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-download"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-database"/></svg>
           <span class="nav-text">Backups</span>
         </a>
         <a href="{% url 'restore_page' %}" title="Restore">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-upload"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-archive-restore"/></svg>
           <span class="nav-text">Restore</span>
         </a>
         {% endif %}
         {% if user_can_grant_sales %}
         <a href="{% url 'company_team' %}" title="Team access">
-          <svg class="nav-ic" aria-hidden="true"><use href="#i-users"/></svg>
+          <svg class="nav-ic" aria-hidden="true"><use href="#i-key"/></svg>
           <span class="nav-text">Team access</span>
         </a>
         {% endif %}
