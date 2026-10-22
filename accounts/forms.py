@@ -140,7 +140,9 @@ class CompanyProfileForm(forms.ModelForm):
         self.fields["expiry_team_digest_enabled"].help_text = (
             "Send one daily email with an Excel attachment to the company owner, "
             "sales team, and any extra addresses below listing subscriptions "
-            "expiring soon."
+            "expiring soon. The same switch also sends the company pending-ticket "
+            "digest, and between 9:00 and 10:00 a personal pending-ticket email "
+            "to each support engineer."
         )
         self.fields["expiry_team_extra_emails"].label = "Extra team digest recipients"
         if self.instance.pk:

@@ -86,31 +86,38 @@ def sync_company_queue(company: CompanyProfile) -> Queue:
             "allow_email_submission": False,
         },
     )
-    if queue.title != title:
-        queue.title = title
 
     support_email = (company.support_email or "").strip()
     app_password = (company.support_email_app_password or "").strip()
-    queue.email_address = support_email or None
-
+    desired = {
+        "title": title,
+        "email_address": support_email or None,
+        "allow_email_submission": False,
+    }
     if support_email and app_password:
         host = _detect_imap_host(support_email)
         from business.support_inbox import _is_microsoft_host
 
-        queue.email_box_type = "imap"
-        queue.email_box_host = host
-        queue.email_box_port = int(getattr(settings, "SUPPORT_IMAP_PORT", 993) or 993)
-        queue.email_box_ssl = True
-        queue.email_box_user = support_email
-        queue.email_box_pass = app_password
-        queue.email_box_imap_folder = getattr(settings, "SUPPORT_IMAP_MAILBOX", "INBOX") or "INBOX"
-        queue.email_box_interval = 1
-        # M365 often blocks basic IMAP auth; Graph path imports tickets instead.
-        queue.allow_email_submission = not _is_microsoft_host(host)
-    else:
-        queue.allow_email_submission = False
+        desired.update(
+            {
+                "email_box_type": "imap",
+                "email_box_host": host,
+                "email_box_port": int(getattr(settings, "SUPPORT_IMAP_PORT", 993) or 993),
+                "email_box_ssl": True,
+                "email_box_user": support_email,
+                "email_box_pass": app_password,
+                "email_box_imap_folder": getattr(settings, "SUPPORT_IMAP_MAILBOX", "INBOX") or "INBOX",
+                "email_box_interval": 1,
+                # M365 often blocks basic IMAP auth; Graph path imports tickets instead.
+                "allow_email_submission": not _is_microsoft_host(host),
+            }
+        )
 
-    queue.save()
+    changed = [name for name, value in desired.items() if getattr(queue, name) != value]
+    if changed:
+        for name in changed:
+            setattr(queue, name, desired[name])
+        queue.save(update_fields=changed)
     _consolidate_company_tickets(company, canonical_queue=queue)
     return queue
 
@@ -157,7 +164,6 @@ def tickets_for_company(company: CompanyProfile, *, oem: bool | None = None):
 
 
 def get_company_ticket(company: CompanyProfile, pk: int) -> Ticket:
-    sync_company_queue(company)
     prefix = company_queue_slug_prefix(company)
     return Ticket.objects.select_related(
         "assigned_to",
@@ -664,6 +670,62 @@ def set_ticket_assignee(ticket: Ticket, assignee, user=None, comment: str = "") 
         owner=owner_id,
     )
     return True
+
+
+def _owner_label(value) -> str:
+    text = "" if value is None else str(value).strip()
+    if not text or text.lower() in {"none", "unassigned"}:
+        return "Unassigned"
+    return text
+
+
+@dataclass
+class AssignmentEvent:
+    when_label: str
+    old_label: str
+    new_label: str
+    by_email: str = ""
+
+    @property
+    def line(self) -> str:
+        change = f"{self.when_label} — {self.old_label} → {self.new_label}"
+        if self.by_email:
+            return f"{change} (by {self.by_email})"
+        return change
+
+
+def assignment_history(ticket) -> list[AssignmentEvent]:
+    """Every engineer change on this ticket, oldest first.
+
+    django-helpdesk already stores each reassignment as an Owner change.
+    """
+    from helpdesk.models import TicketChange
+
+    raw = getattr(ticket, "_ticket", None) or ticket
+    changes = (
+        TicketChange.objects.filter(followup__ticket=raw, field__iexact="owner")
+        .select_related("followup__user")
+        .order_by("followup__date", "followup_id", "id")
+    )
+    events: list[AssignmentEvent] = []
+    for change in changes:
+        followup = change.followup
+        when = followup.date
+        if when and timezone.is_aware(when):
+            when = timezone.localtime(when)
+        when_label = when.strftime("%d %b %Y, %H:%M") if when else ""
+        by_email = ""
+        if followup.user_id and followup.user:
+            by_email = (followup.user.email or "").strip()
+        events.append(
+            AssignmentEvent(
+                when_label=when_label,
+                old_label=_owner_label(change.old_value),
+                new_label=_owner_label(change.new_value),
+                by_email=by_email,
+            )
+        )
+    return events
 
 
 def set_ticket_remarks(ticket: Ticket, remarks: str) -> None:

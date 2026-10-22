@@ -19,6 +19,7 @@
     <div><dt>Assignee</dt><dd>{% if ticket.assignee %}{{ ticket.assignee.email }}{% else %}Unassigned{% endif %}</dd></div>
     <div><dt>Created</dt><dd>{{ ticket.created_at|date:"d M Y, H:i" }}</dd></div>
   </dl>
+  {% include "includes/ticket_assignment_history.html" %}
   <h3 style="margin-top:1.25rem;">Description</h3>
   <div>{{ ticket.description|linebreaks }}</div>
   {% if ticket.status == "closed" %}

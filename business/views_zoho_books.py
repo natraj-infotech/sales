@@ -25,8 +25,10 @@ from business.zoho_books import (
     invoice_item_rows,
     list_organizations,
     list_stored_documents,
+    cancel_zoho_sync,
     local_organization,
     pdf_filename,
+    release_stale_zoho_sync,
     resolve_organization,
     save_organization,
     stored_invoice_dict,
@@ -170,6 +172,12 @@ def _zoho_books_page(request, kind: str):
         organization = local_organization(company)
         if organization is None:
             organization = resolve_organization(company)
+        if organization is not None and request.method == "GET":
+            release_stale_zoho_sync(
+                company,
+                str(organization.get("organization_id") or ""),
+                kind,
+            )
         if organization is None:
             return _render_import(
                 request,
@@ -467,6 +475,9 @@ def subscription_zoho_sync(request):
     kind = (request.POST.get("kind") or ZohoBooksSync.Kind.INVOICE).strip()
     if kind not in {ZohoBooksSync.Kind.INVOICE, ZohoBooksSync.Kind.BILL}:
         return JsonResponse({"error": "Choose sales invoices or purchase bills."}, status=400)
+    if request.POST.get("action") == "cancel":
+        cancel_zoho_sync(company, organization_id, kind)
+        return JsonResponse({"ok": True, "has_more": False, "cancelled": True})
     try:
         payload = sync_zoho_documents(
             company,

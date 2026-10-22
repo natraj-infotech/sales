@@ -3399,7 +3399,41 @@ def _ticket_matches_query(ticket, query: str) -> bool:
     return query.lower() in blob
 
 
-def _ticket_pagination_pages(page_obj, source: str, status_filter: str, query: str = ""):
+def _normalize_channel_filter(value: str) -> str:
+    cleaned = (value or "").strip().lower()
+    if cleaned in ("email", "whatsapp"):
+        return cleaned
+    return ""
+
+
+def _ticket_channel_key(ticket) -> str:
+    """WhatsApp when the stored channel mentions WhatsApp; everything else is Email."""
+    raw = (getattr(ticket, "source_channel", "") or "").lower()
+    if "whats" in raw:
+        return "whatsapp"
+    return "email"
+
+
+def _ticket_channel_label(key: str) -> str:
+    return "WhatsApp" if key == "whatsapp" else "Email"
+
+
+def _next_channel_filter(current: str) -> str:
+    """Header click cycle: all → email → whatsapp → all."""
+    if current == "email":
+        return "whatsapp"
+    if current == "whatsapp":
+        return ""
+    return "email"
+
+
+def _ticket_pagination_pages(
+    page_obj,
+    source: str,
+    status_filter: str,
+    query: str = "",
+    channel: str = "",
+):
     """Page links around the current page, with gaps marked as ellipsis."""
     total = page_obj.paginator.num_pages
     current = page_obj.number
@@ -3423,7 +3457,9 @@ def _ticket_pagination_pages(page_obj, source: str, status_filter: str, query: s
             {
                 "ellipsis": False,
                 "num": number,
-                "url": _ticket_list_page_url(source, status_filter, number, query),
+                "url": _ticket_list_page_url(
+                    source, status_filter, number, query, channel
+                ),
                 "current": number == current,
             }
         )
@@ -3431,7 +3467,13 @@ def _ticket_pagination_pages(page_obj, source: str, status_filter: str, query: s
     return pages
 
 
-def _ticket_list_page_url(source: str, status_filter: str, page: int, query: str = "") -> str:
+def _ticket_list_page_url(
+    source: str,
+    status_filter: str,
+    page: int,
+    query: str = "",
+    channel: str = "",
+) -> str:
     params = {}
     if source == "oem":
         params["source"] = "oem"
@@ -3439,6 +3481,8 @@ def _ticket_list_page_url(source: str, status_filter: str, page: int, query: str
         params["status"] = status_filter
     if query:
         params["q"] = query
+    if channel in ("email", "whatsapp"):
+        params["channel"] = channel
     if page and page > 1:
         params["page"] = page
     base = reverse("support_ticket_list")
@@ -3454,6 +3498,7 @@ def _support_ticket_list_data(
     source: str = "internal",
     page: int = 1,
     query: str = "",
+    channel_filter: str = "",
 ):
     """Shared ticket list payload for HTML page and live JSON poll.
 
@@ -3463,6 +3508,7 @@ def _support_ticket_list_data(
 
     status_filter = (status_filter or "").strip()
     query = (query or "").strip()
+    channel_filter = _normalize_channel_filter(channel_filter)
     source = "oem" if source == "oem" else "internal"
     if status_filter not in dict(helpdesk_bridge.STATUS_CHOICES):
         status_filter = ""
@@ -3506,6 +3552,8 @@ def _support_ticket_list_data(
         visible = [t for t in visible if t.status == status_filter]
     if query:
         visible = [t for t in visible if _ticket_matches_query(t, query)]
+    if channel_filter:
+        visible = [t for t in visible if _ticket_channel_key(t) == channel_filter]
     paginator = Paginator(visible, TICKET_PAGE_SIZE)
     page_obj = paginator.get_page(page)
     object_list = list(page_obj.object_list)
@@ -3521,6 +3569,7 @@ def _support_ticket_list_data(
         "page_obj": page_obj,
         "query": query,
         "status_filter": status_filter,
+        "channel_filter": channel_filter,
         "source": source,
         "counts": counts,
         "oem_counts": oem_counts,
@@ -3531,17 +3580,29 @@ def _support_ticket_list_data(
         "sla_settings": sla_settings,
         "charts": charts,
         "page_prev_url": (
-            _ticket_list_page_url(source, status_filter, page_obj.previous_page_number(), query)
+            _ticket_list_page_url(
+                source,
+                status_filter,
+                page_obj.previous_page_number(),
+                query,
+                channel_filter,
+            )
             if page_obj.has_previous()
             else ""
         ),
         "page_next_url": (
-            _ticket_list_page_url(source, status_filter, page_obj.next_page_number(), query)
+            _ticket_list_page_url(
+                source,
+                status_filter,
+                page_obj.next_page_number(),
+                query,
+                channel_filter,
+            )
             if page_obj.has_next()
             else ""
         ),
         "pagination_pages": _ticket_pagination_pages(
-            page_obj, source, status_filter, query
+            page_obj, source, status_filter, query, channel_filter
         ),
     }
 
@@ -3580,6 +3641,7 @@ def support_ticket_list(request):
         source=_ticket_list_source(request),
         page=_ticket_list_page(request),
         query=request.GET.get("q", ""),
+        channel_filter=request.GET.get("channel", ""),
     )
 
     return render(
@@ -3594,6 +3656,14 @@ def support_ticket_list(request):
             "page_next_url": data["page_next_url"],
             "pagination_pages": data["pagination_pages"],
             "status_filter": data["status_filter"],
+            "channel_filter": data["channel_filter"],
+            "channel_cycle_url": _ticket_list_page_url(
+                data["source"],
+                data["status_filter"],
+                1,
+                data["query"],
+                _next_channel_filter(data["channel_filter"]),
+            ),
             "source": data["source"],
             "status_choices": helpdesk_bridge.STATUS_CHOICES,
             "counts": data["counts"],
@@ -3618,6 +3688,7 @@ def support_ticket_live(request):
             source=_ticket_list_source(request),
             page=_ticket_list_page(request),
             query=request.GET.get("q", ""),
+            channel_filter=request.GET.get("channel", ""),
         )
         created = 0
         inbox_errors = []
@@ -3637,12 +3708,15 @@ def support_ticket_live(request):
             email = t.contact_display
             done = t.status in ("resolved", "closed")
             sla = t.sla or {}
+            channel_key = _ticket_channel_key(t)
             row = {
                 "id": t.pk,
                 "reference": t.reference,
                 "created_at": _format_ticket_dt(t.created_at, "d/m/Y H:i"),
                 "subject": t.subject or "",
                 "email": email,
+                "channel": channel_key,
+                "channel_label": _ticket_channel_label(channel_key),
                 "department": t.get_department_display(),
                 "priority": t.priority,
                 "priority_label": t.get_priority_display(),
@@ -4379,6 +4453,7 @@ def support_ticket_detail(request, pk):
             "comment_form": comment_form,
             "priority_choices": helpdesk_bridge.PRIORITY_LABELS,
             "sla_settings": sla_settings,
+            "assignment_history": helpdesk_bridge.assignment_history(raw),
         },
     )
 
@@ -4405,6 +4480,7 @@ def support_ticket_email_view(request, token):
             "public_page": True,
             "ticket": helpdesk_bridge.wrap_ticket(raw),
             "comments": comments,
+            "assignment_history": helpdesk_bridge.assignment_history(raw),
         },
     )
 
@@ -4449,7 +4525,11 @@ def support_ticket_email_close(request, token):
     return render(
         request,
         "business/support_ticket_email_close.html",
-        {"public_page": True, "ticket": ticket},
+        {
+            "public_page": True,
+            "ticket": ticket,
+            "assignment_history": helpdesk_bridge.assignment_history(raw),
+        },
     )
 
 

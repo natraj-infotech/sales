@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -20,6 +20,8 @@ from business.models import (
     Product,
     SubscriptionRenewalInvite,
     SubscriptionRenewalInviteLine,
+    EngineerPendingDigest,
+    SupportTeam,
     SupportTicketMeta,
     TeamNotification,
     Vendor,
@@ -463,6 +465,143 @@ class SupportDigestTests(TestCase):
         self.assertEqual(self.company.support_digest_last_sent, timezone.localdate())
 
 
+class EngineerPendingDigestTests(TestCase):
+    def setUp(self):
+        from business import helpdesk_bridge
+
+        User = get_user_model()
+        self.owner = User.objects.create_user("owner-eng@example.com", "pass")
+        self.engineer = User.objects.create_user("ravi@example.com", "pass")
+        self.engineer.first_name = "Ravi"
+        self.engineer.last_name = "Shah"
+        self.engineer.save(update_fields=["first_name", "last_name"])
+        self.other = User.objects.create_user("neha@example.com", "pass")
+        self.idle = User.objects.create_user("idle@example.com", "pass")
+        self.outsider = User.objects.create_user("outsider@example.com", "pass")
+        self.company = CompanyProfile.objects.create(
+            user=self.owner,
+            company_name="Co",
+            expiry_team_digest_enabled=True,
+            outgoing_email="sales@example.com",
+            outgoing_email_app_password="secret",
+        )
+        for user in (self.engineer, self.other, self.idle, self.outsider):
+            CompanyMember.objects.create(company=self.company, user=user)
+        team = SupportTeam.objects.create(company=self.company)
+        team.members.add(self.engineer, self.other, self.idle)
+        self.queue = helpdesk_bridge.get_company_queue(self.company)
+        self.morning = timezone.make_aware(datetime(2026, 10, 22, 9, 15))
+        Ticket.objects.create(
+            queue=self.queue,
+            title="Router down",
+            status=Ticket.OPEN_STATUS,
+            assigned_to=self.engineer,
+            submitter_email="client@example.com",
+        )
+        Ticket.objects.create(
+            queue=self.queue,
+            title="VPN slow",
+            status=Ticket.REOPENED_STATUS,
+            assigned_to=self.engineer,
+            submitter_email="client@example.com",
+        )
+        Ticket.objects.create(
+            queue=self.queue,
+            title="Neha printer",
+            status=Ticket.OPEN_STATUS,
+            assigned_to=self.other,
+            submitter_email="client@example.com",
+        )
+        Ticket.objects.create(
+            queue=self.queue,
+            title="Already closed",
+            status=Ticket.CLOSED_STATUS,
+            assigned_to=self.engineer,
+            submitter_email="client@example.com",
+        )
+        Ticket.objects.create(
+            queue=self.queue,
+            title="Unassigned open",
+            status=Ticket.OPEN_STATUS,
+            submitter_email="client@example.com",
+        )
+        Ticket.objects.create(
+            queue=self.queue,
+            title="Outsider ticket",
+            status=Ticket.OPEN_STATUS,
+            assigned_to=self.outsider,
+            submitter_email="client@example.com",
+        )
+
+    def _send(self, now):
+        from business.support_digest import send_engineer_pending_digests
+
+        with patch(
+            "business.support_digest.send_company_outbound",
+            return_value=(True, ""),
+        ) as send:
+            sent, logs = send_engineer_pending_digests(
+                self.company, today=now.date(), now=now
+            )
+        return sent, logs, send
+
+    def test_morning_mail_lists_only_that_engineers_pending_tickets(self):
+        sent, _logs, send = self._send(self.morning)
+        self.assertEqual(sent, 2)
+        self.assertEqual(send.call_count, 2)
+        by_recipient = {call.args[1][0]: call for call in send.call_args_list}
+        self.assertEqual(set(by_recipient), {"ravi@example.com", "neha@example.com"})
+
+        ravi = by_recipient["ravi@example.com"]
+        self.assertIn("Your pending support tickets (2)", ravi.args[2])
+        self.assertIn("Hello Ravi Shah,", ravi.args[3])
+        self.assertIn("assigned to you and are still pending", ravi.args[3])
+        self.assertIn("Router down", ravi.args[3])
+        self.assertIn("VPN slow", ravi.args[3])
+        for absent in (
+            "Neha printer",
+            "Already closed",
+            "Unassigned open",
+            "Outsider ticket",
+        ):
+            self.assertNotIn(absent, ravi.args[3])
+            self.assertNotIn(absent, ravi.kwargs["html_body"])
+        self.assertIn("assigned to you and are still pending", ravi.kwargs["html_body"])
+        name, data, _mime = ravi.kwargs["attachments"][0]
+        self.assertTrue(name.startswith("your_pending_tickets_ravi_"))
+        self.assertTrue(data.startswith(b"PK"))
+
+        neha = by_recipient["neha@example.com"]
+        self.assertIn("Neha printer", neha.args[3])
+        self.assertNotIn("Router down", neha.args[3])
+        self.assertEqual(
+            EngineerPendingDigest.objects.filter(company=self.company).count(), 2
+        )
+
+    def test_second_run_the_same_morning_does_not_resend(self):
+        self._send(self.morning)
+        sent, _logs, send = self._send(self.morning.replace(minute=40))
+        self.assertEqual(sent, 0)
+        send.assert_not_called()
+
+    def test_outside_the_morning_window_does_not_send(self):
+        early = self.morning.replace(hour=8, minute=59)
+        late = self.morning.replace(hour=10, minute=0)
+        for moment in (early, late):
+            sent, logs, send = self._send(moment)
+            self.assertEqual(sent, 0)
+            self.assertEqual(logs, [])
+            send.assert_not_called()
+        self.assertFalse(EngineerPendingDigest.objects.exists())
+
+    def test_digest_switch_off_does_not_send(self):
+        self.company.expiry_team_digest_enabled = False
+        self.company.save(update_fields=["expiry_team_digest_enabled"])
+        sent, logs, send = self._send(self.morning)
+        self.assertEqual((sent, logs), (0, []))
+        send.assert_not_called()
+
+
 class TicketCreatedConfirmationTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -572,3 +711,95 @@ class TicketCreatedConfirmationTests(TestCase):
             )
         self.assertEqual((status, err), ("skipped_self", None))
         send.assert_not_called()
+
+
+class AssignmentHistoryTests(TestCase):
+    def setUp(self):
+        from business import helpdesk_bridge
+
+        User = get_user_model()
+        self.owner = User.objects.create_user("owner-hist@example.com", "pass")
+        self.owner.is_staff = True
+        self.owner.save(update_fields=["is_staff"])
+        self.first = User.objects.create_user("first-eng@example.com", "pass")
+        self.second = User.objects.create_user("second-eng@example.com", "pass")
+        self.company = CompanyProfile.objects.create(
+            user=self.owner,
+            company_name="Hist Co",
+            outgoing_email="sales@example.com",
+            outgoing_email_app_password="secret",
+        )
+        self.queue = helpdesk_bridge.get_company_queue(self.company)
+        self.ticket = Ticket.objects.create(
+            queue=self.queue,
+            title="Printer jam",
+            status=Ticket.OPEN_STATUS,
+            submitter_email="client@example.com",
+        )
+
+    def test_reassignment_history_appears_on_detail_pages_and_mails(self):
+        from business.helpdesk_assign_mail import (
+            build_assignment_email_html,
+            build_assignment_email_text,
+            build_requester_assignment_email_text,
+        )
+        from business.helpdesk_bridge import assignment_history, set_ticket_assignee
+        from business.ticket_close_tokens import (
+            sign_ticket_close_token,
+            sign_ticket_view_token,
+        )
+        from business.ticket_summary_mail import build_conversation_summary
+
+        set_ticket_assignee(self.ticket, self.first, user=self.owner)
+        set_ticket_assignee(self.ticket, self.second, user=self.owner)
+        self.ticket.refresh_from_db()
+
+        events = assignment_history(self.ticket)
+        self.assertEqual(
+            [(event.old_label, event.new_label) for event in events],
+            [
+                ("Unassigned", "first-eng@example.com"),
+                ("first-eng@example.com", "second-eng@example.com"),
+            ],
+        )
+        self.assertEqual(events[1].by_email, "owner-hist@example.com")
+
+        self.client.force_login(self.owner)
+        detail = self.client.get(reverse("support_ticket_detail", args=[self.ticket.pk]))
+        self.assertContains(detail, "Assignment history")
+        self.assertContains(detail, "Unassigned")
+        self.assertContains(detail, "first-eng@example.com → second-eng@example.com")
+        self.assertContains(detail, "by owner-hist@example.com")
+
+        view_token = sign_ticket_view_token(self.ticket.pk, self.company.pk)
+        public = self.client.get(
+            reverse("support_ticket_email_view", kwargs={"token": view_token})
+        )
+        self.assertContains(public, "first-eng@example.com → second-eng@example.com")
+
+        close_token = sign_ticket_close_token(self.ticket.pk, self.second.pk)
+        close_page = self.client.get(
+            reverse("support_ticket_email_close", kwargs={"token": close_token})
+        )
+        self.assertContains(close_page, "Assignment history")
+        self.assertContains(close_page, "first-eng@example.com → second-eng@example.com")
+
+        text = build_assignment_email_text(
+            self.company, self.ticket, assigned_by=self.owner
+        )
+        html = build_assignment_email_html(
+            self.company, self.ticket, assigned_by=self.owner
+        )
+        requester = build_requester_assignment_email_text(
+            self.company, self.ticket, assigned_by=self.owner
+        )
+        for body in (text, html, requester):
+            self.assertIn("Assignment history", body)
+            self.assertIn("first-eng@example.com → second-eng@example.com", body)
+
+        summary, summary_html, _files, _omitted, has_content = build_conversation_summary(
+            self.ticket
+        )
+        self.assertTrue(has_content)
+        self.assertIn("first-eng@example.com → second-eng@example.com", summary)
+        self.assertIn("Assignment history", summary_html)

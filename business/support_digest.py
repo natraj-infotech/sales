@@ -1,4 +1,4 @@
-"""Daily email to the team summarising pending support tickets (Excel attached)."""
+"""Daily pending-ticket mail for the team, plus a 9:00–10:00 mail per engineer."""
 
 from __future__ import annotations
 
@@ -22,6 +22,9 @@ from business.expiry_notifications import (
 from business.outbound_mail import send_company_outbound
 
 PENDING_STATUSES = ("open", "in_progress")
+# Local time (Asia/Kolkata). The first scheduler tick in this hour sends the mail.
+ENGINEER_DIGEST_START_HOUR = 9
+ENGINEER_DIGEST_END_HOUR = 10
 
 EXCEL_HEADERS = (
     "Ticket",
@@ -161,20 +164,43 @@ def support_digest_attachment_filename(company: CompanyProfile, today) -> str:
     return f"pending_support_tickets_{safe_name}_{today.isoformat()}.xlsx"
 
 
-def support_digest_body(company: CompanyProfile, summary: dict, attachment_name: str) -> str:
+def support_digest_body(
+    company: CompanyProfile,
+    summary: dict,
+    attachment_name: str,
+    *,
+    personal: bool = False,
+    recipient_name: str = "",
+) -> str:
     today = summary["today"]
-    lines = [
-        f"Daily support ticket digest for {company.company_name}",
-        f"Date: {today.strftime('%d-%m-%Y')}",
-        "",
-        f"Pending tickets: {summary['pending_count']}",
-        f"Open: {summary['open_count']}",
-        f"In progress: {summary['in_progress_count']}",
-        f"Under observation: {summary['under_observation_count']}",
-        "",
-        f"See the attached Excel file ({attachment_name}) for the full list.",
-        "",
-    ]
+    if personal:
+        lines = [
+            f"Hello {recipient_name},",
+            "",
+            "These support tickets are assigned to you and are still pending.",
+            f"Company: {company.company_name}",
+            f"Date: {today.strftime('%d-%m-%Y')}",
+            "",
+            f"Pending tickets: {summary['pending_count']}",
+            f"Open: {summary['open_count']}",
+            f"In progress: {summary['in_progress_count']}",
+            "",
+            f"See the attached Excel file ({attachment_name}) for the full list.",
+            "",
+        ]
+    else:
+        lines = [
+            f"Daily support ticket digest for {company.company_name}",
+            f"Date: {today.strftime('%d-%m-%Y')}",
+            "",
+            f"Pending tickets: {summary['pending_count']}",
+            f"Open: {summary['open_count']}",
+            f"In progress: {summary['in_progress_count']}",
+            f"Under observation: {summary['under_observation_count']}",
+            "",
+            f"See the attached Excel file ({attachment_name}) for the full list.",
+            "",
+        ]
     for ticket in summary["pending"]:
         lines.append(
             f"{ticket.reference} | {ticket.subject or '—'} | "
@@ -192,6 +218,8 @@ def support_digest_html(
     attachment_name: str,
     *,
     logo_cid: str = "",
+    personal: bool = False,
+    recipient_name: str = "",
 ) -> str:
     font = "'Segoe UI', Arial, Helvetica, sans-serif"
     text = "#374151"
@@ -241,8 +269,24 @@ def support_digest_html(
         ("Pending", summary["pending_count"], "#DC2626"),
         ("Open", summary["open_count"], blue),
         ("In progress", summary["in_progress_count"], "#D97706"),
-        ("Under observation", summary["under_observation_count"], "#16A34A"),
     ]
+    if not personal:
+        stat_cards.append(
+            ("Under observation", summary["under_observation_count"], "#16A34A")
+        )
+    eyebrow = "Assigned to you" if personal else "Team digest"
+    heading = (
+        "Your pending support tickets" if personal else "Daily support ticket digest"
+    )
+    if personal:
+        greeting_html = (
+            f'<p style="margin:0 0 8px 0;font-size:15px;line-height:1.55;color:{text};">'
+            f"Hello {escape(recipient_name)},</p>"
+            f'<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:{text};">'
+            "These support tickets are assigned to you and are still pending.</p>"
+        )
+    else:
+        greeting_html = ""
     stats_html = "".join(
         f'<td align="center" style="padding:14px 8px;border:1px solid {border};'
         f'background-color:#F9FAFB;font-family:{font};">'
@@ -338,8 +382,9 @@ def support_digest_html(
         </tr>
         <tr>
           <td style="padding:28px 24px 8px 24px;font-family:{font};">
-            <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">Team digest</p>
-            <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:{blue};font-weight:700;font-family:{font};">Daily support ticket digest</h1>
+            <p style="margin:0 0 6px 0;font-size:12px;letter-spacing:0.4px;text-transform:uppercase;color:{blue};font-weight:600;">{escape(eyebrow)}</p>
+            <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:{blue};font-weight:700;font-family:{font};">{escape(heading)}</h1>
+            {greeting_html}
             <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:{text};">Date: <strong>{escape(today.strftime('%d-%m-%Y'))}</strong></p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;margin:0 0 18px 0;">
               <tr>{stats_html}</tr>
@@ -453,3 +498,143 @@ def send_support_digest_test(company: CompanyProfile, to_email: str) -> tuple[bo
         attachments=[(attachment_name, excel_bytes, XLSX_MIME)],
         inline_images=[logo_inline] if logo_inline else None,
     )
+
+
+def engineer_digest_window_open(now=None) -> bool:
+    """True from 09:00 up to, but not including, 10:00 local time."""
+    current = timezone.localtime(now or timezone.now())
+    return ENGINEER_DIGEST_START_HOUR <= current.hour < ENGINEER_DIGEST_END_HOUR
+
+
+def _engineer_name(engineer) -> str:
+    name = (engineer.get_full_name() or "").strip()
+    return name or (engineer.email or "").strip() or "there"
+
+
+def _engineer_summary(tickets, today) -> dict:
+    return {
+        "pending": tickets,
+        "pending_count": len(tickets),
+        "open_count": sum(1 for ticket in tickets if ticket.status == "open"),
+        "in_progress_count": sum(1 for ticket in tickets if ticket.status == "in_progress"),
+        "under_observation_count": 0,
+        "today": today,
+    }
+
+
+def engineer_digest_attachment_filename(engineer, today) -> str:
+    local = ((engineer.email or "").split("@")[0] or f"engineer_{engineer.pk}")
+    safe_name = re.sub(r"[^\w\-]+", "_", local)[:40] or f"engineer_{engineer.pk}"
+    return f"your_pending_tickets_{safe_name}_{today.isoformat()}.xlsx"
+
+
+def send_engineer_pending_digests(
+    company: CompanyProfile,
+    today=None,
+    *,
+    force: bool = False,
+    now=None,
+) -> tuple[int, list[str]]:
+    """Mail each support engineer their own pending assigned tickets.
+
+    Runs once per engineer per day, only between 09:00 and 10:00 local time.
+    Engineers with no pending tickets are skipped. The company-wide digest is unchanged.
+    """
+    from business.models import EngineerPendingDigest
+    from business.support_team import team_members
+
+    current = timezone.localtime(now or timezone.now())
+    today = today or current.date()
+    logs: list[str] = []
+
+    if not force and not company.expiry_team_digest_enabled:
+        return 0, logs
+    if not force and not engineer_digest_window_open(current):
+        return 0, logs
+    if not _company_can_send_mail(company):
+        logs.append(
+            f"{company.company_name}: engineer pending digest skipped "
+            "(outgoing SMTP not configured)."
+        )
+        return 0, logs
+
+    engineers = list(team_members(company))
+    if not engineers:
+        return 0, logs
+
+    already_sent = set(
+        EngineerPendingDigest.objects.filter(
+            company=company, sent_on=today
+        ).values_list("engineer_id", flat=True)
+    )
+    pending = collect_ticket_summary(company, today)["pending"]
+    by_engineer: dict[int, list] = {engineer.pk: [] for engineer in engineers}
+    for ticket in pending:
+        bucket = by_engineer.get(ticket.assignee_id)
+        if bucket is not None:
+            bucket.append(ticket)
+
+    sent = 0
+    for engineer in engineers:
+        if engineer.pk in already_sent:
+            continue
+        tickets = by_engineer[engineer.pk]
+        if not tickets:
+            continue
+        recipient = (engineer.email or "").strip()
+        if not recipient:
+            logs.append(
+                f"{company.company_name}: engineer pending digest skipped "
+                f"(engineer {engineer.pk} has no email)."
+            )
+            continue
+
+        summary = _engineer_summary(tickets, today)
+        recipient_name = _engineer_name(engineer)
+        attachment_name = engineer_digest_attachment_filename(engineer, today)
+        excel_bytes = build_support_digest_excel_bytes(summary)
+        logo_inline = _company_logo_inline(company)
+        subject = (
+            f"Your pending support tickets ({summary['pending_count']}) — "
+            f"{company.company_name} — {today.isoformat()}"
+        )
+        ok, err = send_company_outbound(
+            company,
+            [recipient],
+            subject,
+            support_digest_body(
+                company,
+                summary,
+                attachment_name,
+                personal=True,
+                recipient_name=recipient_name,
+            ),
+            html_body=support_digest_html(
+                company,
+                summary,
+                attachment_name,
+                logo_cid=logo_inline[0] if logo_inline else "",
+                personal=True,
+                recipient_name=recipient_name,
+            ),
+            attachments=[(attachment_name, excel_bytes, XLSX_MIME)],
+            inline_images=[logo_inline] if logo_inline else None,
+        )
+        if not ok:
+            logs.append(
+                f"{company.company_name}: failed to send pending tickets to {recipient}."
+            )
+            if err:
+                logs.append(err)
+            continue
+        EngineerPendingDigest.objects.get_or_create(
+            company=company,
+            engineer=engineer,
+            sent_on=today,
+        )
+        sent += 1
+        logs.append(
+            f"{company.company_name}: pending tickets mailed to {recipient} "
+            f"({summary['pending_count']} assigned)."
+        )
+    return sent, logs

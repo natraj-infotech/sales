@@ -222,6 +222,32 @@ def _rows_html(rows: list[tuple[str, str]]) -> str:
     return "".join(parts)
 
 
+def _assignment_history_lines(ticket) -> list[str]:
+    from business.helpdesk_bridge import assignment_history
+
+    events = assignment_history(ticket)
+    if not events:
+        return []
+    return ["", "Assignment history", *[event.line for event in events]]
+
+
+def _assignment_history_html(ticket) -> str:
+    from business.helpdesk_bridge import assignment_history
+
+    events = assignment_history(ticket)
+    if not events:
+        return ""
+    items = "".join(
+        f'<li style="margin:0 0 6px 0;font-size:14px;line-height:1.45;color:{_TEXT};">{escape(event.line)}</li>'
+        for event in events
+    )
+    return (
+        f'<p style="margin:8px 0 6px 0;font-size:13px;font-weight:700;letter-spacing:0.3px;'
+        f'text-transform:uppercase;color:{_MUTED};font-family:{_FONT};">Assignment history</p>'
+        f'<ol style="margin:0 0 16px 18px;padding:0;font-family:{_FONT};">{items}</ol>'
+    )
+
+
 def _text_table(rows: list[tuple[str, str]]) -> list[str]:
     lines = [
         "+------------------+------------------------------------------+",
@@ -397,6 +423,7 @@ def build_assignment_email_text(
         "",
     ]
     lines.extend(_text_table(_detail_rows_for_assignee(ticket, assigned_by=assigned_by)))
+    lines.extend(_assignment_history_lines(ticket))
     lines.extend(
         [
             "",
@@ -433,7 +460,7 @@ def build_assignment_email_html(
               (<em>{subject}</em>) has been assigned to you.
             </p>
     """
-    body = _assignment_action_buttons(close_url, transfer_url)
+    body = _assignment_history_html(ticket) + _assignment_action_buttons(close_url, transfer_url)
     return _branded_shell(
         company=company,
         logo_cid=logo_cid,
@@ -464,6 +491,7 @@ def build_requester_assignment_email_text(
     lines.extend(
         _text_table(_detail_rows_for_requester(ticket, assigned_by=assigned_by))
     )
+    lines.extend(_assignment_history_lines(ticket))
     lines.extend(
         [
             "",
@@ -496,7 +524,7 @@ def build_requester_assignment_email_html(
               <strong>{assignee}</strong>.
             </p>
     """
-    body = f"""
+    body = _assignment_history_html(ticket) + f"""
             <p style="margin:8px 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
               We will update you as work progresses.
             </p>
@@ -525,6 +553,7 @@ def build_ticket_created_email_text(company: CompanyProfile, ticket) -> str:
         "",
     ]
     lines.extend(_text_table(_detail_rows_for_requester(ticket)))
+    lines.extend(_assignment_history_lines(ticket))
     lines.extend(
         [
             "",
@@ -552,7 +581,7 @@ def build_ticket_created_email_html(
               (<em>{subject}</em>) from your email.
             </p>
     """
-    body = f"""
+    body = _assignment_history_html(ticket) + f"""
             <p style="margin:8px 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
               {escape(_CREATED_MESSAGE)}
             </p>
@@ -581,6 +610,7 @@ def build_closed_email_text(company: CompanyProfile, ticket) -> str:
         "",
     ]
     lines.extend(_text_table(_detail_rows_for_requester(ticket)))
+    lines.extend(_assignment_history_lines(ticket))
     lines.extend(
         [
             "",
@@ -608,7 +638,7 @@ def build_closed_email_html(
               (<em>{subject}</em>) has been closed.
             </p>
     """
-    body = f"""
+    body = _assignment_history_html(ticket) + f"""
             <p style="margin:8px 0 4px 0;font-size:15px;line-height:1.55;color:{_TEXT};">
               {escape(_CLOSED_MESSAGE)}
             </p>

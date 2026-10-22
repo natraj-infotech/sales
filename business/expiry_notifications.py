@@ -2167,7 +2167,10 @@ def send_expiry_notifications_for_company(
     company: CompanyProfile,
     today=None,
 ) -> dict[str, int | list[str]]:
-    from business.support_digest import send_support_ticket_digest
+    from business.support_digest import (
+        send_engineer_pending_digests,
+        send_support_ticket_digest,
+    )
 
     client_sent, client_logs = send_client_expiry_emails(company, today=today)
     team_sent, team_logs = send_team_expiry_digest(company, today=today)
@@ -2178,10 +2181,19 @@ def send_expiry_notifications_for_company(
         support_sent, support_logs = 0, [
             f"{company.company_name}: failed to send support digest."
         ]
+    try:
+        engineer_sent, engineer_logs = send_engineer_pending_digests(
+            company, today=today
+        )
+    except Exception:
+        logger.exception("Engineer pending digest failed company_id=%s", company.pk)
+        engineer_sent, engineer_logs = 0, [
+            f"{company.company_name}: failed to send engineer pending digests."
+        ]
     return {
         "client_emails_sent": client_sent,
-        "team_digests_sent": team_sent + support_sent,
-        "logs": client_logs + team_logs + support_logs,
+        "team_digests_sent": team_sent + support_sent + engineer_sent,
+        "logs": client_logs + team_logs + support_logs + engineer_logs,
     }
 
 

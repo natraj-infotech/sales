@@ -1,0 +1,14 @@
+{% if assignment_history %}
+<div class="ticket-assign-history">
+  <h3>Assignment history</h3>
+  <ol>
+    {% for event in assignment_history %}
+    <li>
+      <span class="ticket-assign-when">{{ event.when_label }}</span>
+      <span class="ticket-assign-change">{{ event.old_label }} → {{ event.new_label }}</span>
+      {% if event.by_email %}<span class="ticket-assign-by">by {{ event.by_email }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}

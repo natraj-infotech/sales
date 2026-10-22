@@ -2,7 +2,8 @@
 
 Production uses Celery beat. Locally, only `runserver` is usually running,
 so this daemon thread runs every minute for as long as the server is up:
-expiry reminders, team notifications, and support-mailbox ticket import.
+expiry reminders and team notifications. Support mail is read on its own
+25 second loop so the ticket page does not wait on the inbox.
 Support mail is read even when nobody is logged in and the ticket page is closed.
 """
 
@@ -17,11 +18,13 @@ import time
 logger = logging.getLogger(__name__)
 
 TICK_SECONDS = 60
+MAIL_SECONDS = 25
 START_DELAY_SECONDS = 8
 
 _started = False
 _start_lock = threading.Lock()
 _tick_lock = threading.Lock()
+_mail_lock = threading.Lock()
 
 
 def should_start() -> bool:
@@ -49,10 +52,18 @@ def start_if_runserver() -> None:
         daemon=True,
     )
     thread.start()
+    mail_thread = threading.Thread(
+        target=_mail_loop,
+        name="local-support-mail",
+        daemon=True,
+    )
+    mail_thread.start()
     logger.warning(
-        "Local scheduler started (every %ss). Expiry mail, team notifications, "
-        "and support inbox fetch run while runserver is up, even if nobody is logged in.",
+        "Local scheduler started (jobs every %ss, support inbox every %ss). "
+        "Expiry mail, team notifications, and support inbox fetch run while "
+        "runserver is up, even if nobody is logged in.",
         TICK_SECONDS,
+        MAIL_SECONDS,
     )
 
 
@@ -61,6 +72,38 @@ def _loop() -> None:
     while True:
         _tick()
         time.sleep(TICK_SECONDS)
+
+
+def _mail_loop() -> None:
+    """Read support inboxes without blocking the ticket page."""
+    time.sleep(START_DELAY_SECONDS)
+    while True:
+        _fetch_support_mail()
+        time.sleep(MAIL_SECONDS)
+
+
+def _fetch_support_mail() -> None:
+    if not _mail_lock.acquire(blocking=False):
+        return
+    from django.db import close_old_connections
+
+    close_old_connections()
+    try:
+        from business.helpdesk_inbox import fetch_helpdesk_mail_for_all_companies
+
+        result = fetch_helpdesk_mail_for_all_companies()
+        created = int(result.get("created") or 0)
+        if created:
+            logger.warning("Automatic support mail: imported %s ticket(s).", created)
+        for line in result.get("logs") or []:
+            lower = str(line).lower()
+            if "fail" in lower or "error" in lower:
+                logger.warning("Automatic support mail: %s", line)
+    except Exception:
+        logger.exception("Local support mail fetch failed")
+    finally:
+        close_old_connections()
+        _mail_lock.release()
 
 
 def _tick() -> None:
@@ -96,19 +139,6 @@ def _tick() -> None:
         scan_scheduled_notifications()
     except Exception:
         logger.exception("Local team notification scan failed")
-    try:
-        from business.helpdesk_inbox import fetch_helpdesk_mail_for_all_companies
-
-        result = fetch_helpdesk_mail_for_all_companies()
-        created = int(result.get("created") or 0)
-        if created:
-            logger.warning("Automatic support mail: imported %s ticket(s).", created)
-        for line in result.get("logs") or []:
-            lower = str(line).lower()
-            if "fail" in lower or "error" in lower:
-                logger.warning("Automatic support mail: %s", line)
-    except Exception:
-        logger.exception("Local support mail fetch failed")
     finally:
         close_old_connections()
         _tick_lock.release()

@@ -5,12 +5,15 @@ from __future__ import annotations
 import calendar
 import logging
 import re
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from difflib import SequenceMatcher
 
 import requests
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -29,8 +32,12 @@ logger = logging.getLogger(__name__)
 
 SESSION_INVOICE_IDS = "zoho_books_invoice_ids"
 SESSION_INVOICE_CACHE = "zoho_books_invoice_page_cache"
-SYNC_PAGE_SIZE = 50
+SYNC_PAGE_SIZE = 20
 STORED_PAGE_SIZE = 50
+# Keep Zoho under its per-minute request cap while a sync is running.
+_MIN_REQUEST_GAP_SECONDS = 0.7
+_rate_lock = threading.Lock()
+_next_books_request = 0.0
 
 
 class ZohoBooksError(RuntimeError):
@@ -59,7 +66,20 @@ def _needs_reconnect(resp, body: dict) -> bool:
     return "scope" in message or "not authorized" in message
 
 
+def _pace_books_request() -> None:
+    """Serialize Zoho Books calls so a full bill sync does not trip the rate limit."""
+    global _next_books_request
+    with _rate_lock:
+        now = time.monotonic()
+        wait = _next_books_request - now
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _next_books_request = now + _MIN_REQUEST_GAP_SECONDS
+
+
 def books_get(company: CompanyProfile, path: str, params=None, *, accept: str = ""):
+    _pace_books_request()
     headers = {"Authorization": f"Zoho-oauthtoken {get_access_token(company)}"}
     if accept:
         headers["Accept"] = accept
@@ -985,7 +1005,7 @@ def _retry_incomplete(company, organization_id: str, kind: str) -> int:
             organization_id=organization_id,
             kind=kind,
             last_modified_raw="",
-        ).order_by("id")[:25]
+        ).order_by("id")[:5]
     )
     failed = 0
     for document in pending:
@@ -1012,6 +1032,38 @@ def _retry_incomplete(company, organization_id: str, kind: str) -> int:
             modified_raw=raw,
         )
     return failed
+
+
+def cancel_zoho_sync(company: CompanyProfile, organization_id: str, kind: str) -> None:
+    """Stop an in-progress copy. The next Sync starts clean."""
+    ZohoBooksSync.objects.filter(
+        company=company,
+        organization_id=organization_id,
+        kind=kind,
+    ).exclude(mode=ZohoBooksSync.Mode.IDLE).update(
+        mode=ZohoBooksSync.Mode.IDLE,
+        next_page=1,
+    )
+
+
+def release_stale_zoho_sync(
+    company: CompanyProfile,
+    organization_id: str,
+    kind: str,
+    *,
+    max_age_seconds: int = 180,
+) -> None:
+    """A refresh abandons the browser chain. Clear a sync that nobody is continuing."""
+    cutoff = timezone.now() - timedelta(seconds=max_age_seconds)
+    ZohoBooksSync.objects.filter(
+        company=company,
+        organization_id=organization_id,
+        kind=kind,
+        updated_at__lt=cutoff,
+    ).exclude(mode=ZohoBooksSync.Mode.IDLE).update(
+        mode=ZohoBooksSync.Mode.IDLE,
+        next_page=1,
+    )
 
 
 def sync_zoho_documents(
@@ -1120,7 +1172,10 @@ def sync_zoho_documents(
             organization_id=organization_id,
             kind=kind,
         )
-        if state.mode == mode and state.next_page == page:
+        if state.mode == ZohoBooksSync.Mode.IDLE:
+            # Stop was clicked, or the page was left and the sync was cleared.
+            has_more = False
+        elif state.mode == mode and state.next_page == page:
             if has_more and summaries:
                 state.next_page = page + 1
             else:
@@ -1138,6 +1193,8 @@ def sync_zoho_documents(
                 ]
             )
             has_more = state.mode != ZohoBooksSync.Mode.IDLE
+        else:
+            has_more = False
     return _sync_status(
         company,
         organization_id,
@@ -1241,13 +1298,40 @@ def list_stored_documents(
         base = base.filter(number__icontains=query)
     products = []
     seen_items: set[str] = set()
-    product_rows = (
-        ZohoBooksDocumentLine.objects.filter(document__in=base)
-        .exclude(name="")
-        .values("item_id", "name", "sku")
-        .distinct()
-        .order_by("name", "item_id")
+    stamp = (
+        base.order_by("-id").values_list("id", flat=True).first()
+        or 0
     )
+    product_key = (
+        f"zoho-doc-products:{company.pk}:{organization_id}:{kind}:"
+        f"{stamp}:{year}:{month}:{query.casefold()}"
+    )
+    cached_products = cache.get(product_key)
+    if cached_products is not None:
+        products = cached_products
+        product_rows = []
+    else:
+        line_qs = ZohoBooksDocumentLine.objects.filter(
+            document__company=company,
+            document__organization_id=organization_id,
+            document__kind=kind,
+        ).exclude(name="")
+        if year:
+            period = invoice_period_range(year, month)
+            if period:
+                line_qs = line_qs.filter(
+                    document__document_date__gte=period[0],
+                    document__document_date__lte=period[1],
+                )
+        elif month.isdigit() and 1 <= int(month) <= 12:
+            line_qs = line_qs.filter(document__document_date__month=int(month))
+        if query:
+            line_qs = line_qs.filter(document__number__icontains=query)
+        product_rows = (
+            line_qs.values("item_id", "name", "sku")
+            .distinct()
+            .order_by("name", "item_id")
+        )
     for row in product_rows:
         item_id = (row["item_id"] or "").strip() or (row["name"] or "").casefold()
         if not item_id or item_id in seen_items:
@@ -1260,6 +1344,8 @@ def list_stored_documents(
                 "sku": (row["sku"] or "").strip(),
             }
         )
+    if cached_products is None:
+        cache.set(product_key, products, 120)
     selected = []
     seen_selected: set[str] = set()
     for item_id in item_ids or []:

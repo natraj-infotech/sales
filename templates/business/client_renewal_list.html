@@ -631,6 +631,34 @@
   .cr-th-zoho { width: 10%; }
   .cr-th-sla { width: 22%; }
   .cr-th-deal { width: 16%; }
+  .cr-col-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+  .cr-col-filter:hover,
+  .cr-col-filter.is-on { color: #1d4ed8; }
+  .cr-col-filter-tag {
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    background: #dbeafe;
+    color: #1e40af;
+    border-radius: 999px;
+    padding: 0.08rem 0.4rem;
+    font-weight: 700;
+  }
+  .cr-col-filter.is-win .cr-col-filter-tag { background: #d1fae5; color: #065f46; }
+  .cr-col-filter.is-lost .cr-col-filter-tag { background: #fee2e2; color: #991b1b; }
   .cr-company-row > td {
     border-bottom: 1px solid #e5e7eb;
     background: #fff;
@@ -1443,7 +1471,12 @@
           <th class="cr-th-renew">Renewal qty</th>
           <th class="cr-th-zoho">Zoho</th>
           <th class="cr-th-sla">SLA</th>
-          <th class="cr-th-deal">Status</th>
+          <th class="cr-th-deal">
+            <button type="button" class="cr-col-filter" id="cr-deal-cycle" title="Click once for Win, again for Lost, again for all">
+              Status
+              <span class="cr-col-filter-tag" hidden></span>
+            </button>
+          </th>
         </tr>
       </thead>
       <tbody id="cr-tbody">
@@ -2256,11 +2289,33 @@
     sla: {},
     fillForm: false,
     winLost: false,
+    dealOutcome: "",
   };
   var companyNamesKey = "";
   var productNamesKey = "";
   var lastCompanyNames = [];
   var lastProductNames = [];
+
+  function updateDealHeader() {
+    var btn = document.getElementById("cr-deal-cycle");
+    if (!btn) return;
+    var mode = filterState.dealOutcome;
+    btn.classList.toggle("is-on", !!mode);
+    btn.classList.toggle("is-win", mode === "win");
+    btn.classList.toggle("is-lost", mode === "lost");
+    var tag = btn.querySelector(".cr-col-filter-tag");
+    if (!tag) return;
+    if (mode === "win") {
+      tag.hidden = false;
+      tag.textContent = "Win";
+    } else if (mode === "lost") {
+      tag.hidden = false;
+      tag.textContent = "Lost";
+    } else {
+      tag.hidden = true;
+      tag.textContent = "";
+    }
+  }
 
   function selectedValues(map) {
     return Object.keys(map).filter(function (key) { return map[key]; });
@@ -2272,7 +2327,8 @@
       selectedValues(filterState.products).length ||
       selectedValues(filterState.sla).length ||
       filterState.fillForm ||
-      filterState.winLost
+      filterState.winLost ||
+      filterState.dealOutcome
     );
   }
 
@@ -2320,6 +2376,8 @@
       var openDeal = row.deal_status !== "win" && row.deal_status !== "lost";
       if (!(actionable && openDeal)) return false;
     }
+    if (filterState.dealOutcome === "win" && row.deal_status !== "win") return false;
+    if (filterState.dealOutcome === "lost" && row.deal_status !== "lost") return false;
     return true;
   }
 
@@ -2508,6 +2566,16 @@
         renderFiltered();
       });
     }
+    var dealCycle = document.getElementById("cr-deal-cycle");
+    if (dealCycle) {
+      dealCycle.addEventListener("click", function () {
+        if (filterState.dealOutcome === "win") filterState.dealOutcome = "lost";
+        else if (filterState.dealOutcome === "lost") filterState.dealOutcome = "";
+        else filterState.dealOutcome = "win";
+        updateDealHeader();
+        renderFiltered();
+      });
+    }
     var clearBtn = document.getElementById("cr-filter-clear");
     if (clearBtn) {
       clearBtn.addEventListener("click", function () {
@@ -2516,11 +2584,13 @@
         Object.keys(filterState.sla).forEach(function (key) { delete filterState.sla[key]; });
         filterState.fillForm = false;
         filterState.winLost = false;
+        filterState.dealOutcome = "";
         if (fill) fill.checked = false;
         if (deal) deal.checked = false;
         document.querySelectorAll("#cr-filters input[type='checkbox']").forEach(function (input) {
           input.checked = false;
         });
+        updateDealHeader();
         updateFilterButtons();
         renderFiltered();
       });

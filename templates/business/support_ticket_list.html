@@ -171,6 +171,39 @@
     padding: 0;
     color: #94a3b8;
   }
+  .st-col-filter {
+    color: inherit;
+    text-decoration: none;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+  }
+  .st-col-filter:hover,
+  .st-col-filter.is-on { color: #1d4ed8; }
+  .st-col-filter-tag {
+    font-size: 0.65rem;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    background: #dbeafe;
+    color: #1e40af;
+    border-radius: 999px;
+    padding: 0.08rem 0.45rem;
+    font-weight: 700;
+  }
+  .st-channel-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.16rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .st-channel-pill--email { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  .st-channel-pill--whatsapp { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 </style>
 {% endblock %}
 
@@ -393,6 +426,12 @@
         <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
+      <label for="ticket-channel">Channel</label>
+      <select class="select-inline" id="ticket-channel" name="channel">
+        <option value="">All channels</option>
+        <option value="email" {% if channel_filter == "email" %}selected{% endif %}>Email</option>
+        <option value="whatsapp" {% if channel_filter == "whatsapp" %}selected{% endif %}>WhatsApp</option>
+      </select>
       <button type="submit" class="ticket360-filter-apply">Apply</button>
     </form>
   </div>
@@ -406,6 +445,14 @@
             <th>Created</th>
             <th>Subject</th>
             <th>Contact</th>
+            <th>
+              <a class="st-col-filter{% if channel_filter %} is-on{% endif %}" href="{{ channel_cycle_url }}" title="Click once for Email, again for WhatsApp, again for all">
+                Channel
+                {% if channel_filter == "email" %}<span class="st-col-filter-tag">Email</span>
+                {% elif channel_filter == "whatsapp" %}<span class="st-col-filter-tag">WhatsApp</span>
+                {% endif %}
+              </a>
+            </th>
             <th>Dept</th>
             <th>Priority</th>
             {% if sla_settings.tracks_response %}<th>Response due</th>{% endif %}
@@ -431,6 +478,13 @@
               {% endif %}
             </td>
             <td>{{ t.contact_display }}</td>
+            <td>
+              {% if "whats" in t.source_channel|lower %}
+              <span class="st-channel-pill st-channel-pill--whatsapp">WhatsApp</span>
+              {% else %}
+              <span class="st-channel-pill st-channel-pill--email">Email</span>
+              {% endif %}
+            </td>
             <td>{{ t.get_department_display }}</td>
             <td><span class="prio-pill prio-pill--{{ t.priority }}">{{ t.get_priority_display }}</span></td>
             {% if sla_settings.tracks_response %}
@@ -509,7 +563,7 @@
           </tr>
           {% empty %}
           <tr class="st-empty-row">
-            <td colspan="15" class="muted" style="padding:1.25rem;text-align:center;">
+            <td colspan="16" class="muted" style="padding:1.25rem;text-align:center;">
               No tickets yet. <a href="{% url 'support_ticket_add' %}">Create a support ticket</a>.
             </td>
           </tr>
@@ -574,6 +628,7 @@
   var POLL_MS = 20000;
   var CSRF = "{{ csrf_token }}";
   var STATUS = "{{ status_filter|escapejs }}";
+  var CHANNEL = "{{ channel_filter|escapejs }}";
   var SOURCE = "{{ source|escapejs }}";
   var PAGE = "{{ page_obj.number|default:1 }}";
   var IS_OEM = SOURCE === "oem";
@@ -635,6 +690,7 @@
   function qs() {
     var params = new URLSearchParams();
     if (STATUS) params.set("status", STATUS);
+    if (CHANNEL) params.set("channel", CHANNEL);
     if (IS_OEM) params.set("source", "oem");
     if (PAGE && Number(PAGE) > 1) params.set("page", PAGE);
     var typed = searchInput ? (searchInput.value || "").trim() : "";
@@ -682,6 +738,7 @@
           r.remarks,
           r.subject,
           r.email,
+          r.channel,
           r.department,
           r.priority,
           r.completed_at,
@@ -740,9 +797,19 @@
     return "—";
   }
 
+  function channelCell(r) {
+    var key = String(r.channel || "").toLowerCase().indexOf("whats") >= 0 ? "whatsapp" : "email";
+    var label = key === "whatsapp" ? "WhatsApp" : (r.channel_label || "Email");
+    return (
+      '<td><span class="st-channel-pill st-channel-pill--' + key + '">' +
+        escapeHtml(label) +
+      "</span></td>"
+    );
+  }
+
   function colCount() {
     if (IS_OEM) return 8;
-    return 13 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
+    return 14 + (TRACKS_RESPONSE ? 1 : 0) + (TRACKS_RESOLVE ? 1 : 0);
   }
 
   function summaryCell(r) {
@@ -798,6 +865,7 @@
         "<td>" + escapeHtml(r.created_at) + "</td>" +
         "<td>" + escapeHtml(r.subject) + transferred + "</td>" +
         "<td>" + escapeHtml(r.email) + "</td>" +
+        channelCell(r) +
         "<td>" + escapeHtml(r.department) + "</td>" +
         "<td>" + priorityPill(r.priority, r.priority_label) + "</td>" +
         dueCols +

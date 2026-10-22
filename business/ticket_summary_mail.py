@@ -52,25 +52,37 @@ def build_conversation_summary(
 
     Returns (plain text, html, file attachments, names left out for size, has messages).
     """
+    from business.helpdesk_bridge import assignment_history
+
     comments = [
         comment
         for comment in followups_as_comments(ticket, load_files=True)
         if not comment.internal_note
     ]
+    events = assignment_history(ticket)
     ref = _ticket_ref(ticket)
     title = (getattr(ticket, "title", None) or "Support ticket").strip()
     heading = f"{ref} — {title}"
 
-    text_parts = [
-        heading,
-        "",
-        "Conversation",
-        "",
-    ]
+    text_parts = [heading, ""]
     html_parts = [
         f"<h2 style=\"margin:0 0 12px;font:600 18px 'Segoe UI',Arial,sans-serif;color:#1e3a8a;\">{escape(heading)}</h2>",
-        "<p style=\"margin:0 0 16px;font:14px 'Segoe UI',Arial,sans-serif;color:#334155;\">Conversation</p>",
     ]
+    if events:
+        text_parts.extend(["Assignment history", ""])
+        html_parts.append(
+            "<p style=\"margin:0 0 8px;font:600 14px 'Segoe UI',Arial,sans-serif;color:#334155;\">Assignment history</p>"
+            "<ol style=\"margin:0 0 16px 18px;padding:0;font:14px 'Segoe UI',Arial,sans-serif;color:#0f172a;\">"
+        )
+        for event in events:
+            text_parts.append(event.line)
+            html_parts.append(f"<li style=\"margin:0 0 6px 0;\">{escape(event.line)}</li>")
+        text_parts.append("")
+        html_parts.append("</ol>")
+    text_parts.extend(["Conversation", ""])
+    html_parts.append(
+        "<p style=\"margin:0 0 16px;font:14px 'Segoe UI',Arial,sans-serif;color:#334155;\">Conversation</p>"
+    )
     attachments: list[tuple[str, bytes, str]] = []
     used_names: set[str] = set()
     used_bytes = 0
@@ -130,7 +142,7 @@ def build_conversation_summary(
         "".join(html_parts),
         attachments,
         omitted,
-        bool(comments),
+        bool(comments) or bool(events),
     )
 
 

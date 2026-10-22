@@ -331,6 +331,7 @@
   <form id="zoho-sync-form" hidden>{% csrf_token %}</form>
   <div class="zoho-sync-row">
     <button type="button" class="zoho-btn zoho-btn--primary" id="zoho-sync">Sync from Zoho</button>
+    <button type="button" class="zoho-btn" id="zoho-sync-stop" hidden>Stop</button>
     <p class="zoho-synced" id="zoho-synced"></p>
   </div>
   <form method="get" class="zoho-invoice-search" id="zoho-invoice-search">
@@ -446,7 +447,9 @@
   var noun = isBill ? "bill" : "invoice";
   var colSpan = isBill ? 9 : 8;
   var syncButton = document.getElementById("zoho-sync");
+  var stopButton = document.getElementById("zoho-sync-stop");
   var syncedNode = document.getElementById("zoho-synced");
+  var syncStopped = false;
   var csrfInput = document.querySelector("#zoho-sync-form input[name=csrfmiddlewaretoken]");
   var state = { invoices: [], products: [], page: 1, hasMore: false, selected: {}, year: "", month: "", invoiceCount: null, everSynced: false, syncedAt: "" };
   var monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -461,9 +464,12 @@
     app.hidden = false;
   }
   function showError(message) {
-    if (loadingText) loadingText.textContent = message;
     if (spinner) spinner.hidden = true;
-    if (overlay) overlay.hidden = false;
+    if (overlay) overlay.hidden = true;
+    app.hidden = false;
+    if (syncButton) syncButton.disabled = false;
+    if (stopButton) stopButton.hidden = true;
+    if (syncedNode) syncedNode.textContent = message || "Could not sync from Zoho.";
   }
   function selectedIds() {
     return Object.keys(state.selected).filter(function (id) { return state.selected[id]; });
@@ -719,7 +725,17 @@
         showError(error.message || "Could not load saved " + noun + "s.");
       });
   }
+  function finishSyncControls() {
+    syncStopped = false;
+    if (syncButton) syncButton.disabled = false;
+    if (stopButton) stopButton.hidden = true;
+  }
   function syncStep(start, seenFailed, steps) {
+    if (syncStopped) {
+      finishSyncControls();
+      hideLoading();
+      return;
+    }
     var body = new FormData();
     body.append("kind", kind);
     body.append("csrfmiddlewaretoken", csrfInput ? csrfInput.value : "");
@@ -736,19 +752,25 @@
         });
       })
       .then(function (payload) {
+        if (syncStopped || payload.cancelled) {
+          finishSyncControls();
+          hideLoading();
+          if (syncedNode) syncedNode.textContent = "Sync stopped";
+          return;
+        }
         var failed = seenFailed + (payload.failed || 0);
         var saved = typeof payload.stored === "number" ? payload.stored : 0;
         showLoading("Syncing from Zoho\u2026 " + saved + " saved");
         if (payload.has_more && steps < 400) {
-          syncStep(false, failed, steps + 1);
+          window.setTimeout(function () { syncStep(false, failed, steps + 1); }, 1500);
           return;
         }
-        if (syncButton) syncButton.disabled = false;
+        finishSyncControls();
         if (failed) window.alert("Sync finished. " + failed + " " + noun + (failed === 1 ? "" : "s") + " could not load products. Sync again to retry those.");
         loadPage(1);
       })
       .catch(function (error) {
-        if (syncButton) syncButton.disabled = false;
+        finishSyncControls();
         showError(error.message || "Could not sync from Zoho.");
       });
   }
@@ -794,9 +816,29 @@
   }
   if (syncButton) {
     syncButton.addEventListener("click", function () {
+      syncStopped = false;
       syncButton.disabled = true;
+      if (stopButton) stopButton.hidden = false;
       showLoading("Syncing from Zoho\u2026");
       syncStep(true, 0, 1);
+    });
+  }
+  if (stopButton) {
+    stopButton.addEventListener("click", function () {
+      syncStopped = true;
+      stopButton.hidden = true;
+      if (syncButton) syncButton.disabled = false;
+      hideLoading();
+      if (syncedNode) syncedNode.textContent = "Sync stopped";
+      var body = new FormData();
+      body.append("kind", kind);
+      body.append("action", "cancel");
+      body.append("csrfmiddlewaretoken", csrfInput ? csrfInput.value : "");
+      fetch(app.getAttribute("data-sync-url"), {
+        method: "POST",
+        body: body,
+        headers: { "Accept": "application/json" }
+      }).catch(function () {});
     });
   }
   if (queryInput) queryInput.addEventListener("input", updateCount);

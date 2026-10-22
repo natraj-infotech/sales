@@ -1799,6 +1799,7 @@ class ClientRenewalDealStatusTests(TestCase):
         page = self.client.get(reverse("client_renewal_list"))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'class="cr-th-deal"')
+        self.assertContains(page, 'id="cr-deal-cycle"')
         self.assertContains(page, 'id="cr-lost-modal"')
         self.assertContains(page, "Add remark")
         self.assertContains(page, 'name="duration"')
@@ -2269,6 +2270,51 @@ class OemTicketFeatureTests(TestCase):
         self.assertContains(second, "q=Paged")
         self.assertEqual(second.context["page_obj"].number, 2)
         self.assertEqual(len(second.context["object_list"]), 1)
+
+    def test_ticket_list_channel_column_filters_email_and_whatsapp(self):
+        from business.helpdesk_bridge import create_internal_ticket
+        from business.models import SupportTicketMeta
+
+        create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Email laptop",
+            description="body",
+        )
+        whatsapp_ticket = create_internal_ticket(
+            company=self.company,
+            user=self.user,
+            subject="Whatsapp laptop",
+            description="body",
+        )
+        meta = whatsapp_ticket.crm_meta
+        meta.source_channel = SupportTicketMeta.SourceChannel.WHATSAPP
+        meta.save(update_fields=["source_channel"])
+
+        page = self.client.get(reverse("support_ticket_list"))
+        self.assertContains(page, "All channels")
+        self.assertContains(page, "st-channel-pill--email")
+        self.assertContains(page, "st-channel-pill--whatsapp")
+        self.assertIn("channel=email", page.context["channel_cycle_url"])
+
+        email_only = self.client.get(reverse("support_ticket_list") + "?channel=email")
+        self.assertContains(email_only, "Email laptop")
+        self.assertNotContains(email_only, "Whatsapp laptop")
+        self.assertIn("channel=whatsapp", email_only.context["channel_cycle_url"])
+
+        whatsapp_only = self.client.get(
+            reverse("support_ticket_list") + "?channel=whatsapp"
+        )
+        self.assertContains(whatsapp_only, "Whatsapp laptop")
+        self.assertNotContains(whatsapp_only, "Email laptop")
+        self.assertNotIn("channel=", whatsapp_only.context["channel_cycle_url"])
+
+        live = self.client.get(reverse("support_ticket_live") + "?channel=whatsapp")
+        self.assertEqual(live.status_code, 200)
+        rows = live.json()["rows"]
+        self.assertTrue(rows)
+        self.assertTrue(all(row["channel"] == "whatsapp" for row in rows))
+        self.assertTrue(all(row["channel_label"] == "WhatsApp" for row in rows))
 
     def test_diary_add_company_and_extra_email(self):
         response = self.client.post(

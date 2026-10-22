@@ -1647,6 +1647,35 @@ class SupportTeam(models.Model):
         return f"Support team for {self.company}"
 
 
+class EngineerPendingDigest(models.Model):
+    """Records that an engineer already got today's assigned-ticket morning mail."""
+
+    company = models.ForeignKey(
+        CompanyProfile,
+        on_delete=models.CASCADE,
+        related_name="engineer_pending_digests",
+    )
+    engineer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="engineer_pending_digests",
+    )
+    sent_on = models.DateField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "engineer", "sent_on"],
+                name="uniq_engineer_pending_digest_day",
+            )
+        ]
+        verbose_name = "engineer pending digest"
+        verbose_name_plural = "engineer pending digests"
+
+    def __str__(self):
+        return f"{self.engineer_id} {self.sent_on}"
+
+
 class TicketPriorityRule(models.Model):
     """Customisable subject keywords → priority for a company."""
 
